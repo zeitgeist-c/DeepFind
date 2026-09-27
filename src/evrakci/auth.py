@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
 class ParolaDialog(QDialog):
     def __init__(self, parent=None, *, change=False, verify=None):
         super().__init__(parent)
+        from .theme import app_icon
+        self.setWindowIcon(app_icon())
         self.change = change
         self.verify = verify
         self.setWindowTitle("Evrakçı • Şifre değiştir" if change else "Evrakçı • Kasa kilitli")
@@ -15,6 +17,10 @@ class ParolaDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(36, 36, 36, 36)
         layout.setSpacing(16)
+        logo = QLabel()
+        logo.setPixmap(app_icon().pixmap(48, 48))
+        logo.setAccessibleName("Evrakçı logosu")
+        layout.addWidget(logo)
         brand = QLabel("EVRAKÇI  /  GÜVENLİ ARŞİV")
         brand.setProperty("ikincil", True)
         layout.addWidget(brand)

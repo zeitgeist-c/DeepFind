@@ -145,6 +145,49 @@ def test_sihirbaz_sayfa_ve_sifre_kurali():
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
+def test_sihirbaz_ekle_secili_klasor_yenile_ve_kaldir(tmp_path):
+    _app()
+    from evrakci.wizard import Sihirbaz
+    from PySide6.QtWidgets import QWizard
+    from PySide6.QtCore import QCoreApplication, QEvent
+    s = Sihirbaz()
+    root = tmp_path / "Belgeler"
+    root.mkdir()
+    idx = s.model.index(str(root))
+    assert idx.isValid()
+    s.agac.setCurrentIndex(idx)
+    s.ekle.click()
+    assert s.secim["kokler"] == [str(root)]
+    assert s.kok_model.rowCount() == 1
+    s.unc.setText(str(root) + os.sep)
+    s.ekle.click()
+    assert s.kok_model.rowCount() == 1
+    assert "zaten" in s.kaynak_mesaj.text()
+    old_model = s.model
+    s.yenile.click()
+    assert s.model is not old_model
+    assert s.kok_model.rowCount() == 1
+    s.kok_liste.setCurrentIndex(s.kok_model.index(0))
+    s._kaldir()
+    assert s.secim["kokler"] == []
+    s.unc.setText(str(tmp_path / "yok"))
+    s.ekle.click()
+    assert "ulaşılamıyor" in s.kaynak_mesaj.text()
+    file = tmp_path / "bir-dosya.txt"
+    file.write_text("sentetik")
+    s.unc.setText(str(file))
+    s.ekle.click()
+    assert s.secim["kokler"] == []
+    assert s.buttonText(QWizard.NextButton) == "İleri"
+    assert s.buttonText(QWizard.BackButton) == "Geri"
+    assert not s.windowIcon().isNull()
+    assert s.agac.isHeaderHidden()
+    assert "Diske/loga" not in s.page(1).subTitle()
+    s.close()
+    s.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
 def test_kilit_model_temizler(pencere, tmp_path, monkeypatch):
     pencere.arama_kutu.setText("Ankara")
     pencere._ara_simdi()

@@ -73,7 +73,7 @@ def main():
         shutil.copyfile(lgpl, licenses / "LGPL-3.0-only.txt")
     if not (licenses / "LGPL-3.0-only.txt").is_file():
         raise RuntimeError("LGPL lisans metni bulunamadı; paket teslim edilemez")
-    for name in ("README.md", "LISANSLAR.md", "DENETIM-0.1.1.md"):
+    for name in ("README.md", "LISANSLAR.md", "DENETIM-0.1.1.md", f"DENETIM-{__version__}.md"):
         if (ROOT / name).is_file():
             shutil.copyfile(ROOT / name, package / name)
     (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

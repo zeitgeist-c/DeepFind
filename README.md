@@ -1,12 +1,12 @@
-# Evrakçı 0.1.1
+# Evrakçı 0.1.2
 
 Windows için yerel, şifreli belge arama uygulaması. Kaynak belgeler PDF/XLSX/XLS/DOCX olarak okunur; arama indeksi bu bilgisayarda tutulur.
 
-Bu sürüm denetim/pilot sürümüdür. Plan V4'ün tüm kabul kapıları geçmiş değildir. Kapsam karşılaştırması ve kalanlar: DENETIM-0.1.1.md.
+Bu sürüm denetim/pilot sürümüdür. Plan V4'ün tüm kabul kapıları geçmiş değildir. Kapsam karşılaştırması ve kalanlar: DENETIM-0.1.2.md.
 
 ## Çalıştırma
 
-Evrakçı-0.1.1.zip dosyasını bir klasöre açın; içindeki Evrakçı-0.1.1.exe veya aynı adlı BAT dosyasını çalıştırın. ZIP içinden doğrudan çalıştırmayın; _internal ve licenses klasörlerini EXE yanında koruyun.
+Evrakçı-0.1.2.zip dosyasını bir klasöre açın; içindeki Evrakçı-0.1.2.exe veya aynı adlı BAT dosyasını çalıştırın. ZIP içinden doğrudan çalıştırmayın; _internal ve licenses klasörlerini EXE yanında koruyun.
 
 İlk açılışta şifreyi iki kez belirleyin ve kaynak klasörleri seçin. Sonraki açılışta aynı şifre kullanılır. Ayarlar > Parolayı değiştir: mevcut şifre + yeni şifre + yeni şifre tekrarı. Önceki yedekler eski şifreyi gerektirir. Şifre unutulursa kasanın açılacağı vaat edilmez; kaynak belgeler etkilenmez.
 

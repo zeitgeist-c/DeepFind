@@ -17,6 +17,16 @@ TOKENS = {
 MODES = ("sistem", "acik", "koyu")
 
 
+def install_turkish(app):
+    from PySide6.QtCore import QLocale, QLibraryInfo, QTranslator
+    QLocale.setDefault(QLocale(QLocale.Turkish, QLocale.Turkey))
+    if app is not None and not hasattr(app, "_evrakci_translation"):
+        translator = QTranslator(app)
+        if translator.load("qtbase_tr", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+            app.installTranslator(translator)
+        app._evrakci_translation = translator
+
+
 def app_icon():
     from PySide6.QtCore import Qt, QRectF
     from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
@@ -87,6 +97,7 @@ QToolTip {{ background: {pal['panel']}; color: {pal['metin']}; border: 1px solid
 def apply(app, mode: str) -> str:
     """Temayi uygula, cozulmus adi don (sistem->acik/koyu)."""
     from PySide6.QtGui import QStyleHints
+    install_turkish(app)
     if app.style().objectName().lower() != "fusion":
         app.setStyle("Fusion")
     dark = False

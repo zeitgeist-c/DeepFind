@@ -28,6 +28,28 @@ def run(report_path):
     checkpoint("fixture")
     try:
         with tempfile.TemporaryDirectory(prefix="evrakci-package-smoke-") as temp:
+            from .wizard import Sihirbaz
+            from PySide6.QtWidgets import QWizard
+            from PySide6.QtCore import QCoreApplication, QEvent
+            theme.apply(app, "koyu")
+            wizard = Sihirbaz()
+            wizard.show()
+            app.processEvents()
+            assert wizard.buttonText(QWizard.NextButton) == "İleri"
+            assert not wizard.windowIcon().isNull()
+            wizard.next()
+            wizard.s1.setText("yalniz-sentetik-smoke-1234")
+            wizard.s2.setText(wizard.s1.text())
+            assert wizard.validateCurrentPage()
+            wizard.next()
+            wizard.agac.setCurrentIndex(wizard.model.index(temp))
+            wizard.ekle.click()
+            assert wizard.secim["kokler"] == [temp]
+            wizard.yenile.click()
+            assert wizard.kok_model.rowCount() == 1
+            wizard.close()
+            wizard.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             source = Path(temp) / "ornek.xlsx"
             wb = Workbook()
             wb.active.append(["Ankara paket denetim 2024"])
@@ -73,7 +95,8 @@ def run(report_path):
             pen._exiting = True
             pen.close()
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
-                                           "excel-preview", "dark-theme", "lock-unlock"])
+                                           "excel-preview", "dark-theme", "lock-unlock",
+                                           "setup-folder-add-refresh", "turkish-buttons-logo"])
     except Exception as error:
         report["error"] = repr(error)
     Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -174,7 +174,7 @@ class AnaPencere(QMainWindow):
         self._schedule_timer = QTimer(self)
         self._schedule_timer.timeout.connect(self._zamanlayici_kontrol)
         self._schedule_timer.start(60_000)
-        theme.apply(QApplication.instance(), self.tema_sec.currentText())
+        theme.apply(QApplication.instance(), self.tema_sec.currentData())
 
     # -- kurulum --
     def _kasa_ac(self):
@@ -203,6 +203,10 @@ class AnaPencere(QMainWindow):
         dis.setSpacing(18)
 
         masthead = QHBoxLayout()
+        logo = QLabel()
+        logo.setPixmap(theme.app_icon().pixmap(40, 40))
+        logo.setAccessibleName("Evrakçı logosu")
+        masthead.addWidget(logo)
         brand = QLabel("Evrakçı")
         brand.setProperty("baslik", True)
         masthead.addWidget(brand)
@@ -228,9 +232,10 @@ class AnaPencere(QMainWindow):
         self.tara_btn.clicked.connect(self._tara_baslat)
         ust.addWidget(self.tara_btn)
         self.tema_sec = QComboBox()
-        self.tema_sec.addItems(["sistem", "acik", "koyu"])
-        self.tema_sec.setCurrentText(migrate.get_setting(self.con, "tema", "sistem"))
-        self.tema_sec.currentTextChanged.connect(self._tema_degistir)
+        for label, value in [("Sistem teması", "sistem"), ("Açık", "acik"), ("Koyu", "koyu")]:
+            self.tema_sec.addItem(label, value)
+        self.tema_sec.setCurrentIndex(max(0, self.tema_sec.findData(migrate.get_setting(self.con, "tema", "sistem"))))
+        self.tema_sec.currentIndexChanged.connect(lambda _: self._tema_degistir(self.tema_sec.currentData()))
         ust.addWidget(self.tema_sec)
         dis.addLayout(ust)
 
@@ -909,7 +914,7 @@ class AnaPencere(QMainWindow):
             migrate.set_setting(self.con, "tema", mode)
         except Exception:
             pass
-        self.durum.showMessage(f"Tema: {mode} uygulandı ({resolved})")
+        self.durum.showMessage(f"{self.tema_sec.currentText()} uygulandı.")
 
     def _tepsi(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -951,7 +956,7 @@ class AnaPencere(QMainWindow):
         if kos and not ilk:
             self._tara_baslat()
         elif kos and ilk:
-            self.durum.showMessage(f"Planlı tarama kaçmış ({neden}); “Şimdi tara” hazır.")
+            self.durum.showMessage("Planlı tarama henüz yapılmadı. Başlatmak için “Şimdi tara”ya basın.")
 
     def kilitle(self):
         if self._locked:
@@ -1115,7 +1120,7 @@ def main(kasa_yolu=None, sifre=None):
                 pen.con.execute("INSERT OR IGNORE INTO roots(display_path, canonical_path, company_rule) VALUES (?,?,?)",
                                 (root, os.path.normpath(root).lower(), setup.secim["sirket_kurali"]))
             pen.con.commit()
-            pen.tema_sec.setCurrentText(setup.secim["tema"])
+            pen.tema_sec.setCurrentIndex(pen.tema_sec.findData(setup.secim["tema"]))
             setup.s1.clear()
             setup.s2.clear()
             setup.secim.pop("sifre", None)
