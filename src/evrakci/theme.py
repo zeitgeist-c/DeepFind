@@ -9,7 +9,7 @@ TOKENS = {
     },
     "koyu": {
         "zemin": "#0D1523", "panel": "#172237", "metin": "#F1F5FC", "buton_metin": "#09251F",
-        "ikincil": "#A5B4CC", "marka": "#67D9BC", "sinir": "#2C3A51",
+        "ikincil": "#B1BED3", "marka": "#67D9BC", "sinir": "#455570",
         "secili": "#1C3B3B", "uyari": "#E5B969", "hata": "#F18D99", "basari": "#67D9BC",
     },
 }
@@ -81,6 +81,12 @@ def symbol_icon(kind, color="#91A3BF"):
     elif kind == "backup":
         p.drawRoundedRect(QRectF(3, 12, 18, 9), 2, 2)
         p.drawLine(12, 3, 12, 15); p.drawLine(8, 7, 12, 3); p.drawLine(12, 3, 16, 7)
+    elif kind == "info":
+        p.drawEllipse(QRectF(3, 3, 18, 18))
+        p.drawPoint(12, 7); p.drawLine(12, 11, 12, 17)
+    elif kind == "exit":
+        p.drawLine(10, 3, 4, 3); p.drawLine(4, 3, 4, 21); p.drawLine(4, 21, 10, 21)
+        p.drawLine(10, 12, 21, 12); p.drawLine(17, 8, 21, 12); p.drawLine(21, 12, 17, 16)
     else:
         p.drawRoundedRect(QRectF(6, 3, 13, 18), 2, 2)
         for y in (9, 13, 17): p.drawLine(9, y, 16, y)
@@ -104,6 +110,7 @@ QMainWindow, QDialog, QWizard, QWidget#kok {{ background: {pal['zemin']}; }}
 QFrame#card, QWidget#pageCard, QWidget#preview, QWizardPage#setupPage {{
  background: {pal['panel']}; border: 1px solid {pal['sinir']}; border-radius: 16px; }}
 QStackedWidget {{ background: transparent; }}
+QWidget#scanBody {{ background: {pal['panel']}; border: none; }}
 QFrame#rail {{ background: #112039; border-radius: 16px; }}
 QFrame#rail QLabel {{ color: #F3F7FF; background: transparent; }}
 QFrame#rail QLabel[ikincil="true"] {{ color: #98A9C3; }}
@@ -144,6 +151,12 @@ QListView::item {{ padding: 12px; border-radius: 8px; }}
 QListView::item:hover {{ background: {pal['zemin']}; }}
 QListView::item:selected {{ background: {pal['secili']}; color: {pal['metin']}; }}
 QListView#cardList {{ border: none; padding: 0; background: transparent; }}
+QTreeView {{ background: {pal['zemin']}; alternate-background-color: {pal['panel']}; }}
+QTreeView::item {{ min-height: 28px; }}
+QTreeView::item:selected {{ background: {pal['secili']}; color: {pal['metin']}; border: 1px solid {pal['marka']}; }}
+QComboBox QAbstractItemView {{ background: {pal['panel']}; color: {pal['metin']}; selection-background-color: {pal['secili']}; }}
+QFrame#rail QPushButton {{ background: #1B304C; color: #D9E4F5; border-color: #344963; padding: 8px 5px; }}
+QFrame#rail QPushButton:hover {{ background: #25435A; border-color: #70D6BC; }}
 QListWidget#navigation {{ background: transparent; color: #A9B9D1; border: none; padding: 0; }}
 QListWidget#navigation::item {{ padding: 13px 14px; margin: 3px 0; border-radius: 10px; }}
 QListWidget#navigation::item:hover {{ background: #1B304C; }}
@@ -178,6 +191,13 @@ def apply(app, mode: str) -> str:
     """Temayi uygula, cozulmus adi don (sistem->acik/koyu)."""
     from PySide6.QtGui import QStyleHints
     install_turkish(app)
+    from PySide6.QtCore import QSettings
+    QSettings("Evrakci", "Appearance").setValue("theme", mode)
+    app.setProperty("evrakci_theme_mode", mode)
+    if not getattr(app, "_evrakci_scheme_connected", False):
+        app.styleHints().colorSchemeChanged.connect(
+            lambda _: apply(app, "sistem") if app.property("evrakci_theme_mode") == "sistem" else None)
+        app._evrakci_scheme_connected = True
     if app.style().objectName().lower() != "fusion":
         app.setStyle("Fusion")
     dark = False

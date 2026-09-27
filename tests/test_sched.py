@@ -29,7 +29,14 @@ def test_ayni_slot_iki_kez_kosmaz():
 
 def test_kacirilan_gun_tek_catchup():
     kos, neden = sched.should_run(_dt(27, 9), _dt(24, 12, 35))
-    assert kos and neden == "dunku-slot-kacmis"
+    assert not kos and neden == "slot-bekliyor"
+    assert sched.should_run(_dt(27, 13), _dt(24, 12, 35))[0]
+
+
+def test_iptal_edilen_gun_tekrar_baslamaz():
+    assert not sched.should_run(_dt(27, 14), None, handled_day="2026-09-27")[0]
+    assert not sched.should_run(_dt(28, 9), None, handled_day="2026-09-27")[0]
+    assert sched.should_run(_dt(28, 13), None, handled_day="2026-09-27")[0]
 
 
 def test_cihaz_gecikmesi_deterministik_sinirli():

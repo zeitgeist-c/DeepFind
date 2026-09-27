@@ -24,14 +24,15 @@ def enqueue(con, file_id: int, sig: str, kind: str = "extract") -> None:
     )
 
 
-def claim(con, kinds=("extract",)) -> dict | None:
+def claim(con, kinds=("extract",), *, scoped=False) -> dict | None:
     """Süresi dolmuş lease dahil tek iş al. Tek DB yazıcısı varsayımıyla."""
     t = now()
     marks = ",".join("?" * len(kinds))
+    scope = " AND file_id IN (SELECT file_id FROM scan_selected)" if scoped else ""
     row = con.execute(
         "SELECT job_id, file_id, signature, kind, attempts FROM jobs"
         f" WHERE kind IN ({marks}) AND (status='pending' AND not_before<=?"
-        " OR status='running' AND lease_until<?) ORDER BY job_id LIMIT 1",
+        " OR status='running' AND lease_until<?)" + scope + " ORDER BY job_id LIMIT 1",
         (*kinds, t, t),
     ).fetchone()
     if not row:

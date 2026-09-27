@@ -30,9 +30,11 @@ def slot_for(day: dt.date, hour: int = DEFAULT_HOUR, minute: int = DEFAULT_MINUT
 
 def should_run(now: dt.datetime, last_ok: dt.datetime | None,
                hour: int = DEFAULT_HOUR, minute: int = DEFAULT_MINUTE,
-               lag_min: int = 0) -> tuple:
+               lag_min: int = 0, handled_day: str = "") -> tuple:
     """(calismali_mi, neden). Kilit disi cagrilir; kilitliyse cagiran calistirmaz."""
     today_slot = slot_for(now.date(), hour, minute, lag_min)
+    if handled_day >= now.date().isoformat():
+        return False, "bugunku-slot-ele-alindi"
     if last_ok is not None and last_ok >= today_slot:
         return False, "bugunku-slot-tamam"
     if now >= today_slot:
@@ -40,11 +42,6 @@ def should_run(now: dt.datetime, last_ok: dt.datetime | None,
             return True, "ilk-gun-slot-geldi"
         # kacirilan gunler icin tek catch-up (her gecmis gune ayri tarama yok)
         return True, "catch-up-tek"
-    # slot henuz gelmedi; dunku slot kacirilmissa ve bugun henuz kosulmadiysa?
-    if last_ok is None or last_ok.date() < now.date():
-        prev = today_slot - dt.timedelta(days=1)
-        if last_ok is None or last_ok < prev:
-            return True, "dunku-slot-kacmis"
     return False, "slot-bekliyor"
 
 

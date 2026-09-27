@@ -271,12 +271,14 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
     return "done"
 
 
-def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
+def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None) -> dict:
     """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi."""
     stats = {"found": 0, "done": 0, "changed": 0, "unstable": 0, "failed": 0,
              "missing": 0, "ocr_done": 0, "ocr_deferred": 0, "ocr_failed": 0,
-             "hashed": 0, "complete": False, "result": "partial"}
+             "hashed": 0, "skipped": 0, "complete": False, "result": "partial"}
     with ScanLock(vault_path):
+        con.execute("CREATE TEMP TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
+        con.execute("DELETE FROM scan_selected")
         q.recover_running(con)
         rules = exc.list_rules(con)
         run_id = con.execute(
@@ -285,12 +287,58 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
         con.commit()
         all_complete = True
         seen = set()
+        last_report = 0.0
+
+        def report(stage, path="", result="", force=False):
+            nonlocal last_report
+            now = time.monotonic()
+            if progress and (force or now - last_report >= 0.2):
+                pending = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running')"
+                                      " AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
+                progress(dict(stats, stage=stage, path=path, item_result=result, pending=pending))
+                last_report = now
+
+        def process_batch(limit=None):
+            count = 0
+            while limit is None or count < limit:
+                if stop and stop():
+                    stats["result"] = "cancelled"
+                    return
+                job = q.claim(con, scoped=True)
+                if not job:
+                    return
+                path = con.execute("SELECT path FROM files WHERE file_id=?", (job["file_id"],)).fetchone()[0]
+                report("İçerik okunuyor", path, force=True)
+                try:
+                    r = _process_job(con, job, rules, os.path.dirname(vault_path), os.path.abspath(root), stop, guarded)
+                except InterruptedError:
+                    con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job["job_id"],))
+                    con.commit()
+                    stats["result"] = "cancelled"
+                    return
+                except TimeoutError:
+                    r = q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
+                except Exception:
+                    r = q.fail(con, job["job_id"], "CORRUPT_DOCUMENT")
+                for key, outcome in (("done", "done"), ("changed", "changed"), ("unstable", "unstable")):
+                    stats[key] += int(r == outcome)
+                stats["failed"] += int(r in ("retry", "dead"))
+                count += 1
+                if r in ("retry", "dead"):
+                    error = con.execute("SELECT error_code FROM jobs WHERE job_id=?", (job["job_id"],)).fetchone()
+                    code = error[0] if error else ""
+                    message = {"PROCESS_TIMEOUT": "Dosya işlemi zaman aşımına uğradı", "CORRUPT_DOCUMENT": "Dosya okunamadı"}.get(code, "Dosya işlenemedi")
+                    report(message, path, r, force=True)
+                else:
+                    report("İçerik işleniyor", path, r)
+
         # --- kesif (lazy, dizin bazinda kapsam) ---
         stack = [os.path.abspath(root)]
         while stack:
             if stop and stop():
                 break
             cur = stack.pop()
+            report("Klasörler keşfediliyor", cur)
             dir_ok = True
             try:
                 with os.scandir(cur) as it:
@@ -298,11 +346,17 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
             except OSError:
                 entries = []
                 dir_ok = False
+                stats["failed"] += 1
+                report("Klasöre erişilemiyor", cur, "erişim hatası", force=True)
             con.execute("INSERT OR IGNORE INTO scan_scopes(run_id, dir, complete) VALUES (?,?,?)",
                         (run_id, cur, 0))
             for e in entries:
+                if stop and stop():
+                    dir_ok = False
+                    break
                 try:
                     if exc.is_excluded(e.path, rules):
+                        stats["skipped"] += 1
                         continue
                     if e.stat(follow_symlinks=False).st_file_attributes & 0x400:
                         continue  # Windows junction/reparse point izlenmez.
@@ -322,12 +376,19 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
                             continue
                         seen.add(entry.path)
                         fid = ensure_file(con, entry)
+                        con.execute("INSERT OR IGNORE INTO scan_selected VALUES (?)", (fid,))
                         sig = q.signature_of(entry.size, entry.mtime_ns)
                         status = con.execute("SELECT index_status FROM files WHERE file_id=?", (fid,)).fetchone()[0]
                         if active_signature(con, fid) != sig or status in ("missing", "excluded"):
                             con.execute("UPDATE files SET index_status='pending' WHERE file_id=?", (fid,))
                             q.enqueue(con, fid, sig)
+                        else:
+                            stats["skipped"] += 1
                         stats["found"] += 1
+                        if stats["found"] % 32 == 0:
+                            con.commit()
+                            process_batch(8)
+                        report("Klasörler keşfediliyor", cur)
                 except OSError:
                     dir_ok = False
                     continue
@@ -336,40 +397,19 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
             else:
                 all_complete = False
             con.commit()
+            process_batch(8)
         # --- kuyruk isleme ---
-        while True:
-            if stop and stop():
-                stats["result"] = "cancelled"
-                break
-            job = q.claim(con)
-            if not job:
-                break
-            try:
-                r = _process_job(con, job, rules, os.path.dirname(vault_path), os.path.abspath(root), stop, guarded)
-            except InterruptedError:
-                con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job["job_id"],))
-                con.commit()
-                stats["result"] = "cancelled"
-                break
-            except TimeoutError:
-                r = q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
-            except Exception:
-                r = q.fail(con, job["job_id"], "CORRUPT_DOCUMENT")
-            stats["done"] += 1 if r == "done" else 0
-            stats["changed"] += 1 if r == "changed" else 0
-            stats["unstable"] += 1 if r == "unstable" else 0
-            if r in ("retry", "dead"):
-                stats["failed"] += 1
-            if r == "changed":
-                pass
+        process_batch()
         # --- agir OCR fazi (cikarma bitince; kaynagi paralel okumaz, UI/aramayi bekletmez) ---
         while True:
             if stop and stop():
                 stats["result"] = "cancelled"
                 break
-            job = q.claim(con, ("ocr",))
+            job = q.claim(con, ("ocr",), scoped=True)
             if not job:
                 break
+            path = con.execute("SELECT path FROM files WHERE file_id=?", (job["file_id"],)).fetchone()[0]
+            report("OCR ile metin okunuyor", path, force=True)
             try:
                 r = _process_ocr_job(con, job, os.path.dirname(vault_path), stop, guarded)
             except InterruptedError:
@@ -385,10 +425,13 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
             stats["ocr_deferred"] += 1 if r == "deferred" else 0
             if r in ("retry", "dead"):
                 stats["ocr_failed"] += 1
+            report("OCR işleniyor", path, r)
         # --- kopya hash (arka plan; sinirli; kaynagi bir kez daha okur) ---
         try:
             from . import dup as dup_mod
-            stats["hashed"] = dup_mod.verify_pending(con).get("verified", 0)
+            if not (stop and stop()):
+                report("Kopyalar doğrulanıyor", root, force=True)
+                stats["hashed"] = dup_mod.verify_pending(con, scoped=True, stop=stop).get("verified", 0)
         except Exception:
             pass
         # --- kayip dosya: yalniz tam kapsamda ---
@@ -406,8 +449,11 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
                     con.execute("UPDATE files SET index_status='missing' WHERE file_id=?", (fid,))
                     stats["missing"] += 1
             con.commit()
-            stats["complete"] = True
-            stats["result"] = "complete"
+            pending = con.execute("SELECT count(*) FROM jobs WHERE file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
+            stats["complete"] = not pending and not stats["failed"] and not stats["ocr_failed"]
+            stats["result"] = "complete" if stats["complete"] else "partial"
+        stats["pending"] = con.execute("SELECT count(*) FROM jobs WHERE file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
+        report("Tarama tamamlandı" if stats["complete"] else "Tarama durdu", root, force=True)
         con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?",
                     (int(time.time()), stats["result"], run_id))
         con.commit()

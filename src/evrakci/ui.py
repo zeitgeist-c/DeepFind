@@ -31,7 +31,12 @@ def brand(layout, *, size=38):
     row.addWidget(icon)
     text = QVBoxLayout()
     text.setSpacing(1)
-    text.addWidget(label("Evrakçı", "baslik"))
+    from .version import __version__
+    title = QHBoxLayout()
+    title.addWidget(label("Evrakçı", "baslik"))
+    title.addSpacing(6)
+    title.addWidget(label(__version__, "eyebrow"))
+    text.addLayout(title)
     text.addWidget(label("BELGE ARŞİVİNİZ", "eyebrow"))
     row.addLayout(text)
     row.addStretch()
@@ -59,14 +64,15 @@ class EmptyState(QWidget):
 
 
 class CardDelegate(QStyledItemDelegate):
-    def __init__(self, parent, kind="document"):
+    def __init__(self, parent, kind="document", *, compact=False):
         super().__init__(parent)
         self.kind = kind
+        self.compact = compact
         self.icon = theme.symbol_icon(kind, "#137C70")
         self.dark_icon = theme.symbol_icon(kind, "#67D9BC")
 
     def sizeHint(self, option, index):
-        return QSize(280, 100 if self.kind == "document" else 92)
+        return QSize(280, 64 if self.compact else (100 if self.kind == "document" else 92))
 
     def paint(self, painter, option, index):
         from PySide6.QtWidgets import QApplication
@@ -81,24 +87,24 @@ class CardDelegate(QStyledItemDelegate):
         painter.drawRoundedRect(rect, 10, 10)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(pal["secili"]))
-        tile = QRectF(rect.left() + 14, rect.top() + 17, 40, 40)
+        tile = QRectF(rect.left() + 12, rect.top() + 11, 32, 32) if self.compact else QRectF(rect.left() + 14, rect.top() + 17, 40, 40)
         painter.drawRoundedRect(tile, 9, 9)
         (self.dark_icon if dark else self.icon).paint(painter, tile.toRect().adjusted(8, 8, -8, -8))
         lines = str(index.data(Qt.DisplayRole) or "").splitlines()
-        left = int(rect.left() + 68)
-        width = max(10, int(rect.width() - 84))
+        left = int(rect.left() + (54 if self.compact else 68))
+        width = max(10, int(rect.right() - left - 12))
         font = QFont(option.font)
         font.setPixelSize(14)
         font.setWeight(QFont.DemiBold)
         painter.setFont(font)
         painter.setPen(QColor(pal["metin"]))
-        painter.drawText(left, int(rect.top() + 30),
+        painter.drawText(left, int(rect.top() + (24 if self.compact else 30)),
                          painter.fontMetrics().elidedText(lines[0] if lines else "", Qt.ElideRight, width))
         font.setPixelSize(12)
         font.setWeight(QFont.Normal)
         painter.setFont(font)
         painter.setPen(QColor(pal["ikincil"]))
-        for i, text in enumerate(lines[1:3]):
-            painter.drawText(left, int(rect.top() + 50 + i * 20),
+        for i, text in enumerate(lines[1:2] if self.compact else lines[1:3]):
+            painter.drawText(left, int(rect.top() + (44 if self.compact else 50) + i * 20),
                              painter.fontMetrics().elidedText(text, Qt.ElideRight, width))
         painter.restore()

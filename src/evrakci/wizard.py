@@ -5,6 +5,7 @@ Yari kapanirsa kasa bozuk sayilmaz; cagiran kaldigi adimi saklar (A7 UI).
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from PySide6.QtCore import QDir, Qt, QStringListModel
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFileSystemModel, QFormLayout, QHBoxLayout,
@@ -12,6 +13,9 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFileSystemMod
                                QVBoxLayout, QWizard, QWizardPage, QFrame, QSplitter)
 from .theme import app_icon, install_turkish
 from .ui import brand, card, label
+from .ui import CardDelegate
+from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QAbstractItemView
 
 
 class _Sayfa(QWizardPage):
@@ -39,7 +43,7 @@ class Sihirbaz(QWizard):
         self.setMinimumSize(1000, 660)
         self.resize(1080, 700)
         self.setOption(QWizard.NoBackButtonOnStartPage)
-        self.setButtonLayout([QWizard.CancelButton, QWizard.Stretch, QWizard.BackButton,
+        self.setButtonLayout([QWizard.CancelButton, QWizard.CustomButton1, QWizard.Stretch, QWizard.BackButton,
                               QWizard.NextButton, QWizard.FinishButton])
         self.setButtonText(QWizard.BackButton, "Geri")
         self.setButtonText(QWizard.NextButton, "İleri")
@@ -47,6 +51,24 @@ class Sihirbaz(QWizard):
         self.setButtonText(QWizard.CancelButton, "Vazgeç")
         self.setButtonText(QWizard.HelpButton, "Yardım")
         self.secim = {"kokler": [], "tema": "sistem", "sirket_kurali": "belirlenemiyor"}
+        self.tema = QComboBox(self)
+        for caption, value in [("Sistem teması", "sistem"), ("Açık", "acik"), ("Koyu", "koyu")]:
+            self.tema.addItem(caption, value)
+        self.setOption(QWizard.HaveCustomButton1)
+        from PySide6.QtWidgets import QMenu
+        self.tema.hide()
+        self.theme_button = QPushButton("Tema: Sistem")
+        menu = QMenu(self.theme_button)
+        self._theme_menu = menu
+        for index, caption in enumerate(("Sistem teması", "Açık", "Koyu")):
+            menu.addAction(caption, lambda checked=False, i=index: self.tema.setCurrentIndex(i))
+        self.theme_button.setMenu(menu)
+        self.setButton(QWizard.CustomButton1, self.theme_button)
+        self.tema.currentIndexChanged.connect(self._tema_degistir)
+        from PySide6.QtCore import QSettings
+        saved_theme = QSettings("Evrakci", "Appearance").value("theme", "sistem")
+        self.tema.setCurrentIndex(max(0, self.tema.findData(saved_theme)))
+        self.secim["tema"] = self.tema.currentData()
         rail = QFrame()
         rail.setObjectName("rail")
         rail.setFixedWidth(242)
@@ -57,7 +79,7 @@ class Sihirbaz(QWizard):
         rail_layout.addSpacing(12)
         rail_layout.addWidget(label("ÇALIŞMA ALANINIZI KURALIM", "eyebrow"))
         self.steps = []
-        for i, title in enumerate(("Hoş geldiniz", "Kasa şifresi", "Klasörler", "Düzen", "Görünüm", "Son kontrol")):
+        for i, title in enumerate(("Hoş geldiniz", "Kasa şifresi", "Klasörler", "Düzen", "Son kontrol")):
             step = label(f"{i + 1:02d}   {title}")
             step.setObjectName("step")
             rail_layout.addWidget(step)
@@ -146,8 +168,12 @@ class Sihirbaz(QWizard):
         self.agac.setColumnHidden(3, True)
         self.agac.doubleClicked.connect(self._agac_ekle)
         self.kok_liste = QListView()
-        self.kok_model = QStringListModel(self)
+        self.kok_model = QStandardItemModel(self)
         self.kok_liste.setModel(self.kok_model)
+        self.kok_liste.setObjectName("cardList")
+        self.kok_liste.setItemDelegate(CardDelegate(self.kok_liste, "folder", compact=True))
+        self.kok_liste.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.kok_liste.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.kok_liste.setAccessibleName("Aramaya eklenen klasörler")
         columns = QSplitter(Qt.Horizontal)
         available, available_layout = card()
@@ -156,12 +182,20 @@ class Sihirbaz(QWizard):
         selected_panel, selected = card()
         self.kok_baslik = QLabel("Eklenen klasörler • 0")
         self.kok_baslik.setProperty("subheading", True)
-        remove = QPushButton("Seçileni kaldır")
+        remove = QPushButton("Seçilenleri kaldır")
         remove.clicked.connect(self._kaldir)
         selected.addWidget(self.kok_baslik)
         selected.addWidget(label("Yalnız bu klasörlerde arama yapılır.", "ikincil"))
         selected.addWidget(self.kok_liste, 1)
-        selected.addWidget(remove)
+        select_all = QPushButton("Tümünü seç")
+        select_all.clicked.connect(self.kok_liste.selectAll)
+        selected.addWidget(select_all)
+        removal = QHBoxLayout()
+        removal.addWidget(remove)
+        clear = QPushButton("Tümünü kaldır")
+        clear.clicked.connect(self._tumunu_kaldir)
+        removal.addWidget(clear)
+        selected.addLayout(removal)
         columns.addWidget(available)
         columns.addWidget(selected_panel)
         columns.setChildrenCollapsible(False)
@@ -186,22 +220,6 @@ class Sihirbaz(QWizard):
         r.kutu.addWidget(label("Bu seçim, dosyalarınıza dokunmadan arama sonuçlarının klasör bağlamını belirler.", "ikincil"))
         r.kutu.addStretch()
         self.addPage(r)
-
-        t = _Sayfa("Tema", "Sonradan ayarlardan değişir.")
-        self.tema = QComboBox()
-        for caption, value in [("Sistem teması", "sistem"), ("Açık", "acik"), ("Koyu", "koyu")]:
-            self.tema.addItem(caption, value)
-        self.tema.currentIndexChanged.connect(lambda _: self.secim.update(tema=self.tema.currentData()))
-        t.kutu.addWidget(self.tema)
-        for title, text in [("Açık", "Aydınlık yüzeyler ve sakin bir çalışma alanı."),
-                            ("Koyu", "Düşük ışıkta kullanmak için yumuşak, koyu tonlar."),
-                            ("Sistem teması", "Bilgisayarınızın görünüm tercihini izler.")]:
-            panel, content = card()
-            content.addWidget(label(title, "subheading"))
-            content.addWidget(label(text, "ikincil"))
-            t.kutu.addWidget(panel)
-        t.kutu.addStretch()
-        self.addPage(t)
 
         o = _Sayfa("Her şey yerli yerinde.", "“Kurulumu tamamla” ile ilk taramayı başlatın. Belgelerinizin sayısına göre bu biraz zaman alabilir.")
         self.ozet = QLabel("")
@@ -262,17 +280,33 @@ class Sihirbaz(QWizard):
         previous.deleteLater()
         self._mesaj("Klasör listesi yenilendi. Eklediğiniz klasörler korundu.")
 
+    def _tema_degistir(self):
+        from . import theme
+        from PySide6.QtWidgets import QApplication
+        self.secim["tema"] = self.tema.currentData()
+        self.theme_button.setText("Tema: " + self.tema.currentText())
+        theme.apply(QApplication.instance(), self.tema.currentData())
+
+    def _tumunu_kaldir(self):
+        self.secim["kokler"].clear()
+        self._tazele()
+        self._mesaj("Arama listesi temizlendi. Asıl klasörler korunuyor.")
+
     def _kaldir(self):
-        idx = self.kok_liste.currentIndex()
-        if idx.isValid():
-            self.secim["kokler"].pop(idx.row())
-            self._tazele()
-            self._mesaj("Klasör arama listesinden kaldırıldı. Asıl klasör silinmedi.")
-        else:
-            self._mesaj("Kaldırmak için eklenen klasörler listesinden bir klasör seçin.")
+        rows = sorted({i.row() for i in self.kok_liste.selectionModel().selectedRows()}, reverse=True)
+        for row in rows:
+            self.secim["kokler"].pop(row)
+        self._tazele()
+        self._mesaj("Seçilen klasörler arama listesinden kaldırıldı." if rows else "Önce kaldırılacak klasörleri seçin.")
 
     def _tazele(self):
-        self.kok_model.setStringList(self.secim["kokler"])
+        self.kok_model.clear()
+        for path in self.secim["kokler"]:
+            title = Path(path).name or path
+            item = QStandardItem(title + "\n" + path)
+            item.setToolTip(path)
+            item.setEditable(False)
+            self.kok_model.appendRow(item)
         self.kok_baslik.setText(f"Eklenen klasörler • {len(self.secim['kokler'])}")
         if self.secim["kokler"]:
             ilk = self.secim["kokler"][0]

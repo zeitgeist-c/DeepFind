@@ -96,9 +96,13 @@ def run(report_path):
             assert pen.con is not None and not pen._locked
             pen._exiting = True
             pen.close()
+            checkpoint("actual-first-run")
+            from .startup_smoke import run as startup_run
+            startup_run(temp)
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
                                            "excel-preview", "dark-theme", "lock-unlock",
-                                           "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets"])
+                                           "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
+                                           "actual-first-run-to-main-and-scan"])
     except Exception as error:
         report["error"] = repr(error)
     Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

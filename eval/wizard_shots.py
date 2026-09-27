@@ -17,7 +17,7 @@ def main():
     QFontDatabase.addApplicationFont("C:/Windows/Fonts/segoeui.ttf")
     QFontDatabase.addApplicationFont("C:/Windows/Fonts/arial.ttf")
     app.setFont(QFont("Segoe UI", 10))
-    output = Path(f"build/review-ui-{__version__}")
+    output = Path(f"build/review-ui-{__version__}" + os.environ.get("EVRAKCI_REVIEW_SUFFIX", ""))
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="evrakci-wizard-") as temp:
         folder = Path(temp) / "Örnek belgeler"
@@ -27,7 +27,7 @@ def main():
             wizard = Sihirbaz()
             wizard.resize(1080, 700)
             wizard.show()
-            for page in range(6):
+            for page in range(len(wizard.pageIds())):
                 app.processEvents()
                 app.processEvents()
                 wizard.grab().save(str(output / f"kurulum-{page}-{mode}.png"))

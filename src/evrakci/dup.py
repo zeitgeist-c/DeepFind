@@ -8,10 +8,12 @@ import time
 BUF = 1024 * 1024
 
 
-def file_sha256(path: str) -> str:
+def file_sha256(path: str, stop=None) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
         while True:
+            if stop and stop():
+                raise InterruptedError()
             b = f.read(BUF)
             if not b:
                 break
@@ -19,16 +21,19 @@ def file_sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def verify_pending(con, limit: int = 50) -> dict:
+def verify_pending(con, limit: int = 50, *, scoped=False, stop=None) -> dict:
     """Aktif imzali dosyalarin hash'ini cikar/dogrula. Donus: sayilar."""
     from . import queue as q
     out = {"verified": 0, "skipped": 0}
+    scope = " AND f.file_id IN (SELECT file_id FROM scan_selected)" if scoped else ""
     rows = con.execute(
         "SELECT f.file_id, f.path, f.size, f.mtime_ns, r.signature"
         " FROM files f JOIN file_revisions r ON r.file_id=f.file_id AND r.active=1"
         " LEFT JOIN file_hashes h ON h.file_id=f.file_id AND h.signature=r.signature"
-        " WHERE h.sha256 IS NULL LIMIT ?", (limit,)).fetchall()
+        " WHERE h.sha256 IS NULL" + scope + " LIMIT ?", (limit,)).fetchall()
     for fid, path, size, mtime, sig in rows:
+        if stop and stop():
+            break
         try:
             st = os.stat(path)
         except OSError:
@@ -37,7 +42,7 @@ def verify_pending(con, limit: int = 50) -> dict:
         if q.signature_of(st.st_size, st.st_mtime_ns) != sig:
             out["skipped"] += 1
             continue
-        digest = file_sha256(path)
+        digest = file_sha256(path, stop)
         after = os.stat(path)
         if q.signature_of(after.st_size, after.st_mtime_ns) != sig:
             out["skipped"] += 1

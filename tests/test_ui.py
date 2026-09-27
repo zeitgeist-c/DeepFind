@@ -130,7 +130,7 @@ def test_sihirbaz_sayfa_ve_sifre_kurali():
     _app()
     from evrakci.wizard import Sihirbaz
     s = Sihirbaz()
-    assert s.pageIds() and len(s.pageIds()) == 6
+    assert s.pageIds() and len(s.pageIds()) == 5
     s.restart()
     s.next()  # sifre sayfasi (page 1)
     s.s1.setText("kisa")
@@ -167,7 +167,7 @@ def test_sihirbaz_ekle_secili_klasor_yenile_ve_kaldir(tmp_path):
     s.yenile.click()
     assert s.model is not old_model
     assert s.kok_model.rowCount() == 1
-    s.kok_liste.setCurrentIndex(s.kok_model.index(0))
+    s.kok_liste.setCurrentIndex(s.kok_model.index(0, 0))
     s._kaldir()
     assert s.secim["kokler"] == []
     s.unc.setText(str(tmp_path / "yok"))
@@ -259,3 +259,46 @@ def test_tarama_isci_eszamanli_kosar(tmp_path):
     isci.kos()
     assert not hata, hata
     assert sonuc and sonuc[0].get("done", 0) >= 1, sonuc
+
+
+def test_kurulum_tema_ve_toplu_klasor_islemleri(tmp_path):
+    from evrakci.wizard import Sihirbaz
+    from PySide6.QtCore import QCoreApplication, QEvent
+    s = Sihirbaz()
+    try:
+        for i in range(3):
+            folder = tmp_path / str(i)
+            folder.mkdir()
+            s._ekle_yol(str(folder))
+        s.tema.setCurrentIndex(2)
+        assert _app().property('evrakci_theme') == 'koyu'
+        s.kok_liste.selectAll()
+        s._kaldir()
+        assert not s.secim['kokler']
+        s._ekle_yol(str(tmp_path / '0'))
+        s._tumunu_kaldir()
+        assert s.kok_model.rowCount() == 0
+        assert all((tmp_path / str(i)).is_dir() for i in range(3))
+    finally:
+        s.close()
+        s.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def test_dar_gezinme_kapsam_ve_hatirlanan_kilit(pencere, tmp_path, monkeypatch):
+    from evrakci import remember
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
+    pencere._nav_toggle()
+    assert pencere.rail.width() == 86 and pencere.nav.item(0).text() == ''
+    assert pencere.nav.item(0).toolTip() == 'Ara'
+    pencere._nav_toggle()
+    assert pencere.nav.item(0).text() == 'Ara'
+    pencere.scope_mode.setCurrentIndex(1)
+    assert pencere.scope_sources.count() == 1
+    remember.save(pencere.kasa_yolu, PW)
+    pencere._otomatik_kilitle()
+    assert not pencere._locked
+    pencere.scan_log.appendPlainText('sentetik dosya yolu')
+    pencere.kilitle()
+    assert pencere._locked and not remember.enabled(pencere.kasa_yolu)
+    assert not pencere.scan_log.toPlainText()

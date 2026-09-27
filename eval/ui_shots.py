@@ -38,7 +38,7 @@ def pdf(kok, ad, metin):
 def main():
     import tempfile
     base = tempfile.mkdtemp(prefix="evrakci-review-")
-    output = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build", f"review-ui-{__version__}"))
+    output = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build", f"review-ui-{__version__}" + os.environ.get("EVRAKCI_REVIEW_SUFFIX", "")))
     os.makedirs(output, exist_ok=True)
     kok = os.path.join(base, "arsiv")
     os.makedirs(kok, exist_ok=True)

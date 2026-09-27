@@ -6,7 +6,7 @@ from .ui import brand as draw_brand, label
 
 
 class ParolaDialog(QDialog):
-    def __init__(self, parent=None, *, change=False, verify=None):
+    def __init__(self, parent=None, *, change=False, verify=None, allow_remember=True):
         super().__init__(parent)
         from .theme import app_icon
         self.setWindowIcon(app_icon())
@@ -70,6 +70,10 @@ class ParolaDialog(QDialog):
         show.toggled.connect(lambda on: [f.setEchoMode(QLineEdit.Normal if on else QLineEdit.Password)
                                          for f in (self.old, self.new, self.confirm)])
         layout.addWidget(show)
+        self.remember = QCheckBox("Beni hatırla")
+        self.remember.setToolTip("Bu Windows hesabında otomatik giriş yapar ve otomatik kilidi kapatır. Elle kilitleme şifre ister.")
+        if not change and allow_remember:
+            layout.addWidget(self.remember)
         self.error = QLabel("")
         self.error.setWordWrap(True)
         self.error.setProperty("hata", True)
