@@ -21,8 +21,8 @@ HOLDOUT = 0.20
 
 
 def main() -> int:
-    base = os.path.join(os.path.dirname(__file__), "..", "..", "..", "Temp", "evrakci_eval")
-    base = os.path.abspath(base)
+    import tempfile
+    base = tempfile.mkdtemp(prefix="evrakci-eval-")
     kok = os.path.join(base, "corpus")
     db = os.path.join(base, "kasa.db")
     for f in (db, db + "-wal", db + "-shm", db + "-journal"):

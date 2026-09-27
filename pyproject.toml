@@ -1,6 +1,6 @@
 [project]
 name = "evrakci"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Yerel sifreli belge bulma araci (V1)"
 requires-python = ">=3.12"
 dependencies = [
@@ -24,6 +24,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "evrakci.version.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

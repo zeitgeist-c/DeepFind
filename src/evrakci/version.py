@@ -1,1 +1,1 @@
-__version__ = "0.1.0"  # tek surum kaynagi adayi; pyproject ile esitligi test edilir
+__version__ = "0.1.1"

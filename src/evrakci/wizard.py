@@ -58,7 +58,7 @@ class Sihirbaz(QWizard):
         ust.addWidget(ekle)
         k.kutu.addLayout(ust)
         self.agac = QTreeView()
-        self.model = QFileSystemModel()
+        self.model = QFileSystemModel(self)
         self.model.setRootPath("")
         self.model.setFilter(self.model.filter() | self.model.filter().__class__.Hidden)
         self.agac.setModel(self.model)
@@ -69,7 +69,7 @@ class Sihirbaz(QWizard):
         k.kutu.addWidget(self.agac, 1)
         self.kok_liste = QListView()
         from PySide6.QtCore import QStringListModel
-        self.kok_model = QStringListModel()
+        self.kok_model = QStringListModel(self)
         self.kok_liste.setModel(self.kok_model)
         k.kutu.addWidget(QLabel("Seçili kökler (çift tık ağaçtan ekler):"))
         k.kutu.addWidget(self.kok_liste)

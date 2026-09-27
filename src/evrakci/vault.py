@@ -15,6 +15,7 @@ def open_vault(path: str, password: str) -> sqlcipher3.Connection:
     try:
         con.execute(f"PRAGMA key='{_escape_key(password)}'")
         con.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        con.execute("PRAGMA temp_store=MEMORY")
         con.execute("PRAGMA foreign_keys=ON")
         # Anahtar dogrulama: yanlis anahtarda DatabaseError verir.
         con.execute("SELECT count(*) FROM sqlite_master").fetchone()

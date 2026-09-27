@@ -30,17 +30,18 @@ class ExtractResult:
 def _budget_text(parts: list, status: str = "ok",
                  error_code: str | None = None) -> tuple:
     """Metin butcesi: 10 MB ustu kesilir, partial isaretlenir (basari sayilmaz)."""
-    total = sum(len(p) for p in parts)
+    total = sum(len(p.encode("utf-8")) for p in parts)
     if total <= MAX_TEXT_DOC:
         return parts, status, error_code
     cut, acc = [], 0
     for p in parts:
-        if acc + len(p) > MAX_TEXT_DOC:
-            cut.append(p[: max(0, MAX_TEXT_DOC - acc)])
+        encoded = p.encode("utf-8")
+        if acc + len(encoded) > MAX_TEXT_DOC:
+            cut.append(encoded[:max(0, MAX_TEXT_DOC - acc)].decode("utf-8", errors="ignore"))
             acc = MAX_TEXT_DOC
             break
         cut.append(p)
-        acc += len(p)
+        acc += len(encoded)
     return cut, "partial", error_code or "SIZE_LIMIT"
 
 
@@ -109,6 +110,7 @@ def _pdf(path: str) -> ExtractResult:
         cut, status, code = _budget_text(texts)
         for s, t in zip(segs, cut):
             s.raw_text = t
+        segs = segs[:len(cut)]
         if capped:
             status, code = "partial", "PAGE_LIMIT"
         return ExtractResult(segs, status, code)
@@ -149,6 +151,7 @@ def _xlsx(path: str) -> ExtractResult:
         cut, status, code = _budget_text(texts)
         for s, t in zip(segs, cut):
             s.raw_text = t
+        segs = segs[:len(cut)]
         if capped:
             status, code = "partial", "CELL_LIMIT"
         return ExtractResult(segs, status, code)
@@ -184,6 +187,7 @@ def _xls(path: str) -> ExtractResult:
     cut, status, code = _budget_text(texts)
     for s, t in zip(segs, cut):
         s.raw_text = t
+    segs = segs[:len(cut)]
     if capped:
         status, code = "partial", "CELL_LIMIT"
     return ExtractResult(segs, status, code)
@@ -213,8 +217,21 @@ def _docx(path: str) -> ExtractResult:
                 cells.append(f"R{r + 1}: {' | '.join(vals)}")
         if cells:
             segs.append(Segment("table", None, f"Tablo {ti + 1}", "\n".join(cells)))
+    seen_parts = set()
+    for section in d.sections:
+        for part, label in ((section.header, "Üstbilgi"), (section.footer, "Altbilgi"),
+                            (section.first_page_header, "İlk sayfa üstbilgi"),
+                            (section.first_page_footer, "İlk sayfa altbilgi")):
+            key = str(part.part.partname)
+            if key in seen_parts:
+                continue
+            seen_parts.add(key)
+            text = "\n".join(p.text for p in part.paragraphs if p.text.strip())
+            if text:
+                segs.append(Segment("para", None, label, text))
     texts = [s.raw_text for s in segs]
     cut, status, code = _budget_text(texts)
     for s, t in zip(segs, cut):
         s.raw_text = t
+    segs = segs[:len(cut)]
     return ExtractResult(segs, status, code)

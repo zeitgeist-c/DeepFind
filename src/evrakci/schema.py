@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS segments(
   raw_text TEXT NOT NULL
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(
-  label, raw_text, content='segments', content_rowid='seg_id'
+  label, raw_text, content='segments', content_rowid='seg_id', tokenize='unicode61 remove_diacritics 0'
 );
 CREATE TRIGGER IF NOT EXISTS seg_ai AFTER INSERT ON segments BEGIN
   INSERT INTO docs_fts(rowid, label, raw_text) VALUES (new.seg_id, new.label, new.raw_text);
@@ -39,7 +39,19 @@ SCHEMA_VERSION = "3"
 
 
 def ensure_schema(con) -> None:
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name='schema_meta'").fetchone():
+        version = con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
+        if version and int(version[0]) > 7:
+            raise RuntimeError("Kasa daha yeni bir sürümle oluşturulmuş; bu sürümle açılamaz.")
+    existing = con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
+    rebuild = bool(existing and "remove_diacritics 0" not in existing[0])
+    if rebuild:
+        con.execute("DROP TRIGGER IF EXISTS seg_ai")
+        con.execute("DROP TRIGGER IF EXISTS seg_ad")
+        con.execute("DROP TABLE docs_fts")
     con.executescript(SCHEMA_SQL)
+    if rebuild:
+        con.execute("INSERT INTO docs_fts(docs_fts) VALUES('rebuild')")
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
         "ON CONFLICT(k) DO UPDATE SET v=excluded.v",

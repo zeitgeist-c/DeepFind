@@ -1,5 +1,13 @@
 # Evrakçı — DURUM
 
+## 0.1.1 denetim notu — 27.09.2026
+
+Kullanıcının bağımsız denetim ve tasarım yenileme isteğiyle mevcut uygulama yeniden incelendi. Önceki A7/A8 GEÇTİ ifadeleri gerçek NAS, temiz Windows, DPI ve hacim kapılarının geçtiği anlamına gelmez. Bu kapılar halen açıktır. Ayrıntılı bölüm karşılaştırması, düzeltmeler ve kalanlar `DENETIM-0.1.1.md` dosyasındadır.
+
+0.1.1: bütün mevcut ekranların tasarımı, ilk kurulum/şifre doğrulama/değiştirme, arka plan arama ve süreçte önizleme, çok kök indeks güvenliği, Türkçe OCR kodlaması, yedek/rekey/restore staging ve kapanış yaşam döngüsü düzeltildi. Son tam test: **66 geçti**. Son küçük zamanlayıcı koruması ayrıca 6 scheduler testi ve kaynak uygulama smoke akışıyla doğrulandı. Sentetik eval: 74 belge, 83 sorgu; holdout top1/top3=1.0, p95=1.3 ms. Bu 50.000 belge/NAS performans kanıtı değildir.
+
+Paket ve yerel Git kaydı `TESLIM-0.1.1.md` dosyasında raporlanır. Push/Release/deployment yapılmaz. Gerçek DOC içerik desteği, temiz makine, gerçek NAS ve donanım pilotu tamamlanmış sayılmaz. Aşağıdaki 0.1.0 kayıtları tarihsel geliştirme notları olarak korunmuştur.
+
 Son güncelleme: 27.09.2026 (A0 + A1 tamamlandı)
 
 ## Aktif aşama

@@ -44,7 +44,7 @@ def cmd_tani(args) -> int:
         n_seg = con.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
         try:
             bekleyen = con.execute(
-                "SELECT COUNT(*) FROM queue WHERE done=0 AND dropped=0").fetchone()[0]
+                "SELECT COUNT(*) FROM jobs WHERE status IN ('pending','running')").fetchone()[0]
         except Exception:
             bekleyen = -1
         try:

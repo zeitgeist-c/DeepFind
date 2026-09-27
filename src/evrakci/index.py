@@ -26,6 +26,8 @@ def index_entry(con, entry: Entry, res: ExtractResult, context: str = "") -> int
             for s in res.segments:
                 raw = unicodedata.normalize("NFC", s.raw_text or "")
                 rows.append((file_id, None, s.kind, s.page, s.label, raw, nz.folded(raw)))
+            raw_name = unicodedata.normalize("NFC", entry.name)
+            rows.append((file_id, None, "name_only", None, "Dosya adı", raw_name, nz.folded(raw_name)))
             if context.strip():
                 cx = unicodedata.normalize("NFC", context.strip())
                 rows.append((file_id, None, "context", None, "Konum", cx, nz.folded(cx)))

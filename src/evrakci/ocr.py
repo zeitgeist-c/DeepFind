@@ -243,7 +243,8 @@ def _run_tess(png: str, langs: str, psm: int, timeout: int, workdir: str) -> tup
         p = subprocess.run(
             [exe, png, "stdout", "-l", langs, "--psm", str(psm),
              "-c", "tessedit_create_tsv=1"],
-            capture_output=True, text=True, timeout=timeout, cwd=workdir,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout, cwd=workdir,
             env=_tess_env())
         return p.stdout, time.perf_counter() - t0, None
     except subprocess.TimeoutExpired:
@@ -254,6 +255,7 @@ def _run_tess(png: str, langs: str, psm: int, timeout: int, workdir: str) -> tup
 
 def _tess_env() -> dict:
     env = dict(os.environ)
+    env["OMP_THREAD_LIMIT"] = "2"
     if os.environ.get("EVRAKCI_TESSDATA"):
         env["TESSDATA_PREFIX"] = os.environ["EVRAKCI_TESSDATA"]
     return env

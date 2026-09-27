@@ -28,6 +28,17 @@ def _ilk_komut(args):
 
 def main(argv=None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "--package-smoke":
+        from pathlib import Path
+        import traceback
+        report = Path(args[1])
+        report.write_text(' {"ok": false, "stage": "entry"}', encoding="utf-8")
+        try:
+            from evrakci.smoke import run
+            return run(args[1])
+        except Exception:
+            report.write_text(traceback.format_exc(), encoding="utf-8")
+            return 2
     ilk = _ilk_komut(args)
     if ilk in CLI_KOMUTLAR or "-h" in args or "--help" in args:
         from evrakci.cli import main as cli_main
@@ -37,4 +48,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     raise SystemExit(main())

@@ -52,14 +52,18 @@ def mark_done() -> dt.datetime:
     return dt.datetime.now()
 
 
-def autostart_set(app_name: str, exe_path: str) -> None:
+def autostart_set(app_name: str, exe_path: str, vault_path: str | None = None) -> None:
     """HKCU Run'a kullanici-duzeyi otomatik baslatma yazar (yonetici yok)."""
     import winreg
     key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                          r"Software\Microsoft\Windows\CurrentVersion\Run",
                          0, winreg.KEY_SET_VALUE)
     try:
-        winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, f'"{exe_path}" --tray')
+        import subprocess
+        command = [exe_path, "--tray"]
+        if vault_path:
+            command.extend(["--kasa", vault_path])
+        winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, subprocess.list2cmdline(command))
     finally:
         winreg.CloseKey(key)
 

@@ -38,6 +38,10 @@ def verify_pending(con, limit: int = 50) -> dict:
             out["skipped"] += 1
             continue
         digest = file_sha256(path)
+        after = os.stat(path)
+        if q.signature_of(after.st_size, after.st_mtime_ns) != sig:
+            out["skipped"] += 1
+            continue
         con.execute(
             "INSERT INTO file_hashes(file_id, signature, sha256, hash_status, verified_at)"
             " VALUES (?,?,?,?,?) ON CONFLICT(file_id) DO UPDATE SET signature=excluded.signature,"
@@ -53,7 +57,8 @@ def groups(con, only_visible_paths: set | None = None) -> list:
     """Ayni sha256 gruplari. Filtre disi yol sayilmaz (A5: grup gorunur yollari sayar)."""
     rows = con.execute(
         "SELECT h.sha256, f.path FROM file_hashes h JOIN files f ON f.file_id=h.file_id"
-        " WHERE h.hash_status='verified'").fetchall()
+        " JOIN file_revisions r ON r.file_id=f.file_id AND r.active=1 AND r.signature=h.signature"
+        " WHERE h.hash_status='verified' AND f.index_status NOT IN ('missing','excluded')").fetchall()
     by: dict = {}
     for sha, path in rows:
         if only_visible_paths is not None and path not in only_visible_paths:

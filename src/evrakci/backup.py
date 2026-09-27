@@ -22,7 +22,7 @@ MANUAL_PREFIX = "evrakci-indeks-manuel-"
 
 
 def _stamp() -> str:
-    return time.strftime("%Y%m%d-%H%M%S", time.localtime())
+    return time.strftime("%Y%m%d-%H%M%S", time.localtime()) + f"-{time.time_ns() % 1_000_000_000:09d}"
 
 
 def _manifest(path: str, counts: dict) -> dict:
@@ -82,8 +82,9 @@ def create_backup(con, vault_path: str, password: str, dest_dir: str,
     """Aktif kasadan sifreli snapshot. Donus: finalize edilmis yedek yolu."""
     from . import vault
     dest_dir = os.path.abspath(dest_dir)
-    forbid = [os.path.abspath(p) for p in (forbid_under or [])]
-    if any(dest_dir == p or dest_dir.startswith(p + os.sep) for p in forbid):
+    forbid = [os.path.normcase(os.path.abspath(p)) for p in (forbid_under or [])]
+    norm_dest = os.path.normcase(dest_dir)
+    if any(norm_dest == p or norm_dest.startswith(p.rstrip("\\/") + os.sep) for p in forbid):
         raise ValueError("yedek hedefi kaynak kok/altinda olamaz")
     os.makedirs(dest_dir, exist_ok=True)
     try:
@@ -189,7 +190,7 @@ def restore_replace(vault_path: str, password: str, backup_path: str,
             finally:
                 keep_con.close()
         except Exception:
-            korunan = []
+            raise RuntimeError("mevcut hariç kuralları okunamadı; geri yükleme durduruldu")
     rollback = os.path.join(staging_dir, f"rollback-{_stamp()}.db")
     rollback_alindi = False
     if os.path.exists(vault_path):
@@ -207,30 +208,32 @@ def restore_replace(vault_path: str, password: str, backup_path: str,
         if not rv["ok"]:
             raise RuntimeError("rollback snapshot dogrulanamadi; degisim yapilmadi")
         rollback_alindi = True
-    # kontrollu degisim (kapali baglantilar varsayimiyla)
-    import shutil
-    tmp = vault_path + ".restore-tmp"
-    shutil.copyfile(backup_path, tmp)
-    os.replace(tmp, vault_path)
-    # yeniden acma kaniti + korunan haric kurallarini uygula
-    con = vault.open_vault(vault_path, bpw)
+    # Yedek üzerinde değil, ayrı şifreli staging snapshot üzerinde çalış.
+    import uuid
+    tmp = vault_path + ".restore-" + uuid.uuid4().hex + ".db"
+    src = vault.open_vault(backup_path, bpw)
     try:
-        if korunan:
+        dst = vault.open_vault(tmp, bpw)
+        try:
+            src.backup(dst)
+            dst.commit()
             for rule in korunan:
-                try:
-                    exc.add(con, rule)
-                    exc.purge_rule(con, rule)
-                except Exception:
-                    continue
-            con.commit()
-        counts = _counts(con)
+                exc.add(dst, rule)
+                exc.purge_rule(dst, rule)
+            dst.commit()
+            if bpw != password:
+                dst.execute(f"PRAGMA rekey={_pragma_sifre(password)}")
+        finally:
+            dst.close()
     finally:
-        con.close()
+        src.close()
+    checked = verify_backup(tmp, password)
+    if not checked["ok"]:
+        raise RuntimeError("staging doğrulanamadı; mevcut kasa korunuyor")
+    os.replace(tmp, vault_path)
     return {"kasa": vault_path, "rollback": rollback if rollback_alindi else None,
-            "yedek_counts": v["counts"], "kasa_counts": counts,
-            "korunan_kurallar": korunan,
-            "sifre_farkli": bpw != password}
-
+            "yedek_counts": v["counts"], "kasa_counts": checked["counts"],
+            "korunan_kurallar": korunan, "sifre_farkli": bpw != password}
 
 def change_password(vault_path: str, old_pw: str, new_pw: str,
                     backup_dir: str) -> dict:
@@ -238,32 +241,32 @@ def change_password(vault_path: str, old_pw: str, new_pw: str,
     from . import vault
     if len(new_pw) < 12:
         raise ValueError("yeni sifre en az 12 karakter olmali")
+    if old_pw == new_pw:
+        raise ValueError("yeni şifre mevcut şifreden farklı olmalı")
+    # Mevcut dosyaya rekey uygulamak yerine kopyayı hazırla, doğrula, atomik değiştir.
     con = vault.open_vault(vault_path, old_pw)
+    import uuid
+    tmp = vault_path + ".rekey-" + uuid.uuid4().hex + ".db"
     try:
         yedek = create_backup(con, vault_path, old_pw, backup_dir, manual=True)
-    finally:
-        con.close()
-    con = vault.open_vault(vault_path, old_pw)
-    try:
-        con.execute(f"PRAGMA rekey={_pragma_sifre(new_pw)}")
-        con.commit()
-    finally:
-        con.close()
-    # dogrula: yeni acar, eski acamaz
-    con = vault.open_vault(vault_path, new_pw)
-    try:
-        counts = _counts(con)
-    finally:
-        con.close()
-    try:
-        bad = vault.open_vault(vault_path, old_pw)
+        dst = vault.open_vault(tmp, old_pw)
         try:
-            bad.execute("SELECT count(*) FROM files").fetchall()
-            raise RuntimeError("eski sifre hala aciyor; degisim supheli")
+            con.backup(dst)
+            dst.commit()
+            dst.execute(f"PRAGMA rekey={_pragma_sifre(new_pw)}")
         finally:
-            bad.close()
-    except RuntimeError:
-        raise
+            dst.close()
+    finally:
+        con.close()
+    checked = verify_backup(tmp, new_pw)
+    if not checked["ok"]:
+        raise RuntimeError("yeni şifreyle doğrulama başarısız; mevcut kasa korunuyor")
+    try:
+        bad = vault.open_vault(tmp, old_pw)
     except Exception:
-        pass  # beklenen: eski sifre acamaz
-    return {"yedek": yedek, "counts": counts}
+        bad = None
+    if bad is not None:
+        bad.close()
+        raise RuntimeError("eski şifre staging kasasını açıyor; değişim yapılmadı")
+    os.replace(tmp, vault_path)
+    return {"yedek": yedek, "counts": checked["counts"]}

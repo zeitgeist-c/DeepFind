@@ -30,6 +30,21 @@ def _app():
     return APP
 
 
+def _wait_search(pen):
+    deadline = time.monotonic() + 10
+    while pen._search_thread is not None or pen._pending_search is not None:
+        _app().processEvents()
+        time.sleep(0.01)
+        assert time.monotonic() < deadline, "arama zaman aşımı"
+
+
+def _wait_preview(preview):
+    deadline = time.monotonic() + 20
+    while preview.busy():
+        _app().processEvents()
+        time.sleep(0.01)
+        assert time.monotonic() < deadline
+
 def _pdf(kok, ad, metin):
     from reportlab.pdfgen import canvas
     from reportlab.pdfbase import pdfmetrics
@@ -71,7 +86,16 @@ def pencere(tmp_path):
             vault.lock(pen.con, os.path.dirname(db))
     except Exception:
         pass
+    pen._exiting = True
     pen.close()
+    deadline = time.monotonic() + 20
+    while pen._search_thread is not None or pen.isci_thread is not None or pen.onizleme.busy():
+        _app().processEvents()
+        time.sleep(0.01)
+        assert time.monotonic() < deadline
+    pen.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 def test_tema_uc_mod(pencere):
@@ -86,9 +110,11 @@ def test_arama_sonuc_ve_onizleme(pencere, tmp_path):
     pencere.show()
     pencere.arama_kutu.setText("Ankara vergi levhası")
     pencere._ara_simdi()
+    _wait_search(pencere)
     assert pencere.sonuc_model.rowCount() >= 1
     idx = pencere.sonuc_model.index(0, 0)
     pencere._sec(idx)
+    _wait_preview(pencere.onizleme)
     assert pencere.onizleme.baslik.text() == "belge.pdf"
     assert "Sayfa" in pencere.onizleme.bilgi.text()
 
@@ -96,6 +122,7 @@ def test_arama_sonuc_ve_onizleme(pencere, tmp_path):
 def test_bos_sorgu_tum_arsivi_listelemez(pencere):
     pencere.arama_kutu.setText("")
     pencere._ara_simdi()
+    _wait_search(pencere)
     assert pencere.sonuc_model.rowCount() == 0
 
 
@@ -113,11 +140,15 @@ def test_sihirbaz_sayfa_ve_sifre_kurali():
     s.s2.setText("uzun-sifre-1234")
     assert s.validateCurrentPage() is True
     s.close()
+    s.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 def test_kilit_model_temizler(pencere, tmp_path, monkeypatch):
     pencere.arama_kutu.setText("Ankara")
     pencere._ara_simdi()
+    _wait_search(pencere)
     assert pencere.sonuc_model.rowCount() >= 1
     # kilit diyalogunu atla: QInputDialog reddetsin -> pencere kapanir
     from PySide6.QtWidgets import QInputDialog
@@ -135,10 +166,14 @@ def test_pdf_onizleme_sayfa_render(pencere):
         row = con.execute("SELECT path FROM files").fetchone()
         o.goster(con, {"path": row[0], "name": "belge.pdf", "ext": ".pdf",
                        "label": "Sayfa 1", "page": 1, "snippet": "x", "why": ["ad"]})
+        _wait_preview(o)
         assert o.goruntu.pixmap() is not None and not o.goruntu.pixmap().isNull()
     finally:
         con.close()
         o.close()
+        o.deleteLater()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 def test_oturum_kilit_filtresi_uykuda_kilitler():

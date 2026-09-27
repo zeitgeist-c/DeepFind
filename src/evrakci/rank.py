@@ -75,7 +75,9 @@ def _file_years(con, fids: set) -> dict:
 
 
 def search_ranked(con, query: str, year: str | None = None, ext: str | None = None,
-                  limit: int = 50) -> dict:
+                  limit: int = 50, folder: str | None = None) -> dict:
+    if len(query) > 2000 or len(RAWTOK_RE.findall(query)) > 32:
+        raise ValueError("sorgu çok uzun")
     raw_toks = RAWTOK_RE.findall(query)
     qtokens = nz.tokens_folded(query)
     qyears = nz.extract_years(query)
@@ -125,7 +127,9 @@ def search_ranked(con, query: str, year: str | None = None, ext: str | None = No
         if not fr:
             continue
         _fid, path, name, fext, ist = fr
-        if ist in ("missing", "excluded"):
+        if folder and folder.lower() not in path.lower():
+            continue
+        if ist in ("missing", "excluded", "pending"):
             continue
         years = fyears.get(fid, [])
         if year and year not in years:

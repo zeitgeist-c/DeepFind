@@ -35,8 +35,10 @@ def pdf(kok, ad, metin):
 
 
 def main():
-    base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                                        "Temp", "evrakci_gorsel"))
+    import tempfile
+    base = tempfile.mkdtemp(prefix="evrakci-review-")
+    output = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build", "review-ui"))
+    os.makedirs(output, exist_ok=True)
     kok = os.path.join(base, "arsiv")
     os.makedirs(kok, exist_ok=True)
     pdf(kok, "Ankara vergi levhasi 2024.pdf", "Ankara Ayşe Yılmaz 2024 vergi levhası metni")
@@ -69,15 +71,31 @@ def main():
     pen.show()
     pen.arama_kutu.setText("Ankara Ayşe vergi")
     pen._ara_simdi()
+    while pen._search_thread is not None:
+        app.processEvents()
+        time.sleep(0.01)
     if pen.sonuc_model.rowCount():
         pen._sec(pen.sonuc_model.index(0, 0))
+    while pen.onizleme.busy():
+        app.processEvents()
+        time.sleep(0.01)
     app.processEvents()
     for mod in ("acik", "koyu"):
         theme.apply(app, mod)
         app.processEvents()
-        pen.grab().save(os.path.join(base, f"ana-{mod}.png"))
+        pen.grab().save(os.path.join(output, f"ana-{mod}.png"))
         print(f"kaydedildi: ana-{mod}.png", flush=True)
-    vault.lock(pen.con, os.path.dirname(db))
+        from evrakci.auth import ParolaDialog
+        login = ParolaDialog()
+        login.show()
+        app.processEvents()
+        login.grab().save(os.path.join(output, f"kilit-{mod}.png"))
+        login.close()
+        for index, name in enumerate(("ara", "kaynaklar", "tarama", "gecmis", "yedekler", "ayarlar")):
+            pen.nav.setCurrentRow(index)
+            app.processEvents()
+            pen.grab().save(os.path.join(output, f"{name}-{mod}.png"))
+    pen._exiting = True
     pen.close()
 
 

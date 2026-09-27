@@ -65,7 +65,7 @@ def ensure_file(con, entry) -> int:
 
 def active_signature(con, file_id: int) -> str | None:
     r = con.execute(
-        "SELECT signature FROM file_revisions WHERE file_id=? AND active=1", (file_id,)
+        "SELECT signature FROM file_revisions WHERE file_id=? AND active=1 AND extractor=?", (file_id, EXTRACTOR_VERSION)
     ).fetchone()
     return r[0] if r else None
 
@@ -83,7 +83,7 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
             " VALUES (?, ?, ?, ?, 1)",
             (file_id, sig, EXTRACTOR_VERSION, int(time.time())),
         )
-        rev_id = cur.lastrowid
+        rev_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
         con.execute("DELETE FROM segments WHERE file_id=?", (file_id,))
 
         def _row(kind, page, label, raw):
@@ -99,13 +99,17 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
         if context.strip():
             cx = unicodedata.normalize("NFC", context.strip())
             to_write.append((file_id, rev_id, "context", None, "Konum", cx, nz.folded(cx)))
+        name = con.execute("SELECT name FROM files WHERE file_id=?", (file_id,)).fetchone()[0]
+        if res.segments:
+            to_write.append(_row("name_only", None, "Dosya adı", name))
         con.executemany(
             "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text, folded_text)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
             to_write,
         )
+        con.execute("DELETE FROM file_years WHERE file_id=?", (file_id,))
         name = con.execute("SELECT name FROM files WHERE file_id=?", (file_id,)).fetchone()[0]
-        for y in nz.extract_years(name):
+        for y in nz.extract_years(name, context, *[s.raw_text for s in (res.segments or [])]):
             con.execute(
                 "INSERT INTO file_years(file_id, year, source, evidence) VALUES (?,?,?,?)"
                 " ON CONFLICT(file_id, year) DO NOTHING",
@@ -130,7 +134,7 @@ def _context_for(path: str, root: str) -> str:
     return " / ".join(parts[-2:])
 
 
-def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=None) -> str:
+def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=None, guarded=False) -> str:
     fid, sig = job["file_id"], job["signature"]
     row = con.execute("SELECT path, ext FROM files WHERE file_id=?", (fid,)).fetchone()
     if not row:
@@ -155,7 +159,11 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
         con.commit()
         return "unstable"
     cur_sig = q.signature_of(size, mtime)
-    res = ex.extract(path, ext, size)
+    if guarded:
+        from .workers import run_work
+        res = run_work("extract", (path, ext, size), stop=stop)
+    else:
+        res = ex.extract(path, ext, size)
     st2 = _stat_sig(path)
     if st2 is None or st2 != (size, mtime):
         # SCN-03: okuma sirasinda degisti -> karisik cikti aktif yapilmaz
@@ -180,7 +188,7 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
     return "done"
 
 
-def _process_ocr_job(con, job: dict, vault_dir: str, stop=None) -> str:
+def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -> str:
     """Agir OCR fazi: ince sayfalari oku, ayni revizyona ocr_page segmentleri ekle."""
     from . import normalize as nz
     fid, sig = job["file_id"], job["signature"]
@@ -210,7 +218,23 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None) -> str:
         con.commit()
         return "deferred"
     pages_0 = [p - 1 for p, _t in thin if p]
-    results, _wd = ocr_mod.ocr_document(path, pages_0, vault_dir)
+    if guarded:
+        from .workers import run_work
+        results, _wd = run_work("ocr", (path, pages_0, vault_dir),
+                               timeout=min(1800, max(60, len(pages_0) * 180)), stop=stop)
+    else:
+        results, _wd = ocr_mod.ocr_document(path, pages_0, vault_dir)
+    st = _stat_sig(path)
+    if st is None or q.signature_of(*st) != sig:
+        q.complete(con, job["job_id"])
+        return "stale"
+    if results and any(r.method in ("deferred", "unavailable") for r in results):
+        con.execute("UPDATE jobs SET status='pending',not_before=?,error_code=? WHERE job_id=?",
+                    (q.now() + DEFER_SEC, results[0].error_code or "MODEL_MISSING", job["job_id"]))
+        con.execute("UPDATE files SET index_status='partial',error_code=? WHERE file_id=?",
+                    (results[0].error_code or "MODEL_MISSING", fid))
+        con.commit()
+        return "deferred"
     cur = con.execute("BEGIN IMMEDIATE")
     try:
         for r in results:
@@ -247,7 +271,7 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None) -> str:
     return "done"
 
 
-def run_scan(con, vault_path: str, root: str, stop=None) -> dict:
+def run_scan(con, vault_path: str, root: str, stop=None, guarded=False) -> dict:
     """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi."""
     stats = {"found": 0, "done": 0, "changed": 0, "unstable": 0, "failed": 0,
              "missing": 0, "ocr_done": 0, "ocr_deferred": 0, "ocr_failed": 0,
@@ -278,6 +302,10 @@ def run_scan(con, vault_path: str, root: str, stop=None) -> dict:
                         (run_id, cur, 0))
             for e in entries:
                 try:
+                    if exc.is_excluded(e.path, rules):
+                        continue
+                    if e.stat(follow_symlinks=False).st_file_attributes & 0x400:
+                        continue  # Windows junction/reparse point izlenmez.
                     if e.is_dir(follow_symlinks=False):
                         if e.name in scan_mod.SKIP_DIRS or e.name.startswith("~$"):
                             continue
@@ -295,7 +323,9 @@ def run_scan(con, vault_path: str, root: str, stop=None) -> dict:
                         seen.add(entry.path)
                         fid = ensure_file(con, entry)
                         sig = q.signature_of(entry.size, entry.mtime_ns)
-                        if active_signature(con, fid) != sig:
+                        status = con.execute("SELECT index_status FROM files WHERE file_id=?", (fid,)).fetchone()[0]
+                        if active_signature(con, fid) != sig or status in ("missing", "excluded"):
+                            con.execute("UPDATE files SET index_status='pending' WHERE file_id=?", (fid,))
                             q.enqueue(con, fid, sig)
                         stats["found"] += 1
                 except OSError:
@@ -315,7 +345,14 @@ def run_scan(con, vault_path: str, root: str, stop=None) -> dict:
             if not job:
                 break
             try:
-                r = _process_job(con, job, rules, os.path.dirname(vault_path), os.path.abspath(root), stop)
+                r = _process_job(con, job, rules, os.path.dirname(vault_path), os.path.abspath(root), stop, guarded)
+            except InterruptedError:
+                con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job["job_id"],))
+                con.commit()
+                stats["result"] = "cancelled"
+                break
+            except TimeoutError:
+                r = q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
             except Exception:
                 r = q.fail(con, job["job_id"], "CORRUPT_DOCUMENT")
             stats["done"] += 1 if r == "done" else 0
@@ -334,7 +371,14 @@ def run_scan(con, vault_path: str, root: str, stop=None) -> dict:
             if not job:
                 break
             try:
-                r = _process_ocr_job(con, job, os.path.dirname(vault_path), stop)
+                r = _process_ocr_job(con, job, os.path.dirname(vault_path), stop, guarded)
+            except InterruptedError:
+                con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job["job_id"],))
+                con.commit()
+                stats["result"] = "cancelled"
+                break
+            except TimeoutError:
+                r = q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
             except Exception:
                 r = q.fail(con, job["job_id"], "CORRUPT_DOCUMENT")
             stats["ocr_done"] += 1 if r == "done" else 0
@@ -351,6 +395,12 @@ def run_scan(con, vault_path: str, root: str, stop=None) -> dict:
         if all_complete and not (stop and stop()):
             rows = con.execute("SELECT file_id, path FROM files").fetchall()
             for fid, p in rows:
+                # Bir kökün taraması diğer köklerin indeksini silemez.
+                try:
+                    if os.path.commonpath([os.path.abspath(p), os.path.abspath(root)]) != os.path.abspath(root):
+                        continue
+                except ValueError:
+                    continue
                 if p not in seen and not exc.is_excluded(p, rules):
                     con.execute("DELETE FROM segments WHERE file_id=?", (fid,))
                     con.execute("UPDATE files SET index_status='missing' WHERE file_id=?", (fid,))

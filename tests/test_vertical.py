@@ -89,7 +89,9 @@ def test_surum_esitligi():
     import tomllib
     from evrakci.version import __version__
     with open(os.path.join(os.path.dirname(__file__), "..", "pyproject.toml"), "rb") as f:
-        assert tomllib.load(f)["project"]["version"] == __version__
+        project = tomllib.load(f)
+        assert project["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "evrakci.version.__version__"
+        assert "version" in project["project"]["dynamic"]
 
 
 def test_router_bayrak_degerini_komut_sanmaz():
