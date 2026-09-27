@@ -11,7 +11,9 @@ Son güncelleme: 27.09.2026 (A0 + A1 tamamlandı)
 - A6 GEÇTİ (27.09.2026): Tesseract CPU hattı (triyaj + 300DPI/12MP + TSV-conf + tek iyileştirme/keep-better + timeout-kill + RAM kapısı + kontrollü temp). Dil ölçümü: tur=1.000, tur+eng=0.820 → varsayılan tur. Rapor: ocr conf 92.4, tepe 114MB, ocr_failed=0. Bütçeler: sayfa/metin/ZIP/hücre/OCR-sayfa kotaları. Ağır OCR eklenmedi (kapı aranmaz). 33 test geçti.
 - A7 GEÇTİ (27.09.2026): Varyant A PySide6 arayüz (arama + filtre + sağ önizleme PDF/Excel/Word + kaynaklar/tarama/geçmiş/yedekler/ayarlar/kilit + 6 adımlı sihirbaz + açık/koyu/sistem teması). Şifreli yedek/geri-yükleme (rollback + hariç-kural koruma + 7 saklama) + parola-değiştirme (önce yedek,tırnak-güvenli rekey) + tanı komutu + zamanlayıcı (12:30+cihaz-gecikmesi, catch-up-tek, çift-koşma kilidi, HKCU autostart) + uyku/oturum-kilidinde kasa kilidi. 58 test geçti (backup 11 + sched 6 + ui 8 dahil); eval holdout top1=1.0 top3=1.0 kapı GEÇTİ. Görsel kanıt: açık/koyu ekran görüntüsü + önizleme metin okunurluğu doğrulandı.
 - Doğrulanmayanlar (A8 pilota): gerçek monitörde tray simgesi, 125/150/200 DPI, ekran okuyucu, uyku/uyandırma sonrası zamanlayıcı, temiz-makine paketi, 2 PC NAS.
-- Sıradaki: A8 paket + pilot + teslim. Commit/push yok.
+- A8 GEÇTİ (27.09.2026): 0.1.0 kesinleşti. Donmuş onedir kanıtı (init+tara+ara+tani, exit 0). Kök neden: yönlendirici `--kasa` değerini komut sanıp arayüz dalına düşüyordu (asılma + yanlış-dal HMAC izlenimi) → bayrak-değer atlama + regresyon testi. Paket `Evrakçı-0.1.0.zip` (102 MB, sha256 raporlu) + LGPL metni pakette. Yerel commit `729373d` + tag `v0.1.0` (eşleşti). Push/Release/deploy yok. 59 test + eval kapısı GEÇTİ.
+- Yapılmayanlar: NAS pilotu + temiz-makine denemesi (erişim yok, kullanıcıda).
+- Kapanış: yerel commit + `v0.1.0` (push/release/deploy yok).
 
 ## Kilitli runtime adayları (A1 kanıtlı)
 - CPython 3.13.15 x64 (birincil) + 3.12.10 (ikincil); sqlcipher3==0.6.2 (cipher 4.12.0 community, FTS5, WAL, şifreli yedek OK).
