@@ -1,0 +1,52 @@
+"""A8: kurulu dagitimdan ucuncu-taraf lisans manifesti uretir (LISANSLAR.md)."""
+import importlib.metadata as m
+import os
+import shutil
+import sys
+
+KOK = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+VENV = os.path.join(KOK, ".venv", "Lib", "site-packages")
+HEDEF = os.path.join(KOK, "LISANSLAR.md")
+
+ILGILI = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx",
+          "defusedxml", "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6"]
+
+
+def lisans_dosyalari(dist):
+    out = []
+    for f in (dist.files or []):
+        a = str(f).lower()
+        if "license" in a or "licence" in a or "copying" in a or "notice" in a:
+            out.append(f)
+    return out
+
+
+def main():
+    sys.path.insert(0, os.path.join(VENV))
+    satir = ["# Evrakçı 0.1.0 — Üçüncü-taraf lisansları", "",
+             "Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.",
+             ""]
+    for ad in ILGILI:
+        try:
+            d = m.distribution(ad)
+        except Exception as e:  # noqa: BLE001
+            satir.append(f"- {ad}: BULUNAMADI ({e})")
+            continue
+        ver = d.version
+        lic = d.metadata.get("License-Expression") or d.metadata.get("License") or "?"
+        dosyalar = [str(f) for f in lisans_dosyalari(d)]
+        satir.append(f"- {d.metadata['Name']}=={ver} — {lic}")
+        for f in dosyalar[:4]:
+            satir.append(f"  - {f}")
+    satir += ["",
+              "PySide6 (LGPLv3): lisans metni pakette `licenses/` altında taşınır; "
+              "Qt kaynak teklifi Qt Company kanalıyla (dinamik bağ, değişiklik yok).",
+              "Tesseract-OCR pakete dahil değildir; ayrı önkoşul kurulumdur "
+              "(UB-Mannheim, Apache-2.0)."]
+    with open(HEDEF, "w", encoding="utf-8") as f:
+        f.write("\n".join(satir) + "\n")
+    print(f"yazildi: {HEDEF}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

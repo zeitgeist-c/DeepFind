@@ -1,0 +1,28 @@
+# SQLite/SHM/WAL gecici dosyalari, kasa, yedek, log, indeks
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+rollback-*.db
+*.log
+# Yedek/staging/temp (plana gore repo disi)
+Backups/
+staging/
+tessdata/
+evrakci-*.tmp
+# Dagitim paketleri (plana gore yalniz kaynak+build/config commitlenir)
+Evrakci-*.zip
+Evrakci-*.exe
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+# A1 pilotu ve maket ciktilari (repo disi yardimcilar)
+maket/*.png
+# OS
+Desktop.ini
+Thumbs.db
