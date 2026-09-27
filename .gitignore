@@ -12,6 +12,7 @@ tessdata/
 evrakci-*.tmp
 # Dagitim paketleri (plana gore yalniz kaynak+build/config commitlenir)
 Evrakci-*.zip
+Evrakçı-*.zip
 Evrakci-*.exe
 # Python
 .venv/

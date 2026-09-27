@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # --- pinli adaylar (plan bolum 6/11; A1 kanitli, A8'de paket manifestine tasinir) ---
 TESS_VERSION = "5.4.0.20240606"

@@ -8,7 +8,7 @@ import os
 
 from PySide6.QtWidgets import (QComboBox, QFileSystemModel, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListView, QPushButton, QTreeView,
-                               QVBoxLayout, QWidget, QWizard, QWizardPage)
+                               QVBoxLayout, QWizard, QWizardPage)
 
 
 class _Sayfa(QWizardPage):
