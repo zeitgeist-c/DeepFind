@@ -28,5 +28,8 @@ where = ["src"]
 [tool.setuptools.dynamic]
 version = {attr = "evrakci.version.__version__"}
 
+[tool.setuptools.package-data]
+evrakci = ["assets/*.svg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

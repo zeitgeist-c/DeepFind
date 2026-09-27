@@ -18,7 +18,7 @@ metadata = VSVersionInfo(ffi=FixedFileInfo(filevers=numbers, prodvers=numbers, m
           StringStruct("OriginalFilename", stem + ".exe")])]),
           VarFileInfo([VarStruct("Translation", [1055,1200])])])
 a = Analysis([str(root / "src/evrakci/__main__.py")], pathex=[str(root / "src")],
-             binaries=binaries, datas=[], hiddenimports=["PySide6.QtWidgets"],
+             binaries=binaries, datas=[(str(root / "src/evrakci/assets"), "evrakci/assets")], hiddenimports=["PySide6.QtWidgets"],
              hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False)
 # Qt'nin Windows ICU bağımlılığı PATH'teki Poppler ICU ile aynı dosya adını taşır.
 # Bu wheel Windows'un ICU API'sini kullanır; yabancı icuuc.dll onu gölgelememeli.

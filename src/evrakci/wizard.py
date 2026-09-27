@@ -9,27 +9,23 @@ import os
 from PySide6.QtCore import QDir, Qt, QStringListModel
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFileSystemModel, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListView, QPushButton, QTreeView,
-                               QVBoxLayout, QWizard, QWizardPage)
+                               QVBoxLayout, QWizard, QWizardPage, QFrame, QSplitter)
 from .theme import app_icon, install_turkish
+from .ui import brand, card, label
 
 
 class _Sayfa(QWizardPage):
     def __init__(self, baslik, alt=""):
         super().__init__()
-        self.setTitle(baslik)
-        self.setSubTitle(alt)
+        self.setObjectName("setupPage")
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.kutu = QVBoxLayout(self)
-        self.kutu.setSpacing(10)
-        brand = QHBoxLayout()
-        logo = QLabel()
-        logo.setPixmap(app_icon().pixmap(36, 36))
-        logo.setAccessibleName("Evrakçı logosu")
-        brand.addWidget(logo)
-        name = QLabel("Evrakçı")
-        name.setProperty("baslik", True)
-        brand.addWidget(name)
-        brand.addStretch()
-        self.kutu.addLayout(brand)
+        self.kutu.setSpacing(16)
+        self.kutu.setContentsMargins(30, 28, 30, 28)
+        self.kutu.addWidget(label("İLK KURULUM", "eyebrow"))
+        self.heading = label(baslik, "baslik")
+        self.kutu.addWidget(self.heading)
+        self.kutu.addWidget(label(alt, "ikincil"))
 
 
 class Sihirbaz(QWizard):
@@ -40,32 +36,53 @@ class Sihirbaz(QWizard):
         self.setWindowTitle("Evrakçı — İlk kurulum")
         self.setWindowIcon(app_icon())
         self.setWizardStyle(QWizard.ClassicStyle)
-        self.setMinimumSize(800, 650)
+        self.setMinimumSize(1000, 660)
+        self.resize(1080, 700)
+        self.setOption(QWizard.NoBackButtonOnStartPage)
+        self.setButtonLayout([QWizard.CancelButton, QWizard.Stretch, QWizard.BackButton,
+                              QWizard.NextButton, QWizard.FinishButton])
         self.setButtonText(QWizard.BackButton, "Geri")
         self.setButtonText(QWizard.NextButton, "İleri")
         self.setButtonText(QWizard.FinishButton, "Kurulumu tamamla")
         self.setButtonText(QWizard.CancelButton, "Vazgeç")
         self.setButtonText(QWizard.HelpButton, "Yardım")
         self.secim = {"kokler": [], "tema": "sistem", "sirket_kurali": "belirlenemiyor"}
+        rail = QFrame()
+        rail.setObjectName("rail")
+        rail.setFixedWidth(242)
+        rail_layout = QVBoxLayout(rail)
+        rail_layout.setContentsMargins(22, 24, 22, 24)
+        rail_layout.setSpacing(6)
+        brand(rail_layout, size=38)
+        rail_layout.addSpacing(12)
+        rail_layout.addWidget(label("ÇALIŞMA ALANINIZI KURALIM", "eyebrow"))
+        self.steps = []
+        for i, title in enumerate(("Hoş geldiniz", "Kasa şifresi", "Klasörler", "Düzen", "Görünüm", "Son kontrol")):
+            step = label(f"{i + 1:02d}   {title}")
+            step.setObjectName("step")
+            rail_layout.addWidget(step)
+            self.steps.append(step)
+        rail_layout.addStretch()
+        rail_layout.addWidget(label("Belgeleriniz yerinde.\nAramanız size özel.", "subheading"))
+        rail_layout.addWidget(label("Kaynak belgeleriniz korunur.\nArama bilgileri şifreli saklanır.", "ikincil"))
+        self._rail = rail
+        self.setSideWidget(rail)
 
-        g = _Sayfa("Belgelerinizi kolayca bulun", "İlk kurulum • 6 kısa adım")
+        g = _Sayfa("Belgeleriniz.\nTek bir arama.", "Dağınık klasörlerden aradığınız belgeye.\nEvrakçı’yı birkaç kısa adımda kullanıma hazırlayın.")
+        g.heading.setProperty("hero", True)
         for title, text in [
-            ("1. Bir şifre belirleyin", "Belge arama bilgileri bu bilgisayarda şifreli olarak saklanır."),
-            ("2. Klasörlerinizi seçin", "Bilgisayarınızdaki veya ağdaki klasörleri aramaya ekleyin."),
-            ("3. Aramaya başlayın", "Dosya adı veya belge içeriğinde geçen kelimelerle belgelerinizi bulun."),
-            ("Kaynak belgeleriniz korunur", "Evrakçı belgelerinizi değiştirmez, taşımaz veya silmez.")]:
-            heading = QLabel(title)
-            heading.setStyleSheet("font-weight: 600;")
-            body = QLabel(text)
-            body.setWordWrap(True)
-            body.setProperty("ikincil", True)
-            g.kutu.addWidget(heading)
-            g.kutu.addWidget(body)
+            ("Adıyla ya da içeriğiyle bulun", "Bir dosya adı, birkaç kelime veya bir yıl yazmanız yeterli."),
+            ("Klasörler sizden, düzen Evrakçı’dan", "Bilgisayarınızdaki ve ağdaki belge klasörlerini seçin."),
+            ("Size özel bir çalışma alanı", "Şifreniz, arama bilgilerinizi bu bilgisayarda korur.")]:
+            panel, content = card()
+            content.addWidget(label(title, "subheading"))
+            content.addWidget(label(text, "ikincil"))
+            g.kutu.addWidget(panel)
         g.kutu.addStretch()
         self.addPage(g)
 
         s = _Sayfa("Şifrenizi belirleyin", "En az 12 karakter kullanın ve aynı şifreyi iki kez girin.")
-        f = QFormLayout()
+        password_panel, f = card()
         self.s1 = QLineEdit()
         self.s1.setEchoMode(QLineEdit.Password)
         self.s2 = QLineEdit()
@@ -76,9 +93,11 @@ class Sihirbaz(QWizard):
         self.s2.setAccessibleName("Şifre tekrarı")
         self.sifre_hata = QLabel("")
         self.sifre_hata.setProperty("hata", True)
-        f.addRow("Şifre:", self.s1)
-        f.addRow("Şifre (tekrar):", self.s2)
-        s.kutu.addLayout(f)
+        f.addWidget(label("Kasa şifresi", "subheading"))
+        f.addWidget(self.s1)
+        f.addWidget(label("Şifreyi tekrar girin", "ikincil"))
+        f.addWidget(self.s2)
+        s.kutu.addWidget(password_panel)
         s.kutu.addWidget(self.sifre_hata)
         show = QCheckBox("Şifreyi göster")
         show.toggled.connect(lambda on: [field.setEchoMode(QLineEdit.Normal if on else QLineEdit.Password)
@@ -126,21 +145,28 @@ class Sihirbaz(QWizard):
         self.agac.setColumnHidden(2, True)
         self.agac.setColumnHidden(3, True)
         self.agac.doubleClicked.connect(self._agac_ekle)
-        k.kutu.addWidget(self.agac, 1)
         self.kok_liste = QListView()
         self.kok_model = QStringListModel(self)
         self.kok_liste.setModel(self.kok_model)
-        self.kok_liste.setMaximumHeight(85)
         self.kok_liste.setAccessibleName("Aramaya eklenen klasörler")
-        selected = QHBoxLayout()
+        columns = QSplitter(Qt.Horizontal)
+        available, available_layout = card()
+        available_layout.addWidget(label("Bilgisayar ve ağ", "subheading"))
+        available_layout.addWidget(self.agac, 1)
+        selected_panel, selected = card()
         self.kok_baslik = QLabel("Eklenen klasörler • 0")
+        self.kok_baslik.setProperty("subheading", True)
         remove = QPushButton("Seçileni kaldır")
         remove.clicked.connect(self._kaldir)
         selected.addWidget(self.kok_baslik)
-        selected.addStretch()
+        selected.addWidget(label("Yalnız bu klasörlerde arama yapılır.", "ikincil"))
+        selected.addWidget(self.kok_liste, 1)
         selected.addWidget(remove)
-        k.kutu.addLayout(selected)
-        k.kutu.addWidget(self.kok_liste)
+        columns.addWidget(available)
+        columns.addWidget(selected_panel)
+        columns.setChildrenCollapsible(False)
+        columns.setSizes([360, 320])
+        k.kutu.addWidget(columns, 1)
         self.kaynak_mesaj = QLabel("Henüz klasör eklenmedi.")
         self.kaynak_mesaj.setWordWrap(True)
         k.kutu.addWidget(self.kaynak_mesaj)
@@ -157,22 +183,38 @@ class Sihirbaz(QWizard):
         r.kutu.addWidget(QLabel("Kök başına kural:"))
         r.kutu.addWidget(self.kural)
         r.kutu.addWidget(self.ornek)
+        r.kutu.addWidget(label("Bu seçim, dosyalarınıza dokunmadan arama sonuçlarının klasör bağlamını belirler.", "ikincil"))
+        r.kutu.addStretch()
         self.addPage(r)
 
         t = _Sayfa("Tema", "Sonradan ayarlardan değişir.")
         self.tema = QComboBox()
-        for label, value in [("Sistem teması", "sistem"), ("Açık", "acik"), ("Koyu", "koyu")]:
-            self.tema.addItem(label, value)
+        for caption, value in [("Sistem teması", "sistem"), ("Açık", "acik"), ("Koyu", "koyu")]:
+            self.tema.addItem(caption, value)
         self.tema.currentIndexChanged.connect(lambda _: self.secim.update(tema=self.tema.currentData()))
         t.kutu.addWidget(self.tema)
+        for title, text in [("Açık", "Aydınlık yüzeyler ve sakin bir çalışma alanı."),
+                            ("Koyu", "Düşük ışıkta kullanmak için yumuşak, koyu tonlar."),
+                            ("Sistem teması", "Bilgisayarınızın görünüm tercihini izler.")]:
+            panel, content = card()
+            content.addWidget(label(title, "subheading"))
+            content.addWidget(label(text, "ikincil"))
+            t.kutu.addWidget(panel)
+        t.kutu.addStretch()
         self.addPage(t)
 
-        o = _Sayfa("Özet", "“Bitir” ilk taramayı başlatır; arama hemen kullanılabilir.")
+        o = _Sayfa("Her şey yerli yerinde.", "“Kurulumu tamamla” ile ilk taramayı başlatın. Belgelerinizin sayısına göre bu biraz zaman alabilir.")
         self.ozet = QLabel("")
         self.ozet.setWordWrap(True)
-        o.kutu.addWidget(self.ozet)
+        summary_panel, summary_layout = card()
+        summary_layout.addWidget(label("Çalışma alanınız", "subheading"))
+        summary_layout.addWidget(self.ozet)
+        o.kutu.addWidget(summary_panel)
+        o.kutu.addWidget(label("Belgeleriniz taşınmaz veya değiştirilmez. Tarama sürerken uygulamayı kullanabilirsiniz.", "ikincil"))
+        o.kutu.addStretch()
         self.addPage(o)
         self.currentIdChanged.connect(self._sayfa)
+        self._sayfa(0)
 
     def _unc_ekle(self):
         yol = self.unc.text().strip()
@@ -237,10 +279,15 @@ class Sihirbaz(QWizard):
             self.ornek.setText(f"Örnek: {ilk} → kural “{self.secim['sirket_kurali']}”")
             self.ozet.setText(f"Kök: {len(self.secim['kokler'])} adet\n"
                               f"Tema: {self.tema.currentText()}\n"
-                              "İçerik limiti: 200 MB, temel OCR açık")
+                              "Belgelerinizin arama bilgileri şifreli saklanır.")
 
     def _sayfa(self, _i):
         self._tazele()
+        for i, step in enumerate(self.steps):
+            step.setProperty("active", i == max(0, _i))
+            step.setProperty("done", 0 <= i < _i)
+            step.style().unpolish(step)
+            step.style().polish(step)
 
     def validateCurrentPage(self):
         if self.currentPage() is self.page(1):

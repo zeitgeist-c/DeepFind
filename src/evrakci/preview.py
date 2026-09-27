@@ -14,6 +14,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSpinBox,
                                QTableWidget, QTableWidgetItem, QTextBrowser,
                                QVBoxLayout, QWidget)
+from .ui import EmptyState, label
 
 
 class PreviewWorker(QThread):
@@ -43,6 +44,7 @@ class Onizleme(QWidget):
     def __init__(self, ebeveyn=None):
         super().__init__(ebeveyn)
         self.setObjectName("preview")
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self._path = None
         self._zoom = 1.0
         self._sayfa = 1
@@ -53,8 +55,11 @@ class Onizleme(QWidget):
         self._expected = None
         self._fallback = ""
         k = QVBoxLayout(self)
+        k.setContentsMargins(22, 22, 22, 20)
+        k.setSpacing(10)
+        k.addWidget(label("BELGE ÖNİZLEMESİ", "eyebrow"))
         self.baslik = QLabel("Belge seçilmedi")
-        self.baslik.setProperty("baslik", True)
+        self.baslik.setProperty("subheading", True)
         self.baslik.setWordWrap(True)
         k.addWidget(self.baslik)
         self.bilgi = QLabel("Sonuçlardan bir belge seçerek içeriğini burada inceleyin.")
@@ -67,13 +72,16 @@ class Onizleme(QWidget):
         self.uyari.hide()
         k.addWidget(self.uyari)
 
-        nav = QVBoxLayout()
+        nav = QHBoxLayout()
+        nav.setContentsMargins(0, 0, 0, 0)
         satir1 = QHBoxLayout()
         self.once = QPushButton("<")
         self.once.setAccessibleName("Önceki sayfa")
         self.sonra = QPushButton(">")
         self.sonra.setAccessibleName("Sonraki sayfa")
         self.sayfa_no = QSpinBox()
+        self.sayfa_no.setFixedWidth(60)
+        self.sayfa_no.setAccessibleName("Sayfa numarası")
         self.sayfa_no.setMinimum(1)
         satir1.addWidget(self.once)
         satir1.addWidget(self.sayfa_no, 1)
@@ -81,12 +89,16 @@ class Onizleme(QWidget):
         satir2 = QHBoxLayout()
         self.buyut = QPushButton("+")
         self.kucult = QPushButton("−")
-        satir2.addWidget(QLabel("Yakınlaştır:"))
         satir2.addWidget(self.kucult)
         satir2.addWidget(self.buyut)
         satir2.addStretch(1)
         nav.addLayout(satir1)
+        nav.addStretch()
         nav.addLayout(satir2)
+        self.buyut.setToolTip("Yakınlaştır")
+        self.kucult.setToolTip("Uzaklaştır")
+        self.buyut.setAccessibleName("Yakınlaştır")
+        self.kucult.setAccessibleName("Uzaklaştır")
         for b in (self.once, self.sonra, self.buyut, self.kucult):
             b.setFixedWidth(40)
             b.setMinimumHeight(28)
@@ -106,6 +118,7 @@ class Onizleme(QWidget):
         self.goruntu.hide()
         from PySide6.QtWidgets import QScrollArea
         self.canvas = QScrollArea()
+        self.canvas.setObjectName("paperCanvas")
         self.canvas.setWidget(self.goruntu)
         self.canvas.setAlignment(Qt.AlignCenter)
         self.canvas.setFrameShape(QScrollArea.NoFrame)
@@ -118,17 +131,20 @@ class Onizleme(QWidget):
         k.addWidget(self.tablo, 1)
         self.metin = QTextBrowser()
         k.addWidget(self.metin, 1)
+        self.empty = EmptyState("İçeriğe yakından bakın", "Bir arama sonucunu seçtiğinizde\nbelgenin önizlemesi burada açılır.", "document")
+        k.addWidget(self.empty, 1)
+        self.temizle()
 
     # -- dis API --
     def goster(self, con, sonuc: dict):
         """sonuc: rank.search_ranked kaydi (path, name, ext, label, page, snippet, why...)."""
         path = sonuc["path"]
         self.temizle()
+        self.empty.hide()
         self._path = path
         self._zoom = 1.0
         self.baslik.setText(sonuc["name"])
-        neden = ", ".join(sonuc.get("why", []))
-        self.bilgi.setText(f"{sonuc.get('label','')} • {neden}")
+        self.bilgi.setText(f"{sonuc.get('ext', '').lstrip('.').upper()} • {sonuc.get('label','')}")
         self.uyari.hide()
         self._expected = con.execute("SELECT size,mtime_ns FROM files WHERE path=?", (path,)).fetchone()
         rows = con.execute("SELECT label,raw_text FROM segments WHERE file_id="
@@ -157,12 +173,14 @@ class Onizleme(QWidget):
         self.uyari.hide()
         self.pdf_nav.hide()
         self._expected = None
-        self.baslik.setText("Belge seçilmedi")
+        self.baslik.setText("Önizleme")
         self.bilgi.setText("")
         self.metin.clear()
         self.goruntu.hide()
         self.canvas.hide()
         self.tablo.hide()
+        self.metin.hide()
+        self.empty.show()
 
     def busy(self):
         return bool(self._threads)

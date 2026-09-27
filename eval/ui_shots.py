@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from evrakci import coordinator, migrate, schema, theme, vault  # noqa: E402
 from evrakci.migrate import ensure_v7  # noqa: E402
 from evrakci.vocab import ensure_v5  # noqa: E402
+from evrakci.version import __version__
 
 PW = "gorsel-sifre-1234"
 
@@ -37,7 +38,7 @@ def pdf(kok, ad, metin):
 def main():
     import tempfile
     base = tempfile.mkdtemp(prefix="evrakci-review-")
-    output = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build", "review-ui"))
+    output = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build", f"review-ui-{__version__}"))
     os.makedirs(output, exist_ok=True)
     kok = os.path.join(base, "arsiv")
     os.makedirs(kok, exist_ok=True)
@@ -82,6 +83,7 @@ def main():
     app.processEvents()
     for mod in ("acik", "koyu"):
         theme.apply(app, mod)
+        pen.nav.setCurrentRow(0)
         app.processEvents()
         pen.grab().save(os.path.join(output, f"ana-{mod}.png"))
         print(f"kaydedildi: ana-{mod}.png", flush=True)
@@ -91,6 +93,11 @@ def main():
         app.processEvents()
         login.grab().save(os.path.join(output, f"kilit-{mod}.png"))
         login.close()
+        change = ParolaDialog(change=True)
+        change.show()
+        app.processEvents()
+        change.grab().save(os.path.join(output, f"sifre-degistir-{mod}.png"))
+        change.close()
         for index, name in enumerate(("ara", "kaynaklar", "tarama", "gecmis", "yedekler", "ayarlar")):
             pen.nav.setCurrentRow(index)
             app.processEvents()

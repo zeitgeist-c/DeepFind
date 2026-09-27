@@ -25,6 +25,8 @@ def run(report_path):
     report = {"version": __version__, "ok": False}
     checkpoint("application")
     app = QApplication.instance() or QApplication([])
+    from PySide6.QtGui import QIcon
+    assert not QIcon(str(Path(__file__).parent / "assets/check-light.svg")).pixmap(16, 16).isNull()
     checkpoint("fixture")
     try:
         with tempfile.TemporaryDirectory(prefix="evrakci-package-smoke-") as temp:
@@ -96,7 +98,7 @@ def run(report_path):
             pen.close()
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
                                            "excel-preview", "dark-theme", "lock-unlock",
-                                           "setup-folder-add-refresh", "turkish-buttons-logo"])
+                                           "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets"])
     except Exception as error:
         report["error"] = repr(error)
     Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

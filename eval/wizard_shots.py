@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from PySide6.QtWidgets import QApplication
 from evrakci import theme
 from evrakci.wizard import Sihirbaz
+from evrakci.version import __version__
 
 
 def main():
@@ -16,7 +17,7 @@ def main():
     QFontDatabase.addApplicationFont("C:/Windows/Fonts/segoeui.ttf")
     QFontDatabase.addApplicationFont("C:/Windows/Fonts/arial.ttf")
     app.setFont(QFont("Segoe UI", 10))
-    output = Path("build/review-ui-0.1.2")
+    output = Path(f"build/review-ui-{__version__}")
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="evrakci-wizard-") as temp:
         folder = Path(temp) / "Örnek belgeler"
@@ -24,7 +25,7 @@ def main():
         for mode in ("acik", "koyu"):
             theme.apply(app, mode)
             wizard = Sihirbaz()
-            wizard.resize(900, 700)
+            wizard.resize(1080, 700)
             wizard.show()
             for page in range(6):
                 app.processEvents()
