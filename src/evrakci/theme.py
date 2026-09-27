@@ -60,7 +60,10 @@ def symbol_icon(kind, color="#91A3BF"):
     pen.setJoinStyle(Qt.RoundJoin)
     p.setPen(pen)
     p.setBrush(Qt.NoBrush)
-    if kind == "search":
+    if kind in ("left", "right"):
+        x, other = (14, 9) if kind == "left" else (10, 15)
+        p.drawLine(x, 6, other, 12); p.drawLine(other, 12, x, 18)
+    elif kind == "search":
         p.drawEllipse(QRectF(4, 3, 13, 13)); p.drawLine(16, 15, 21, 20)
     elif kind == "folder":
         p.drawRoundedRect(QRectF(3, 7, 18, 13), 2, 2); p.drawLine(3, 7, 3, 4)
@@ -125,20 +128,20 @@ QLabel#step {{ color: #91A5C3; padding: 9px 10px; border-radius: 10px; }}
 QLabel#step[active="true"] {{ color: #FFFFFF; background: #243E57; font-weight: 600; }}
 QLabel#step[done="true"] {{ color: #70D6BC; }}
 QListWidget, QListView, QTreeView, QTableWidget, QTextBrowser, QLineEdit, QComboBox,
-QSpinBox, QPlainTextEdit {{ background: {pal['panel']}; color: {pal['metin']};
+QSpinBox, QTimeEdit, QPlainTextEdit {{ background: {pal['panel']}; color: {pal['metin']};
  border: 1px solid {pal['sinir']}; border-radius: 9px; padding: 8px;
  selection-background-color: {pal['secili']}; selection-color: {pal['metin']}; }}
 QLineEdit#search {{ min-height: 34px; padding: 10px 16px; font-size: 15px;
  background: {pal['panel']}; border-radius: 12px; }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 1px solid {pal['marka']}; }}
+QLineEdit:focus, QComboBox:focus, QTimeEdit:focus, QSpinBox:focus {{ border: 1px solid {pal['marka']}; }}
 QComboBox {{ padding-right: 28px; }}
 QComboBox::drop-down {{ border: none; width: 26px; }}
 QComboBox::down-arrow {{ image: url("{assets}/chevron-down.svg"); width: 12px; height: 8px; }}
-QSpinBox {{ padding-right: 28px; }}
-QSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; border: none; width: 24px; }}
-QSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; border: none; width: 24px; }}
-QSpinBox::up-arrow {{ image: url("{assets}/chevron-up.svg"); width: 10px; height: 6px; }}
-QSpinBox::down-arrow {{ image: url("{assets}/chevron-down.svg"); width: 10px; height: 6px; }}
+QTimeEdit, QSpinBox {{ padding-right: 28px; }}
+QTimeEdit::up-button, QSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; border: none; width: 24px; }}
+QTimeEdit::down-button, QSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; border: none; width: 24px; }}
+QTimeEdit::up-arrow, QSpinBox::up-arrow {{ image: url("{assets}/chevron-up.svg"); width: 10px; height: 6px; }}
+QTimeEdit::down-arrow, QSpinBox::down-arrow {{ image: url("{assets}/chevron-down.svg"); width: 10px; height: 6px; }}
 QPushButton {{ background: {pal['panel']}; color: {pal['metin']};
  border: 1px solid {pal['sinir']}; border-radius: 9px; padding: 10px 16px; font-weight: 600; }}
 QPushButton:hover {{ background: {pal['secili']}; border-color: {pal['marka']}; }}
@@ -212,3 +215,25 @@ def apply(app, mode: str) -> str:
     if app.styleSheet() != style:
         app.setStyleSheet(style)
     return name
+
+
+def scan_icons(paused=False):
+    """Pre-rendered tray frames; the document itself stays stationary."""
+    from PySide6.QtCore import Qt, QRectF
+    from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QIcon
+    result = []
+    for frame in range(1 if paused else 8):
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.drawPixmap(10, 10, app_icon().pixmap(44, 44))
+        painter.setPen(QPen(QColor("#67D9BC"), 5))
+        if paused:
+            painter.drawLine(24, 54, 24, 63)
+            painter.drawLine(36, 54, 36, 63)
+        else:
+            painter.drawArc(QRectF(3, 3, 58, 58), frame * 45 * 16, 110 * 16)
+        painter.end()
+        result.append(QIcon(pixmap))
+    return result

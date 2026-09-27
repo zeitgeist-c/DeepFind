@@ -10,7 +10,7 @@ import os
 import threading
 import time
 
-from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter
+from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter, QTime, QEvent
 from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDialogButtonBox, QFileDialog, QFormLayout,
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QListWidget, QMainWindow, QMessageBox, QPushButton,
                                QSplitter, QStackedWidget, QStatusBar,
                                QSystemTrayIcon, QMenu, QVBoxLayout, QWidget,
-                               QProgressBar, QSpinBox, QFrame, QPlainTextEdit, QListWidgetItem, QScrollArea)
+                               QProgressBar, QSpinBox, QTimeEdit, QSizePolicy, QGridLayout, QFrame, QPlainTextEdit, QListWidgetItem, QScrollArea)
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
@@ -97,6 +97,7 @@ class TaramaIsci(QObject):
     bitti = Signal(dict)
     hata = Signal(str)
     ilerleme = Signal(dict)
+    duraklama = Signal(bool)
 
     def __init__(self, kasa_yolu, sifre, kokler):
         super().__init__()
@@ -124,8 +125,13 @@ class TaramaIsci(QObject):
             self.ilerleme.emit(combined)
 
     def stop_requested(self):
+        waiting = self.paused.is_set() and not self._dur.is_set()
+        if waiting:
+            self.duraklama.emit(True)
         while self.paused.is_set() and not self._dur.is_set():
             time.sleep(0.1)
+        if waiting:
+            self.duraklama.emit(False)
         return self._dur.is_set()
 
     def durdur(self):
@@ -232,7 +238,8 @@ class AnaPencere(QMainWindow):
         dis.setSpacing(22)
         rail = QFrame()
         rail.setObjectName("rail")
-        rail.setFixedWidth(224)
+        self._rail_width = 264
+        rail.setFixedWidth(self._rail_width)
         side = QVBoxLayout(rail)
         side.setContentsMargins(18, 24, 18, 20)
         side.setSpacing(24)
@@ -241,14 +248,27 @@ class AnaPencere(QMainWindow):
         self.rail_brand = QWidget()
         brand_layout = QVBoxLayout(self.rail_brand)
         brand_layout.setContentsMargins(0, 0, 0, 0)
-        brand(brand_layout, size=36)
+        header = QHBoxLayout()
+        logo = QLabel()
+        logo.setPixmap(theme.app_icon().pixmap(38, 38))
+        header.addWidget(logo, 0, Qt.AlignVCenter)
+        heading = QLabel("Evrakçı")
+        heading.setStyleSheet("font-size:24px; font-weight:700")
+        header.addWidget(heading, 0, Qt.AlignVCenter)
+        version = QLabel(__version__)
+        version.setStyleSheet("font-size:13px; font-weight:600")
+        header.addWidget(version, 0, Qt.AlignVCenter)
+        header.addStretch()
+        brand_layout.addLayout(header)
         side.addWidget(self.rail_brand)
-        self.rail_toggle = QPushButton("‹  Menüyü daralt")
+        self.rail_toggle = QPushButton("Menüyü daralt")
+        self.rail_toggle.setIcon(theme.symbol_icon("left"))
         self.rail_toggle.clicked.connect(self._nav_toggle)
-        side.addWidget(self.rail_toggle)
 
         self.nav = QListWidget()
         self.nav.setObjectName("navigation")
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.nav.setTextElideMode(Qt.ElideRight)
         self.nav.addItems(EKRANLAR)
         from PySide6.QtCore import QSize
         self.nav.setIconSize(QSize(19, 19))
@@ -256,18 +276,23 @@ class AnaPencere(QMainWindow):
             self.nav.item(i).setIcon(theme.symbol_icon(kind))
         self.nav.currentRowChanged.connect(self._ekran)
         side.addWidget(self.nav, 1)
+        side.addWidget(self.rail_toggle)
+        actions = QHBoxLayout()
+        actions.setSpacing(6)
+        side.addLayout(actions)
         self.rail_actions = []
         for text, kind, callback in (("Kasayı kilitle", "lock", self.kilitle),
-                                     ("Hakkında", "info", self._hakkinda),
                                      ("Çıkış", "exit", self._cikis)):
             button = QPushButton(text)
             button.setIcon(theme.symbol_icon(kind))
             button.setToolTip(text)
             button.clicked.connect(callback)
-            side.addWidget(button)
+            button.setAccessibleName(text)
+            button.setMinimumWidth(0)
+            actions.addWidget(button)
             self.rail_actions.append((button, text))
-        self.rail_note = label("YEREL VE ŞİFRELİ", "eyebrow")
-        side.addWidget(self.rail_note)
+        self._rail_width = max(self._rail_width, sum(b.sizeHint().width() for b, _ in self.rail_actions) + 42)
+        rail.setFixedWidth(self._rail_width)
         dis.addWidget(rail)
         workspace = QVBoxLayout()
         workspace.setSpacing(18)
@@ -358,16 +383,18 @@ class AnaPencere(QMainWindow):
 
     def _nav_toggle(self):
         self._collapsed = not self._collapsed
-        self.rail.setFixedWidth(86 if self._collapsed else 224)
+        self.rail.setFixedWidth(86 if self._collapsed else self._rail_width)
         self.rail_brand.setVisible(not self._collapsed)
-        self.rail_note.setVisible(not self._collapsed)
-        self.rail_toggle.setText("›" if self._collapsed else "‹  Menüyü daralt")
+        self.rail_toggle.setText("" if self._collapsed else "Menüyü daralt")
+        self.rail_toggle.setIcon(theme.symbol_icon("right" if self._collapsed else "left"))
+        self.rail.layout().setContentsMargins(8 if self._collapsed else 18, 24, 8 if self._collapsed else 18, 20)
         self.rail_toggle.setToolTip("Menüyü genişlet" if self._collapsed else "Menüyü daralt")
         for i, title in enumerate(EKRANLAR):
             self.nav.item(i).setText("" if self._collapsed else title)
             self.nav.item(i).setToolTip(title)
         for button, title in self.rail_actions:
             button.setText("" if self._collapsed else title)
+        self._scan_state(getattr(self, "_scan_status", "idle"))
 
     def _otomatik_kilitle(self):
         if not remember.enabled(self.kasa_yolu):
@@ -382,6 +409,8 @@ class AnaPencere(QMainWindow):
 
     def eventFilter(self, _o, ev):
         from PySide6.QtCore import QEvent
+        if _o is getattr(self, "source_split", None) and ev.type() == QEvent.Resize:
+            QTimer.singleShot(0, self._source_layout)
         if ev.type() in (QEvent.MouseMove, QEvent.KeyPress, QEvent.MouseButtonPress):
             self._son_hareket = dt.datetime.now()
         return super().eventFilter(_o, ev)
@@ -534,12 +563,37 @@ class AnaPencere(QMainWindow):
         self.kok_model = QStandardItemModel()
         self.kok_liste = QListView()
         self.kok_liste.setObjectName("cardList")
-        self.kok_liste.setItemDelegate(CardDelegate(self.kok_liste, "folder"))
+        self.kok_liste.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.kok_liste.setMinimumWidth(160)
+        self.kok_liste.setItemDelegate(CardDelegate(self.kok_liste, "folder", compact=True))
         self.kok_liste.setModel(self.kok_model)
         self.kok_panel = QStackedWidget()
         self.kok_panel.addWidget(self.kok_liste)
         self.kok_panel.addWidget(EmptyState("İlk klasörünüzü ekleyin", "Aranacak belgelerin bulunduğu klasörleri\n“Klasör ekle” ile seçin.", "folder"))
-        k.addWidget(self.kok_panel, 1)
+        self.source_split = QSplitter(Qt.Horizontal)
+        self.source_split.installEventFilter(self)
+        self.source_split.addWidget(self.kok_panel)
+        details, dl = card()
+        dl.addWidget(label("SEÇİLİ KAYNAK", "eyebrow"))
+        self.source_title = label("Bir kaynak seçin", "subheading")
+        self.source_path = label("", "ikincil")
+        self.source_path.setTextFormat(Qt.PlainText)
+        self.source_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.source_status = label("", "pill")
+        self.source_status.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        dl.addWidget(self.source_title)
+        dl.addWidget(self.source_path)
+        dl.addWidget(self.source_status)
+        dl.addWidget(label("Kaynağı kaldırmak diskteki belgeleri silmez.", "ikincil"))
+        dl.addStretch()
+        details.setMinimumWidth(0)
+        self.source_split.addWidget(details)
+        self.source_split.setChildrenCollapsible(False)
+        self.source_split.setStretchFactor(0, 1)
+        self.source_split.setStretchFactor(1, 2)
+        self.source_split.setSizes([300, 600])
+        k.addWidget(self.source_split, 1)
+        self.kok_liste.selectionModel().currentChanged.connect(self._source_selected)
         satir = QHBoxLayout()
         ekle = QPushButton("Klasör ekle")
         ekle.setProperty("birincil", True)
@@ -547,7 +601,8 @@ class AnaPencere(QMainWindow):
         kaldir = QPushButton("Kaldır")
         kaldir.clicked.connect(self._kok_kaldir)
         satir.addWidget(ekle)
-        satir.addWidget(kaldir)
+        self.source_remove = kaldir
+        dl.insertWidget(dl.count()-1, kaldir)
         satir.addStretch(1)
         k.addLayout(satir)
         self.haric_bilgi = QLabel("Hariç kuralı eklemek için klasör yolunu yazıp Dışla'ya basın:")
@@ -565,6 +620,7 @@ class AnaPencere(QMainWindow):
         self._kok_tazele()
 
     def _kok_tazele(self):
+        selected = self.kok_liste.currentIndex().data(Qt.UserRole + 1)
         self.kok_model.clear()
         try:
             rows = self.con.execute(
@@ -573,13 +629,39 @@ class AnaPencere(QMainWindow):
         except Exception:
             rows = []
         for yol, kural, akt in rows:
-            item = QStandardItem(f"{os.path.basename(yol.rstrip('/\\')) or yol}\n{yol}\n{'Aramaya açık' if akt else 'Arama kapalı'}")
+            item = QStandardItem(f"{os.path.basename(yol.rstrip('/\\')) or yol}\n{'Aramaya açık' if akt else 'Arama kapalı'}")
             item.setEditable(False)
             item.setData(yol)
+            item.setToolTip(yol)
+            item.setData(bool(akt), Qt.UserRole + 2)
             self.kok_model.appendRow(item)
         if hasattr(self, "tarama_root_count"):
             self.tarama_root_count.setText(f"{len(self._kokler())} kaynak klasörü")
         self.kok_panel.setCurrentIndex(0 if self.kok_model.rowCount() else 1)
+        row = next((i for i in range(self.kok_model.rowCount()) if self.kok_model.item(i).data() == selected), 0)
+        self.kok_liste.setCurrentIndex(self.kok_model.index(row, 0))
+        self._source_selected(self.kok_liste.currentIndex())
+        if hasattr(self, "scope_mode") and self.scope_mode.currentIndex() == 1:
+            self._scope_changed()
+
+    def _source_selected(self, index, previous=None):
+        path = index.data(Qt.UserRole + 1) or ""
+        self.source_title.setText(os.path.basename(path.rstrip('/\\')) or path or "Bir kaynak seçin")
+        self.source_path.setText(path)
+        self.source_status.setText(("Aramaya açık" if index.data(Qt.UserRole + 2) else "Arama kapalı") if path else "")
+        if hasattr(self, "source_remove"):
+            self.source_remove.setEnabled(bool(path))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._source_layout)
+
+    def _source_layout(self):
+        if hasattr(self, "source_split"):
+            orientation = Qt.Vertical if self.width() < 1200 else Qt.Horizontal
+            if self.source_split.orientation() != orientation:
+                self.source_split.setOrientation(orientation)
+                self.source_split.setSizes([220, 440])
 
     def _kok_ekle(self):
         yol = QFileDialog.getExistingDirectory(self, "Kaynak klasör seç")
@@ -678,17 +760,46 @@ class AnaPencere(QMainWindow):
         self.tarama_bilgi = QLabel("Henüz tarama yapılmadı.")
         self.tarama_bilgi.setWordWrap(True)
         k.addWidget(self.tarama_bilgi)
+        self.scan_dialog = QDialog(self)
+        self.scan_dialog.setWindowTitle("Evrakçı • Tarama ayrıntıları")
+        self.scan_dialog.resize(760, 560)
+        popup = QVBoxLayout(self.scan_dialog)
+        popup.addWidget(label("Tarama ayrıntıları", "baslik"))
+        self.popup_status = label("Henüz tarama yapılmadı.", "subheading")
+        popup.addWidget(self.popup_status)
+        self.popup_scope = label("", "ikincil")
+        self.popup_scope.setTextFormat(Qt.PlainText)
+        self.popup_scope.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.popup_scope.setMinimumWidth(0)
+        popup.addWidget(self.popup_scope)
+        self.details_open = QPushButton("Tarama ayrıntılarını aç")
+        self.details_open.clicked.connect(self._scan_show)
+        k.addWidget(self.details_open)
         self.tarama_bar = QProgressBar()
         self.tarama_bar.setRange(0, 0)
         self.tarama_bar.hide()
-        k.addWidget(self.tarama_bar)
+        popup.addWidget(self.tarama_bar)
         detail_card, detail_layout = card()
         self.scan_current = label("Tarama ayrıntıları burada görünecek.", "subheading")
         self.scan_current.setTextFormat(Qt.PlainText)
+        self.scan_current.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.scan_current.setMinimumWidth(0)
         self.scan_counts = label("", "ikincil")
         self.scan_clock = label("", "ikincil")
         detail_layout.addWidget(self.scan_current)
-        detail_layout.addWidget(self.scan_counts)
+        self.scan_counts.hide()
+        counts_grid = QGridLayout()
+        self.scan_metrics = {}
+        for i, (key, caption) in enumerate((("found", "Bulunan"), ("done", "İşlenen"), ("pending", "Bekleyen"),
+                                           ("skipped", "Güncel / atlanan"), ("ocr_done", "OCR tamamlanan"), ("failed", "İşlem hatası"), ("ocr_failed", "OCR hatası"))):
+            metric, ml = card()
+            ml.setContentsMargins(12, 10, 12, 10)
+            ml.addWidget(label(caption, "ikincil"))
+            value = label("0", "subheading")
+            ml.addWidget(value)
+            self.scan_metrics[key] = value
+            counts_grid.addWidget(metric, i // 3, i % 3)
+        detail_layout.addLayout(counts_grid)
         detail_layout.addWidget(self.scan_clock)
         self.scan_details_toggle = QPushButton("Ayrıntıları göster")
         self.scan_details_toggle.setCheckable(True)
@@ -701,7 +812,7 @@ class AnaPencere(QMainWindow):
         self.scan_details_toggle.toggled.connect(lambda on: self.scan_details_toggle.setText("Ayrıntıları gizle" if on else "Ayrıntıları göster"))
         detail_layout.addWidget(self.scan_details_toggle)
         detail_layout.addWidget(self.scan_log)
-        k.addWidget(detail_card)
+        popup.addWidget(detail_card, 1)
         self.scan_timer = QTimer(self)
         self.scan_timer.timeout.connect(self._scan_clock_update)
         self.scan_started = None
@@ -711,7 +822,7 @@ class AnaPencere(QMainWindow):
         self.scan_start = QPushButton("Taramayı başlat")
         self.scan_start.setProperty("birincil", True)
         self.scan_start.clicked.connect(self._tara_baslat)
-        satir.addWidget(self.scan_start)
+        k.addWidget(self.scan_start)
         self.duraklat_btn = QPushButton("Duraklat")
         self.duraklat_btn.clicked.connect(self._tara_duraklat)
         self.duraklat_btn.setEnabled(False)
@@ -725,7 +836,10 @@ class AnaPencere(QMainWindow):
         self.retry_scan.hide()
         satir.addWidget(self.retry_scan)
         satir.addStretch(1)
-        k.addLayout(satir)
+        background = QPushButton("Arka planda sürdür")
+        background.clicked.connect(self.scan_dialog.hide)
+        satir.addWidget(background)
+        popup.addLayout(satir)
         k.addStretch(1)
         page = QWidget()
         outer = QVBoxLayout(page)
@@ -778,7 +892,8 @@ class AnaPencere(QMainWindow):
         if self._locked or self.con is None:
             return
         if self.isci_thread is not None:
-            self.nav.setCurrentRow(2)
+            if not automatic:
+                self._scan_show()
             return
         kokler = roots if roots is not None else self._kokler()
         if not automatic and roots is None:
@@ -809,6 +924,7 @@ class AnaPencere(QMainWindow):
         self.isci.moveToThread(self.isci_thread)
         self.isci_thread.started.connect(self.isci.kos)
         self.isci.ilerleme.connect(self._scan_progress)
+        self.isci.duraklama.connect(self._scan_paused)
         self.isci.bitti.connect(self._tara_bitti)
         self.isci.hata.connect(self._tara_hata)
         self.isci.bitti.connect(self.isci_thread.quit)
@@ -821,6 +937,7 @@ class AnaPencere(QMainWindow):
         self._scan_stage = "Hazırlanıyor"
         self.scan_log.clear()
         self.scan_counts.clear()
+        self._scan_metrics_update({})
         self._last_scan_log = ""
         self.scan_current.setText("Kapsam: " + " • ".join(kokler))
         self.scan_log.appendPlainText("Kapsam: " + " | ".join(kokler))
@@ -831,14 +948,17 @@ class AnaPencere(QMainWindow):
         self.duraklat_btn.setText("Duraklat")
         self.duraklat_btn.setEnabled(True)
         self.iptal_btn.setEnabled(True)
-        self.tara_btn.setEnabled(False)
+        self.tara_btn.setEnabled(True)
+        self._scan_state("running")
         self.scan_start.setEnabled(False)
         self.scope_mode.setEnabled(False)
         self.scope_sources.setEnabled(False)
         self.scope_path.setEnabled(False)
         self.scope_browse.setEnabled(False)
         self.tarama_bilgi.setText(f"Tarama başladı • {len(kokler)} klasör")
-        self.nav.setCurrentRow(2)
+        self.popup_scope.setText(f"{len(kokler)} kaynak • " + " | ".join(kokler))
+        if not automatic:
+            self._scan_show()
 
     @staticmethod
     def _under(path, root):
@@ -859,12 +979,14 @@ class AnaPencere(QMainWindow):
     def _scan_progress(self, data):
         if self._locked:
             return
+        self._scan_metrics_update(data)
         self._scan_stage = data.get("stage", "")
         path = data.get("path", "")
         self.scan_current.setText(self._scan_stage + "\n" + path)
+        self.popup_status.setText(self.tarama_bilgi.text())
         self.scan_counts.setText(f"Bulunan {data.get('found', 0):,} • İşlenen {data.get('done', 0):,} • "
                                  f"Bekleyen {data.get('pending', 0):,} • OCR {data.get('ocr_done', 0):,} • "
-                                 f"Güncel/atlanan {data.get('skipped', 0):,} • Hata {data.get('failed', 0) + data.get('ocr_failed', 0):,}")
+                                 f"Güncel/atlanan {data.get('skipped', 0):,} • İşlem hatası {data.get('failed', 0):,} • OCR hatası {data.get('ocr_failed', 0):,}")
         outcome = {"done": "İşlendi", "changed": "Dosya değişti", "unstable": "Dosya henüz kararlı değil",
                    "retry": "İşlenemedi, yeniden deneme bekliyor", "dead": "İşlenemedi", "deferred": "Ertelendi"}.get(data.get("item_result"), "")
         line = f"{self._scan_stage}: {path}" + (" • " + outcome if outcome else "")
@@ -877,12 +999,14 @@ class AnaPencere(QMainWindow):
             paused = self.isci.paused.is_set()
             self.isci.paused.clear() if paused else self.isci.paused.set()
             self.duraklat_btn.setText("Duraklat" if paused else "Devam et")
+            self._scan_state("running" if paused else "pausing")
             self.tarama_bilgi.setText("Tarama devam ediyor." if paused else "Duraklatılıyor; güvenli noktada bekleyecek.")
 
     def _tara_iptal(self):
         if self.isci:
             migrate.set_setting(self.con, "tarama_ele_alinan_gun", dt.date.today().isoformat())
             self.isci.durdur()
+            self._scan_state("cancelling")
             self.tarama_bilgi.setText("Tarama iptal ediliyor. Bugün otomatik olarak tekrar başlamayacak.")
             self.duraklat_btn.setEnabled(False)
             self.iptal_btn.setEnabled(False)
@@ -895,10 +1019,13 @@ class AnaPencere(QMainWindow):
         self._scan_clock_update()
         result = {"cancelled": "Tarama iptal edildi", "complete": "Tarama tamamlandı",
                   "partial": "Tarama kısmen tamamlandı"}.get(st.get("result"), "Tarama durdu")
+        self._scan_metrics_update(st)
         self.tarama_bilgi.setText(result)
+        self.popup_status.setText(result)
+        self._scan_state("idle")
         self.scan_counts.setText(f"Bulunan {st.get('found',0):,} • İşlenen {st.get('done',0):,} • "
                                  f"Bekleyen {st.get('pending',0):,} • OCR {st.get('ocr_done',0):,} • "
-                                 f"Güncel/atlanan {st.get('skipped',0):,} • Hata {st.get('failed',0) + st.get('ocr_failed',0):,}")
+                                 f"Güncel/atlanan {st.get('skipped',0):,} • İşlem hatası {st.get('failed',0):,} • OCR hatası {st.get('ocr_failed',0):,}")
         self.retry_scan.setVisible(bool(st.get('pending') or st.get('failed') or st.get('ocr_failed')))
         self.scan_log.appendPlainText(result)
         if not st.get('done'):
@@ -915,6 +1042,8 @@ class AnaPencere(QMainWindow):
         self.tarama_bar.hide()
         self.tarama_bilgi.setText("Tarama tamamlanamadı. Bugün otomatik tekrar denenmeyecek.")
         self.scan_log.appendPlainText(msg)
+        self.popup_status.setText("Tarama tamamlanamadı.")
+        self._scan_state("idle")
         QMessageBox.warning(self, "Tarama", msg)
 
     def _tara_temizle(self):
@@ -924,6 +1053,7 @@ class AnaPencere(QMainWindow):
         self.duraklat_btn.setEnabled(False)
         self.iptal_btn.setEnabled(False)
         self.tara_btn.setEnabled(True)
+        self._scan_state("idle")
         self.scan_start.setEnabled(True)
         self.scope_mode.setEnabled(True)
         self.scope_sources.setEnabled(True)
@@ -1115,20 +1245,16 @@ class AnaPencere(QMainWindow):
         f = QFormLayout()
         f.setVerticalSpacing(18)
         general_layout.addLayout(f)
-        self.saat = QSpinBox()
-        self.saat.setRange(0, 23)
-        self.dakika = QSpinBox()
-        self.dakika.setRange(0, 59)
+        self.scan_time_edit = QTimeEdit()
+        self.scan_time_edit.setDisplayFormat("HH:mm")
+        self.scan_time_edit.setFixedWidth(120)
+        self.scan_time_edit.setAccessibleName("Günlük tarama saati")
         try:
-            self.saat.setValue(int(migrate.get_setting(self.con, "saat", "12")))
-            self.dakika.setValue(int(migrate.get_setting(self.con, "dakika", "30")))
+            value = QTime(int(migrate.get_setting(self.con, "saat", "12")), int(migrate.get_setting(self.con, "dakika", "30")))
+            self.scan_time_edit.setTime(value if value.isValid() else QTime(12, 30))
         except ValueError:
-            pass
-        hs = QHBoxLayout()
-        hs.addWidget(self.saat)
-        hs.addWidget(QLabel(":"))
-        hs.addWidget(self.dakika)
-        f.addRow("Günlük tarama saati:", hs)
+            self.scan_time_edit.setTime(QTime(12, 30))
+        f.addRow("Günlük tarama saati:", self.scan_time_edit)
         self.gecikme = QCheckBox("Ağ yükünü azaltmak için taramayı geciktir")
         self.gecikme.setChecked(migrate.get_setting(self.con, "gecikme", "0") == "1")
         f.addRow(self.gecikme)
@@ -1175,9 +1301,9 @@ class AnaPencere(QMainWindow):
         QMessageBox.information(self, "Giriş", "Hatırlanan giriş kaldırıldı. Sonraki açılışta şifre istenecek.")
 
     def _ayar_kaydet(self):
-        migrate.set_setting(self.con, "saat", str(self.saat.value()))
-        migrate.set_setting(self.con, "dakika", str(self.dakika.value()))
-        self.tarama_time.setText(f"{self.saat.value():02d}:{self.dakika.value():02d}")
+        migrate.set_setting(self.con, "saat", str(self.scan_time_edit.time().hour()))
+        migrate.set_setting(self.con, "dakika", str(self.scan_time_edit.time().minute()))
+        self.tarama_time.setText(f"{self.scan_time_edit.time().hour():02d}:{self.scan_time_edit.time().minute():02d}")
         migrate.set_setting(self.con, "gecikme", "0" if self.gecikme.isChecked() else "0")
         migrate.set_setting(self.con, "tepsiye", "1" if self.tepsiye.isChecked() else "0")
         ks = self.kilit_sure.currentText()
@@ -1240,6 +1366,8 @@ class AnaPencere(QMainWindow):
             self.search_bar.setVisible(i == 0)
         if hasattr(self, "onizleme"):
             self.onizleme.setVisible(i == 0)
+        if i == 2 and self.isci_thread is not None:
+            self._scan_show()
         if i == 3:
             self._gecmis_tazele()
         elif i == 4:
@@ -1268,6 +1396,11 @@ class AnaPencere(QMainWindow):
             self.tepsi = None
             return
         self.tepsi = QSystemTrayIcon(self)
+        self._tray_frames = theme.scan_icons()
+        self._tray_frame = 0
+        self._tray_timer = QTimer(self)
+        self._tray_timer.setInterval(150)
+        self._tray_timer.timeout.connect(self._tray_tick)
         self.tepsi.setIcon(theme.app_icon())
         self.tepsi.setToolTip("Evrakçı • Yerel belge arşivi")
         m = QMenu(self)
@@ -1277,13 +1410,50 @@ class AnaPencere(QMainWindow):
             a = QAction(ad, self)
             a.triggered.connect(fn)
             m.addAction(a)
+            if ad == "Şimdi tara":
+                self._tray_scan_action = a
         self.tepsi.setContextMenu(m)
         self.tepsi.show()
 
-    def _hakkinda(self):
-        QMessageBox.about(self, "Evrakçı",
-                          f"Evrakçı {__version__}\nYerel şifreli belge bulma aracı.\n"
-                          "Kaynak dosyalar değişmez; indeks bu bilgisayardadır.")
+    def _scan_metrics_update(self, data):
+        for key, value in self.scan_metrics.items():
+            value.setText(f"{data.get(key, 0):,}")
+
+    def _scan_show(self):
+        if self._locked:
+            return
+        self.scan_dialog.show()
+        self.scan_dialog.raise_()
+        self.scan_dialog.activateWindow()
+
+    def _scan_paused(self, paused):
+        if self._locked or self._scan_status == "cancelling":
+            return
+        self._scan_state("paused" if paused else "running")
+        self.tarama_bilgi.setText("Tarama duraklatıldı." if paused else "Tarama sürüyor…")
+        self.popup_status.setText(self.tarama_bilgi.text())
+
+    def _scan_state(self, state):
+        self._scan_status = state
+        text = {"running": "Tarama sürüyor…", "pausing": "Duraklatılıyor…",
+                "paused": "Tarama duraklatıldı", "cancelling": "İptal ediliyor…"}.get(state)
+        self.tara_btn.setText(text or "Şimdi tara")
+        item = self.nav.item(2)
+        item.setText("" if self._collapsed else text or "Tarama")
+        item.setToolTip(text or "Tarama")
+        if hasattr(self, "_tray_scan_action"):
+            self._tray_scan_action.setText(text or "Şimdi tara")
+        if getattr(self, "tepsi", None) is not None:
+            self.tepsi.setToolTip("Evrakçı • " + ("Kasa kilitli" if self._locked else text or "Yerel belge arşivi"))
+            if state in ("running", "pausing", "cancelling"):
+                self._tray_timer.start()
+            else:
+                self._tray_timer.stop()
+                self.tepsi.setIcon(theme.scan_icons(paused=True)[0] if state == "paused" else theme.app_icon())
+
+    def _tray_tick(self):
+        self._tray_frame = (self._tray_frame + 1) % len(self._tray_frames)
+        self.tepsi.setIcon(self._tray_frames[self._tray_frame])
 
     def _zamanlayici_kontrol(self, ilk=False):
         if self._locked or self.con is None or self.isci_thread is not None:
@@ -1323,9 +1493,18 @@ class AnaPencere(QMainWindow):
         self.yedek_model.clear()
         self.onizleme.temizle()
         self.scan_timer.stop()
+        self.scan_dialog.hide()
+        self.popup_scope.clear()
+        self.popup_status.setText("Kasa kilitli.")
+        self.source_title.clear()
+        self.source_path.clear()
+        self.source_status.clear()
+        self._scan_state("idle")
         self.scan_log.clear()
         self.scan_current.setText("Kasa kilitli.")
         self.scan_counts.clear()
+        for value in self.scan_metrics.values():
+            value.clear()
         self.scan_clock.clear()
         self.scope_path.clear()
         self.scope_sources.clear()
@@ -1371,6 +1550,7 @@ class AnaPencere(QMainWindow):
         self._scope_changed()
         self.show()
         self._durum_yaz()
+        self._scan_state("idle")
         self._zamanlayici_kontrol()
 
     def _cikis(self):
@@ -1389,6 +1569,9 @@ class AnaPencere(QMainWindow):
             self.onizleme.temizle()
             QTimer.singleShot(100, self._cikis)
             return
+        self.scan_dialog.hide()
+        if hasattr(self, "_tray_timer"):
+            self._tray_timer.stop()
         self.close()
         QApplication.instance().quit()
 
@@ -1400,6 +1583,7 @@ class AnaPencere(QMainWindow):
             tepsiye = False
         if not self._exiting and tepsiye and getattr(self, "tepsi", None) is not None:
             ev.ignore()
+            self.scan_dialog.hide()
             self.hide()
             return
         if self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy():
@@ -1413,6 +1597,9 @@ class AnaPencere(QMainWindow):
             pass
         self.con = None
         self._debounce.stop()
+        self.scan_dialog.hide()
+        if hasattr(self, "_tray_timer"):
+            self._tray_timer.stop()
         self.scan_timer.stop()
         self.hareketsizlik.stop()
         self._schedule_timer.stop()

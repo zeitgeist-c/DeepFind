@@ -302,3 +302,109 @@ def test_dar_gezinme_kapsam_ve_hatirlanan_kilit(pencere, tmp_path, monkeypatch):
     pencere.kilitle()
     assert pencere._locked and not remember.enabled(pencere.kasa_yolu)
     assert not pencere.scan_log.toPlainText()
+
+def test_015_popup_background_and_automatic(pencere, monkeypatch):
+    from evrakci import app as app_module
+    from PySide6.QtCore import Slot
+    class SlowWorker(app_module.TaramaIsci):
+        @Slot()
+        def kos(self):
+            while not self._dur.is_set():
+                time.sleep(0.01)
+            self.bitti.emit({'result': 'cancelled'})
+    monkeypatch.setattr(app_module, 'TaramaIsci', SlowWorker)
+    pencere.nav.setCurrentRow(1)
+    pencere._tara_baslat(automatic=True)
+    _app().processEvents()
+    assert not pencere.scan_dialog.isVisible()
+    assert pencere.nav.currentRow() == 1
+    worker = pencere.isci
+    pencere.tara_btn.click()
+    assert pencere.isci is worker and pencere.scan_dialog.isVisible()
+    pencere.scan_counts.setText('sentetik sayaç')
+    pencere.scan_dialog.close()
+    assert pencere.isci is worker and not pencere.scan_dialog.isVisible()
+    pencere.tara_btn.click()
+    assert pencere.scan_counts.text() == 'sentetik sayaç'
+    pencere._tara_iptal()
+    deadline = time.monotonic() + 5
+    while pencere.isci_thread is not None:
+        _app().processEvents()
+        time.sleep(0.01)
+        assert time.monotonic() < deadline
+    assert pencere.tara_btn.text() == 'Şimdi tara'
+    assert pencere.nav.item(2).text() == 'Tarama'
+
+
+def test_015_time_source_and_layout(pencere, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: None)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a: None)
+    from evrakci import sched
+    monkeypatch.setattr(sched, "autostart_clear", lambda *a: None)
+    from PySide6.QtCore import QTime, Qt
+    from PySide6.QtWidgets import QPushButton
+    for hour, minute in [(0, 0), (23, 59)]:
+        pencere.scan_time_edit.setTime(QTime(hour, minute))
+        pencere._ayar_kaydet()
+        assert migrate.get_setting(pencere.con, 'saat') == str(hour)
+        assert migrate.get_setting(pencere.con, 'dakika') == str(minute)
+        assert pencere.tarama_time.text() == f'{hour:02}:{minute:02}'
+    assert pencere.source_path.text() == pencere.kok_model.item(0).data()
+    assert not any(b.text() == 'Hakkında' for b in pencere.findChildren(QPushButton))
+    pencere.show()
+    _app().processEvents()
+    buttons = [b for b, _ in pencere.rail_actions]
+    assert buttons[0].y() == buttons[1].y()
+    assert pencere.rail_toggle.y() < buttons[0].y()
+    assert all(b.width() >= b.fontMetrics().horizontalAdvance(b.text()) + 20 for b in buttons)
+    pencere._nav_toggle()
+    _app().processEvents()
+    assert pencere.nav.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert pencere.nav.horizontalScrollBar().maximum() == 0
+
+
+def test_015_pause_ack_and_tray_reset(pencere):
+    from evrakci.app import TaramaIsci
+    worker = TaramaIsci(pencere.kasa_yolu, PW, [])
+    pencere.isci = worker
+    pencere._tara_duraklat()
+    assert pencere._scan_status == 'pausing'
+    pencere._scan_paused(True)
+    assert pencere._scan_status == 'paused'
+    assert pencere.tara_btn.text() == 'Tarama duraklatıldı'
+    pencere._tara_duraklat()
+    assert pencere._scan_status == 'running'
+    pencere._tara_iptal()
+    pencere._scan_paused(False)
+    assert pencere._scan_status == 'cancelling'
+    pencere._scan_state('idle')
+    if pencere.tepsi is not None:
+        assert not pencere._tray_timer.isActive()
+    pencere.isci = None
+    assert len(theme.scan_icons()) == 8
+    assert len({icon.cacheKey() for icon in theme.scan_icons()}) == 8
+
+def test_015_lock_clears_dialog(pencere, monkeypatch):
+    pencere._scan_show()
+    pencere.popup_scope.setText('sentetik yol')
+    pencere.scan_current.setText('sentetik dosya')
+    pencere._scan_metrics_update({'found':100})
+    pencere.kilitle()
+    assert not pencere.scan_dialog.isVisible()
+    assert not pencere.popup_scope.text()
+    assert all(not v.text() for v in pencere.scan_metrics.values())
+    assert not pencere.scan_log.toPlainText()
+
+
+def test_015_without_tray(pencere):
+    tray = pencere.tepsi
+    pencere.tepsi = None
+    try:
+        for state in ('running','pausing','paused','cancelling','idle'):
+            pencere._scan_state(state)
+        assert pencere.tara_btn.text() == 'Şimdi tara'
+        pencere._scan_show()
+        assert pencere.scan_dialog.isVisible()
+    finally:
+        pencere.tepsi = tray

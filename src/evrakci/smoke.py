@@ -87,6 +87,27 @@ def run(report_path):
                 time.sleep(0.01)
                 assert time.monotonic() < deadline
             assert pen.onizleme.tablo.rowCount() == 1
+            checkpoint("scan-popup")
+            pen.con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", (temp, temp.lower()))
+            pen.con.commit()
+            pen._kok_tazele()
+            pen._tara_baslat()
+            assert pen.scan_dialog.isVisible()
+            worker = pen.isci
+            pen.scan_dialog.close()
+            pen._tara_baslat()
+            assert pen.isci is worker and pen.scan_dialog.isVisible()
+            deadline = time.monotonic() + 30
+            while pen.isci_thread is not None:
+                app.processEvents()
+                time.sleep(0.01)
+                assert time.monotonic() < deadline
+            assert pen.tara_btn.text() == "Şimdi tara"
+            assert not pen.scan_dialog.isModal()
+            pen._nav_toggle()
+            assert pen.nav.horizontalScrollBar().maximum() == 0
+            pen._nav_toggle()
+            assert pen.scan_time_edit.displayFormat() == "HH:mm"
             checkpoint("lock")
             assert theme.apply(app, "koyu") == "koyu"
             pen.kilitle()
@@ -102,7 +123,7 @@ def run(report_path):
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
                                            "excel-preview", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
-                                           "actual-first-run-to-main-and-scan"])
+                                           "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation"])
     except Exception as error:
         report["error"] = repr(error)
     Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
