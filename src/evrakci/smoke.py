@@ -8,7 +8,10 @@ import time
 
 def run(report_path):
     def checkpoint(stage):
+        nonlocal current_stage
+        current_stage = stage
         Path(report_path).write_text(json.dumps({"ok": False, "stage": stage}), encoding="utf-8")
+    current_stage = "start"
     checkpoint("imports")
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     from PySide6.QtWidgets import QApplication
@@ -87,6 +90,17 @@ def run(report_path):
                 time.sleep(0.01)
                 assert time.monotonic() < deadline
             assert pen.onizleme.tablo.rowCount() == 1
+            checkpoint("packaged-ocr")
+            from . import ocr_setup, ocr
+            from PIL import Image, ImageDraw, ImageFont
+            assert ocr_setup.ready()[0]
+            image = Image.new("RGB", (1100, 220), "white")
+            ImageDraw.Draw(image).text((30, 35), "Ankara belge 2024",
+                                       fill="black", font=ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 65))
+            ocr_image = str(Path(temp) / "ocr-probe.png")
+            image.save(ocr_image)
+            tsv, _, error = ocr._run_tess(ocr_image, "tur", 6, 30, temp)
+            assert error is None and "Ankara" in ocr.parse_tsv(tsv)[0]
             checkpoint("scan-popup")
             pen.con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", (temp, temp.lower()))
             pen.con.commit()
@@ -123,8 +137,10 @@ def run(report_path):
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
                                            "excel-preview", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
-                                           "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation"])
+                                           "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
+                                           "packaged-turkish-ocr"])
     except Exception as error:
+        report["stage"] = current_stage
         report["error"] = repr(error)
     Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if report["ok"] else 2

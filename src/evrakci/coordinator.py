@@ -218,12 +218,19 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
         con.commit()
         return "deferred"
     pages_0 = [p - 1 for p, _t in thin if p]
+    from . import migrate
+    try:
+        language = migrate.get_setting(con, "ocr_dili", "tur")
+    except Exception:  # eski şema: OCR varsayılan Türkçe kalır
+        language = "tur"
+    if language not in ("tur", "eng"):
+        language = "tur"
     if guarded:
         from .workers import run_work
-        results, _wd = run_work("ocr", (path, pages_0, vault_dir),
+        results, _wd = run_work("ocr", (path, pages_0, vault_dir, language),
                                timeout=min(1800, max(60, len(pages_0) * 180)), stop=stop)
     else:
-        results, _wd = ocr_mod.ocr_document(path, pages_0, vault_dir)
+        results, _wd = ocr_mod.ocr_document(path, pages_0, vault_dir, language)
     st = _stat_sig(path)
     if st is None or q.signature_of(*st) != sig:
         q.complete(con, job["job_id"])

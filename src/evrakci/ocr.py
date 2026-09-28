@@ -22,7 +22,7 @@ from dataclasses import dataclass
 # --- pinli adaylar (plan bolum 6/11; A1 kanitli, A8'de paket manifestine tasinir) ---
 TESS_VERSION = "5.4.0.20240606"
 MODEL_SHA = {
-    "tur": "489b9504e80d7184ed1ac9a1976647884ee71149da231ff3c2c1dc15370f2f3d",
+    "tur": "7393381111e1152420fc4092cb44eef4237580d21b92bf30d7d221aad192c6b7",
     "eng": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
     "osd": "9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff",
 }
@@ -64,6 +64,10 @@ class OcrPage:
 
 
 def find_exe() -> str | None:
+    from .ocr_setup import executable
+    bundled = executable()
+    if bundled.is_file():
+        return str(bundled)
     for c in EXE_CANDIDATES:
         if c and os.path.isfile(c):
             return c
@@ -75,6 +79,10 @@ def tessdata_dir() -> str | None:
     env = os.environ.get("EVRAKCI_TESSDATA")
     if env and os.path.isdir(env):
         return env
+    from .ocr_setup import data_dir
+    managed = data_dir()
+    if managed.is_dir():
+        return str(managed)
     exe = find_exe()
     if exe:
         d = os.path.join(os.path.dirname(exe), "tessdata")
@@ -89,7 +97,7 @@ def langs_available() -> list:
         return []
     env = dict(os.environ)
     td = tessdata_dir()
-    if td and os.environ.get("EVRAKCI_TESSDATA"):
+    if td:
         env["TESSDATA_PREFIX"] = td
     try:
         p = subprocess.run([exe, "--list-langs"], capture_output=True, text=True,
@@ -256,8 +264,9 @@ def _run_tess(png: str, langs: str, psm: int, timeout: int, workdir: str) -> tup
 def _tess_env() -> dict:
     env = dict(os.environ)
     env["OMP_THREAD_LIMIT"] = "2"
-    if os.environ.get("EVRAKCI_TESSDATA"):
-        env["TESSDATA_PREFIX"] = os.environ["EVRAKCI_TESSDATA"]
+    td = tessdata_dir()
+    if td:
+        env["TESSDATA_PREFIX"] = td
     return env
 
 

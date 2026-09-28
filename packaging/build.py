@@ -73,6 +73,9 @@ def main():
         shutil.copyfile(lgpl, licenses / "LGPL-3.0-only.txt")
     if not (licenses / "LGPL-3.0-only.txt").is_file():
         raise RuntimeError("LGPL lisans metni bulunamadı; paket teslim edilemez")
+    ocr_license = package / "_internal/evrakci/ocr_runtime/doc/LICENSE"
+    if not ocr_license.is_file():
+        raise RuntimeError("Tesseract lisans metni pakette bulunamadı")
     for name in ("README.md", "LISANSLAR.md", "DENETIM-0.1.1.md", f"DENETIM-{__version__}.md"):
         if (ROOT / name).is_file():
             shutil.copyfile(ROOT / name, package / name)

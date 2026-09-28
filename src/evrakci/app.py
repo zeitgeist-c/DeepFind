@@ -190,6 +190,8 @@ class AnaPencere(QMainWindow):
         self.setMinimumSize(1100, 700)
 
         self._kasa_ac()
+        from . import ocr_setup
+        ocr_setup.reopen_deferred(self.con)
         self._arayuz()
         self._tepsi()
         try:
@@ -1245,6 +1247,17 @@ class AnaPencere(QMainWindow):
         f = QFormLayout()
         f.setVerticalSpacing(18)
         general_layout.addLayout(f)
+        from . import ocr_setup
+        self.ocr_status = label("OCR kullanıma hazır" if ocr_setup.ready()[0] else "OCR bileşenleri eksik", "ikincil")
+        general_layout.addWidget(self.ocr_status)
+        self.ocr_language = QComboBox()
+        self.ocr_language.addItem("Türkçe", "tur")
+        self.ocr_language.addItem("İngilizce", "eng")
+        self.ocr_language.setCurrentIndex(max(0, self.ocr_language.findData(migrate.get_setting(self.con, "ocr_dili", "tur"))))
+        f.addRow("OCR dili:", self.ocr_language)
+        ocr_repair = QPushButton("OCR bileşenlerini doğrula / onar")
+        ocr_repair.clicked.connect(self._ocr_repair)
+        general_layout.addWidget(ocr_repair)
         self.scan_time_edit = QTimeEdit()
         self.scan_time_edit.setDisplayFormat("HH:mm")
         self.scan_time_edit.setFixedWidth(120)
@@ -1301,6 +1314,7 @@ class AnaPencere(QMainWindow):
         QMessageBox.information(self, "Giriş", "Hatırlanan giriş kaldırıldı. Sonraki açılışta şifre istenecek.")
 
     def _ayar_kaydet(self):
+        migrate.set_setting(self.con, "ocr_dili", self.ocr_language.currentData())
         migrate.set_setting(self.con, "saat", str(self.scan_time_edit.time().hour()))
         migrate.set_setting(self.con, "dakika", str(self.scan_time_edit.time().minute()))
         self.tarama_time.setText(f"{self.scan_time_edit.time().hour():02d}:{self.scan_time_edit.time().minute():02d}")
@@ -1319,6 +1333,18 @@ class AnaPencere(QMainWindow):
         except Exception as e:  # noqa: BLE001
             QMessageBox.warning(self, "Otomatik başlatma", f"Yazılamadı: {e}")
         QMessageBox.information(self, "Ayarlar", "Kaydedildi.")
+
+    def _ocr_repair(self):
+        if not self._exclusive_ready():
+            return
+        from .ocr_setup_ui import prepare_ocr
+        from . import ocr_setup
+        if prepare_ocr(self):
+            count = ocr_setup.reopen_deferred(self.con)
+            self.ocr_status.setText("OCR kullanıma hazır")
+            QMessageBox.information(self, "OCR", f"Bileşenler hazır. {count} ertelenmiş OCR işi yeniden denenebilir.")
+        else:
+            self.ocr_status.setText("OCR bileşenleri eksik")
 
     def _exclusive_ready(self):
         if self.con is None:
@@ -1651,6 +1677,9 @@ def main(kasa_yolu=None, sifre=None):
         sifre = setup.s1.text()
         os.makedirs(os.path.dirname(os.path.abspath(args.kasa)), exist_ok=True)
     if setup is not None:
+        from .ocr_setup_ui import prepare_ocr
+        if not prepare_ocr():
+            return 1
         from .bootstrap import Bootstrap
         selection = dict(setup.secim)
         selection.pop("sifre", None)
@@ -1775,6 +1804,9 @@ def main(kasa_yolu=None, sifre=None):
             except OSError as error:
                 QMessageBox.warning(login, "Beni hatırla", str(error))
         login.old.clear()
+    from .ocr_setup_ui import prepare_ocr
+    if not prepare_ocr():
+        return 1
     try:
         pen = AnaPencere(args.kasa, sifre)
         app._main_window = pen

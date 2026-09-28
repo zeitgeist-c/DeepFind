@@ -1,20 +1,20 @@
-# Evrakçı 0.1.4
+# Evrakçı 0.1.6
 
 Windows için yerel, şifreli belge arama uygulaması. Kaynak belgeler PDF/XLSX/XLS/DOCX olarak okunur; arama indeksi bu bilgisayarda tutulur.
 
-0.1.4'te gerçek ilk kurulum geçişi düzeltildi. Keşifle birlikte dosyalar işlenir; tarama kapsamı ve canlı ayrıntılar seçilebilir. İptal edilen günlük görev o gün tekrar başlamaz. Kurulumda anında tema seçimi, çoklu klasör yönetimi, daraltılabilir gezinme ve Windows hesabıyla korunan Beni hatırla eklendi. Beni hatırla otomatik kilidi kapatır; elle kilitleme hatırlanan girişi kaldırır.
+0.1.6, Türkçe ve İngilizce OCR için gerekli Tesseract motorunu paketler. İlk açılışta doğrulanmış dil modellerini indirir; çevrimdışı model klasörü seçilebilir. Mevcut kasalarda da eksik OCR bileşenleri tamamlanmadan ana pencere açılmaz. Fotoğraf tabanlı PDF sayfalarının metni yerel, şifreli arama indeksine alınır.
 
-Bu sürüm denetim/pilot sürümüdür. Plan V4'ün tüm kabul kapıları geçmiş değildir. Kapsam karşılaştırması ve kalanlar: DENETIM-0.1.4.md.
+Bu sürüm denetim/pilot sürümüdür. Plan V4'ün tüm kabul kapıları geçmiş değildir. OCR kabulü ve sınırlar: DENETIM-0.1.6.md.
 
 ## Çalıştırma
 
-Evrakçı-0.1.4.zip dosyasını bir klasöre açın; içindeki Evrakçı-0.1.4.exe veya aynı adlı BAT dosyasını çalıştırın. ZIP içinden doğrudan çalıştırmayın; _internal ve licenses klasörlerini EXE yanında koruyun.
+Evrakçı-0.1.6.zip dosyasını bir klasöre açın; içindeki Evrakçı-0.1.6.exe veya aynı adlı BAT dosyasını çalıştırın. ZIP içinden doğrudan çalıştırmayın; _internal ve licenses klasörlerini EXE yanında koruyun.
 
 İlk açılışta şifreyi iki kez belirleyin ve kaynak klasörleri seçin. Sonraki açılışta aynı şifre kullanılır. Ayarlar > Parolayı değiştir: mevcut şifre + yeni şifre + yeni şifre tekrarı. Önceki yedekler eski şifreyi gerektirir. Şifre unutulursa kasanın açılacağı vaat edilmez; kaynak belgeler etkilenmez.
 
 Varsayılan kasa: %LOCALAPPDATA%/Evrakci/Data/evrakci.db. Her bilgisayar kendi yerel kasasını kullanır.
 
-OCR için Tesseract-OCR ve doğrulanmış tur traineddata ayrıca gereklidir; temel metin araması OCR motoru yokken kullanılabilir. Eski DOC biçiminin içerik araması bu sürümde desteklenmiş sayılmaz.
+OCR motoru ZIP içinde bulunur. İlk açılışta `tur`, `eng` ve `osd` dil modelleri indirilip SHA-256 ile doğrulanır; bu aşama için internet veya aynı doğrulanmış dosyaları içeren çevrimdışı klasör gerekir. Modeller `%LOCALAPPDATA%/Evrakci/OCR/tessdata` içinde tutulur. Eski DOC biçiminin içerik araması bu sürümde desteklenmiş sayılmaz.
 
 İlk denemeyi küçük izinli veya yapay bir klasörde yapın. Gerçek NAS, temiz Windows, yüksek DPI ve 50.000 dosya testleri ayrıca bekliyor.
 
