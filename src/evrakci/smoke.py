@@ -90,6 +90,17 @@ def run(report_path):
                 time.sleep(0.01)
                 assert time.monotonic() < deadline
             assert pen.onizleme.tablo.rowCount() == 1
+            checkpoint("ai-local-preview")
+            pen.nav.setCurrentRow(6)
+            pen.ai_question.setText("Ankara denetim")
+            pen._ai_prepare()
+            assert pen.ai_preview is not None and pen.ai_reply is None
+            assert "Ankara" in pen.ai_preview_box.toPlainText()
+            pen.ai_mode.setCurrentIndex(1)
+            assert pen.ai_document.count() == 1
+            pen._ai_prepare()
+            assert pen.ai_preview is not None and pen.ai_preview.mode == "summary"
+            assert pen.ai_reply is None
             checkpoint("packaged-ocr")
             from . import ocr_setup, ocr
             from PIL import Image, ImageDraw, ImageFont
@@ -138,7 +149,7 @@ def run(report_path):
                                            "excel-preview", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
-                                           "packaged-turkish-ocr"])
+                                           "packaged-turkish-ocr", "ai-local-preview-no-network"])
     except Exception as error:
         report["stage"] = current_stage
         report["error"] = repr(error)

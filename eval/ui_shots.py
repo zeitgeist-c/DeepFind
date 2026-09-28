@@ -87,6 +87,12 @@ def main():
         app.processEvents()
         pen.grab().save(os.path.join(output, f"ana-{mod}.png"))
         print(f"kaydedildi: ana-{mod}.png", flush=True)
+        pen.nav.setCurrentRow(6)
+        pen.ai_question.setText("Ankara vergi")
+        pen._ai_prepare()
+        app.processEvents()
+        pen.grab().save(os.path.join(output, f"ai-{mod}.png"))
+        print(f"kaydedildi: ai-{mod}.png", flush=True)
         from evrakci.auth import ParolaDialog
         login = ParolaDialog()
         login.show()

@@ -408,3 +408,71 @@ def test_015_without_tray(pencere):
         assert pencere.scan_dialog.isVisible()
     finally:
         pencere.tepsi = tray
+
+
+def test_020_ai_requires_explicit_send_and_clears_on_lock(pencere):
+    import json
+    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtNetwork import QNetworkReply
+
+    class FakeReply(QObject):
+        finished = Signal()
+
+        def __init__(self, payload):
+            super().__init__()
+            self.payload = payload
+            self.aborted = False
+
+        def error(self):
+            return QNetworkReply.NoError
+
+        def readAll(self):
+            return self.payload
+
+        def abort(self):
+            self.aborted = True
+
+    class FakeNetwork:
+        def __init__(self):
+            self.calls = []
+            self.reply = None
+
+        def post(self, request, body):
+            self.calls.append((request, body))
+            return self.reply
+
+    fake = FakeNetwork()
+    pencere.ai_network = fake
+    pencere.nav.setCurrentRow(6)
+    pencere.ai_question.setText("Ankara arayüz testi")
+    pencere._ai_prepare()
+    assert pencere.ai_preview is not None
+    assert pencere.ai_send.isEnabled()
+    assert pencere.ai_reply is None
+    assert "Ankara" in pencere.ai_preview_box.toPlainText()
+    assert not fake.calls
+    pencere._ai_send()
+    assert not fake.calls
+    sid = pencere.ai_preview.sources[0]["id"]
+    fake.reply = FakeReply(json.dumps({"candidates": [{"content": {"parts": [{"text":
+        json.dumps({"answer": "Ankara belgesi bulundu.", "source_ids": [sid]})}]}}]}).encode())
+    migrate.set_setting(pencere.con, "gemini_api_key", "synthetic-key")
+    from pathlib import Path
+    assert b"synthetic-key" not in Path(pencere.kasa_yolu).read_bytes()
+    pencere._ai_send()
+    assert len(fake.calls) == 1
+    assert b"Ankara" in fake.calls[0][1]
+    assert b"synthetic-key" not in fake.calls[0][1]
+    fake.reply.finished.emit()
+    assert "Ankara belgesi" in pencere.ai_answer.toPlainText(), pencere.ai_status.text()
+    assert pencere.ai_sources.count() == 1
+    fake.reply = FakeReply(b"")
+    pencere._ai_send()
+    assert pencere.ai_reply is fake.reply
+    pencere.ai_question.setText("Değişen soru")
+    assert fake.reply.aborted and pencere.ai_reply is None
+    pencere.kilitle()
+    assert pencere.ai_preview is None
+    assert not pencere.ai_preview_box.toPlainText()
+    assert not pencere.ai_answer.toPlainText()
+    assert not pencere.ai_key_input.text()
