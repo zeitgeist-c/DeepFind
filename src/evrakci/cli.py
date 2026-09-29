@@ -22,14 +22,13 @@ def _load():
 def _open_db(args):
     """Kasa ac + sema zincirini uygula (v3 -> v7, idempotent)."""
     vault, schema, _s, _e, _i, _se, _r, _h, _v, _c, _x, _m = _load()
-    from evrakci.migrate import ensure_v6, ensure_v7
+    from evrakci.migrate import ensure_v8
     from evrakci.vocab import ensure_v5
     pw = args.sifre or getpass.getpass("Kasa sifresi: ")
     con = vault.open_vault(args.kasa, pw)
     schema.ensure_schema(con)
     ensure_v5(con)
-    ensure_v6(con)
-    ensure_v7(con)
+    ensure_v8(con)
     return con
 
 

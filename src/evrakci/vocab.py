@@ -77,15 +77,34 @@ def ensure_v5(con) -> None:
 
 def rebuild_vocab(con, min_len: int = 2) -> int:
     from collections import Counter
-    c: Counter = Counter()
-    for (name,) in con.execute("SELECT name FROM files"):
-        c.update(t for t in nz.tokens_folded(name) if len(t) >= min_len)
-    for (txt,) in con.execute("SELECT folded_text FROM segments"):
-        c.update(t for t in nz.tokens_folded(txt or "") if len(t) >= min_len)
-    con.execute("DELETE FROM vocabulary")
-    con.executemany("INSERT INTO vocabulary(term, freq) VALUES (?, ?)", list(c.items()))
+    # Stage in the encrypted database. A crash leaves the prior vocabulary
+    # intact; batches keep Python memory bounded for large archives.
+    con.execute("CREATE TABLE IF NOT EXISTS vocabulary_build(term TEXT PRIMARY KEY, freq INTEGER NOT NULL)")
+    con.execute("DELETE FROM vocabulary_build")
     con.commit()
-    return len(c)
+    for sql in ("SELECT name FROM files", "SELECT folded_text FROM segments"):
+        cursor = con.execute(sql)
+        while batch := cursor.fetchmany(200):
+            counts: Counter = Counter()
+            for (value,) in batch:
+                counts.update(t for t in nz.tokens_folded(value or "") if len(t) >= min_len)
+            con.executemany(
+                "INSERT INTO vocabulary_build(term, freq) VALUES (?, ?) "
+                "ON CONFLICT(term) DO UPDATE SET freq=freq+excluded.freq",
+                counts.items(),
+            )
+            con.commit()
+    count = con.execute("SELECT count(*) FROM vocabulary_build").fetchone()[0]
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        con.execute("DELETE FROM vocabulary")
+        con.execute("INSERT INTO vocabulary(term, freq) SELECT term, freq FROM vocabulary_build")
+        con.execute("DELETE FROM vocabulary_build")
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    return count
 
 
 def suggest(con, token: str, limit: int = 3) -> list:

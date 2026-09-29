@@ -1,6 +1,8 @@
 """Sema v4: kalici is kuyrugu, revizyonlar, tarama kapsami, haricler. Ileriye donuk migration."""
 from __future__ import annotations
 
+import time
+
 SCHEMA_V4_SQL = """
 CREATE TABLE IF NOT EXISTS file_revisions(
   rev_id INTEGER PRIMARY KEY,
@@ -92,6 +94,44 @@ def ensure_v7(con) -> None:
         ("7",),
     )
     con.commit()
+
+
+SCAN_RUN_COLUMNS = {
+    "updated_at": "INTEGER",
+    "stage": "TEXT",
+    "found": "INTEGER NOT NULL DEFAULT 0",
+    "done": "INTEGER NOT NULL DEFAULT 0",
+    "pending": "INTEGER NOT NULL DEFAULT 0",
+    "failed": "INTEGER NOT NULL DEFAULT 0",
+    "ocr_done": "INTEGER NOT NULL DEFAULT 0",
+    "ocr_failed": "INTEGER NOT NULL DEFAULT 0",
+    "error_code": "TEXT",
+}
+
+
+def ensure_v8(con) -> None:
+    """Add encrypted scan checkpoints without replacing existing file/job records."""
+    ensure_v7(con)
+    columns = {row[1] for row in con.execute("PRAGMA table_info(scan_runs)")}
+    for name, definition in SCAN_RUN_COLUMNS.items():
+        if name not in columns:
+            con.execute(f"ALTER TABLE scan_runs ADD COLUMN {name} {definition}")
+    con.execute(
+        "INSERT INTO schema_meta(k, v) VALUES ('schema_version', '8') "
+        "ON CONFLICT(k) DO UPDATE SET v=excluded.v"
+    )
+    con.commit()
+
+
+def recover_scan_runs(con) -> int:
+    """Mark a previous unclosed run as interrupted on next application start."""
+    cur = con.execute(
+        "UPDATE scan_runs SET result='interrupted', finished_at=?, "
+        "error_code='UNEXPECTED_EXIT' WHERE finished_at IS NULL",
+        (int(time.time()),),
+    )
+    con.commit()
+    return cur.rowcount
 
 
 def get_setting(con, k: str, default: str = "") -> str:

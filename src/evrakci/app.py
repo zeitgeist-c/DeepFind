@@ -10,21 +10,21 @@ import os
 import threading
 import time
 
-from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter, QTime, QEvent
+from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter, QTime, QEvent, QSettings, QRect
 from PySide6.QtCore import QUrl
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
-from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply, QLocalServer, QLocalSocket
+from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel, QColor
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDialogButtonBox, QFileDialog, QFormLayout,
                                QHBoxLayout, QLabel, QLineEdit, QListView,
                                QListWidget, QMainWindow, QMessageBox, QPushButton,
                                QSplitter, QStackedWidget, QStatusBar,
                                QSystemTrayIcon, QMenu, QVBoxLayout, QWidget,
-                               QProgressBar, QSpinBox, QTimeEdit, QSizePolicy, QGridLayout, QFrame, QPlainTextEdit, QListWidgetItem, QScrollArea)
+                               QProgressBar, QSpinBox, QTimeEdit, QSizePolicy, QGridLayout, QFrame, QPlainTextEdit, QListWidgetItem, QScrollArea, QStyledItemDelegate, QStyle)
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
-from . import ai, migrate, rank, sched, theme, vault, remember
+from . import ai, migrate, rank, sched, theme, vault, remember, diagnostics
 from .preview import Onizleme
 from .version import __version__
 from .vocab import ensure_v5, rebuild_vocab
@@ -32,6 +32,31 @@ from .auth import ParolaDialog
 from .ui import brand, card, label, EmptyState, CardDelegate
 
 EKRANLAR = ["Ara", "Kaynaklar", "Tarama", "Geçmiş", "Yedekler", "Ayarlar", "AI Yardımcısı"]
+
+
+class RailDelegate(QStyledItemDelegate):
+    """Keep icons centered when the navigation rail has no labels."""
+
+    def __init__(self, rail, parent=None):
+        super().__init__(parent)
+        self.rail = rail
+
+    def paint(self, painter, option, index):
+        if not self.rail._collapsed:
+            return super().paint(painter, option, index)
+        painter.save()
+        if option.state & (QStyle.State_Selected | QStyle.State_MouseOver):
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#25435A" if option.state & QStyle.State_Selected else "#1B304C"))
+            painter.drawRoundedRect(option.rect.adjusted(1, 1, -1, -1), 10, 10)
+        icon = index.data(Qt.DecorationRole)
+        if icon:
+            size = self.rail.nav.iconSize()
+            target = option.rect
+            x = target.x() + (target.width() - size.width()) // 2
+            y = target.y() + (target.height() - size.height()) // 2
+            icon.paint(painter, x, y, size.width(), size.height())
+        painter.restore()
 
 
 class AramaIsci(QThread):
@@ -142,12 +167,12 @@ class TaramaIsci(QObject):
     def kos(self):
         try:
             from . import schema as schema_mod
-            from .migrate import ensure_v7
+            from .migrate import ensure_v8
             con = vault.open_vault(self.kasa_yolu, self._sifre)
             try:
                 schema_mod.ensure_schema(con)
                 ensure_v5(con)
-                ensure_v7(con)
+                ensure_v8(con)
                 toplam = {}
                 all_complete = True
                 for kok in self.kokler:
@@ -166,11 +191,25 @@ class TaramaIsci(QObject):
                     toplam["result"] = "partial"
                 if self._dur.is_set():
                     toplam["result"] = "cancelled"
-                rebuild_vocab(con)
+                if not self._dur.is_set():
+                    self.ilerleme.emit(dict(self.snapshot(), stage="Arama sözlüğü güncelleniyor", path=""))
+                    try:
+                        rebuild_vocab(con)
+                    except Exception as error:
+                        diagnostics.record("vocabulary_error", type(error).__name__)
+                        toplam["complete"] = False
+                        toplam["result"] = "partial"
+                        con.execute(
+                            "UPDATE scan_runs SET result='partial', error_code='VOCAB_ERROR' "
+                            "WHERE run_id=(SELECT max(run_id) FROM scan_runs)"
+                        )
+                        con.commit()
+                diagnostics.record("scan_finished", toplam.get("result", "unknown"))
                 self.bitti.emit(dict(toplam))
             finally:
                 con.close()
         except Exception as e:  # noqa: BLE001 - worker hatasi arayuze tasinir
+            diagnostics.record("scan_error", type(e).__name__)
             self.hata.emit(f"{type(e).__name__}: {e}")
         finally:
             self._sifre = "x" * 32
@@ -189,12 +228,17 @@ class AnaPencere(QMainWindow):
         self._pending_search = None
         self.setWindowTitle(f"Evrakçı {__version__}")
         self.setWindowIcon(theme.app_icon())
-        self.setMinimumSize(1100, 700)
+        self.setMinimumSize(1000, 640)
+        self._geometry_ready = False
+        self._geometry_timer = QTimer(self)
+        self._geometry_timer.setSingleShot(True)
+        self._geometry_timer.timeout.connect(self._save_window_geometry)
 
         self._kasa_ac()
         from . import ocr_setup
         ocr_setup.reopen_deferred(self.con)
         self._arayuz()
+        self._load_window_geometry()
         self._tepsi()
         try:
             if QApplication.platformName() == "windows":
@@ -218,7 +262,7 @@ class AnaPencere(QMainWindow):
     # -- kurulum --
     def _kasa_ac(self):
         from . import schema as schema_mod
-        from .migrate import ensure_v7
+        from .migrate import ensure_v8, recover_scan_runs
         self.con = vault.open_vault(self.kasa_yolu, self._sifre)
         current_fts = self.con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
         if current_fts and "remove_diacritics 0" not in current_fts[0]:
@@ -231,7 +275,8 @@ class AnaPencere(QMainWindow):
                 raise RuntimeError("Geçiş öncesi indeks yedeği alınamadı; mevcut kasa korunuyor.")
         schema_mod.ensure_schema(self.con)
         ensure_v5(self.con)
-        ensure_v7(self.con)
+        ensure_v8(self.con)
+        recover_scan_runs(self.con)
 
     def _arayuz(self):
         kok = QWidget()
@@ -276,6 +321,7 @@ class AnaPencere(QMainWindow):
         self.nav.addItems(EKRANLAR)
         from PySide6.QtCore import QSize
         self.nav.setIconSize(QSize(19, 19))
+        self.nav.setItemDelegate(RailDelegate(self, self.nav))
         for i, kind in enumerate(("search", "folder", "scan", "history", "backup", "settings", "search")):
             self.nav.item(i).setIcon(theme.symbol_icon(kind))
         self.nav.currentRowChanged.connect(self._ekran)
@@ -401,6 +447,37 @@ class AnaPencere(QMainWindow):
         for button, title in self.rail_actions:
             button.setText("" if self._collapsed else title)
         self._scan_state(getattr(self, "_scan_status", "idle"))
+        self.nav.viewport().update()
+
+    def _load_window_geometry(self):
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1440, 860)
+            self._geometry_ready = True
+            return
+        area = screen.availableGeometry()
+        saved = QSettings("Evrakci", "Appearance").value("main_geometry")
+        if isinstance(saved, QRect) and saved.isValid():
+            target = QRect(saved)
+        else:
+            target = QRect(0, 0, min(1440, int(area.width() * .9)),
+                           min(860, int(area.height() * .9)))
+            target.moveCenter(area.center())
+        target.setWidth(min(max(target.width(), self.minimumWidth()), area.width()))
+        target.setHeight(min(max(target.height(), self.minimumHeight()), area.height()))
+        if not any(target.intersects(s.availableGeometry()) for s in QApplication.screens()):
+            target.moveCenter(area.center())
+        else:
+            current = next((s.availableGeometry() for s in QApplication.screens()
+                            if target.intersects(s.availableGeometry())), area)
+            target.moveLeft(max(current.left(), min(target.left(), current.right() - target.width() + 1)))
+            target.moveTop(max(current.top(), min(target.top(), current.bottom() - target.height() + 1)))
+        self.setGeometry(target)
+        self._geometry_ready = True
+
+    def _save_window_geometry(self):
+        if self._geometry_ready and not self.isMaximized() and not self.isMinimized():
+            QSettings("Evrakci", "Appearance").setValue("main_geometry", self.geometry())
 
     def _otomatik_kilitle(self):
         if not remember.enabled(self.kasa_yolu):
@@ -661,6 +738,13 @@ class AnaPencere(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         QTimer.singleShot(0, self._source_layout)
+        if self._geometry_ready and not self.isMaximized():
+            self._geometry_timer.start(500)
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        if self._geometry_ready and not self.isMaximized():
+            self._geometry_timer.start(500)
 
     def _source_layout(self):
         if hasattr(self, "source_split"):
@@ -781,6 +865,12 @@ class AnaPencere(QMainWindow):
         self.details_open = QPushButton("Tarama ayrıntılarını aç")
         self.details_open.clicked.connect(self._scan_show)
         k.addWidget(self.details_open)
+        k.addWidget(label("SON TARAMALAR", "eyebrow"))
+        self.scan_history = QListWidget()
+        self.scan_history.setMaximumHeight(150)
+        self.scan_history.setAccessibleName("Son tarama kayıtları")
+        k.addWidget(self.scan_history)
+        self._scan_history_refresh()
         self.tarama_bar = QProgressBar()
         self.tarama_bar.setRange(0, 0)
         self.tarama_bar.hide()
@@ -950,6 +1040,7 @@ class AnaPencere(QMainWindow):
         self.scan_timer.start(1000)
         self._scan_clock_update()
         self.isci_thread.start()
+        diagnostics.record("scan_started", "automatic" if automatic else "manual")
         self.tarama_bar.show()
         self.duraklat_btn.setText("Duraklat")
         self.duraklat_btn.setEnabled(True)
@@ -1040,6 +1131,7 @@ class AnaPencere(QMainWindow):
         if st.get("complete"):
             migrate.set_setting(self.con, "son_slot", dt.datetime.now().isoformat(timespec="seconds"))
         self._durum_yaz()
+        self._scan_history_refresh()
 
     def _tara_hata(self, msg):
         if self._locked:
@@ -1050,7 +1142,32 @@ class AnaPencere(QMainWindow):
         self.scan_log.appendPlainText(msg)
         self.popup_status.setText("Tarama tamamlanamadı.")
         self._scan_state("idle")
+        if self.con is not None:
+            self.con.execute(
+                "UPDATE scan_runs SET result='error', finished_at=?, error_code='WORKER_ERROR' "
+                "WHERE finished_at IS NULL", (int(time.time()),)
+            )
+            self.con.commit()
+            self._scan_history_refresh()
         QMessageBox.warning(self, "Tarama", msg)
+
+    def _scan_history_refresh(self):
+        if not hasattr(self, "scan_history") or self.con is None:
+            return
+        self.scan_history.clear()
+        rows = self.con.execute(
+            "SELECT started_at, root, result, found, done, pending, failed, ocr_done, ocr_failed "
+            "FROM scan_runs ORDER BY run_id DESC LIMIT 12"
+        ).fetchall()
+        names = {"complete": "Tamamlandı", "partial": "Kısmi", "cancelled": "İptal edildi",
+                 "interrupted": "Kesintiye uğradı", "error": "Hata"}
+        for stamp, root, result, found, done, pending, failed, ocr_done, ocr_failed in rows:
+            when = dt.datetime.fromtimestamp(stamp).strftime("%d.%m.%Y %H:%M")
+            self.scan_history.addItem(
+                f"{when} • {os.path.basename(root) or root} • {names.get(result, 'Sürüyor')} "
+                f"• {done} işlendi / {found} bulundu • {pending} bekliyor • "
+                f"{failed + ocr_failed} hata"
+            )
 
     def _tara_temizle(self):
         thread = self.isci_thread
@@ -1276,8 +1393,16 @@ class AnaPencere(QMainWindow):
         self.gecikme.setChecked(migrate.get_setting(self.con, "gecikme", "0") == "1")
         f.addRow(self.gecikme)
         self.otostart = QCheckBox("Windows açılışında başlat")
-        self.otostart.setChecked(sched.autostart_get("Evrakci") is not None)
+        startup_command = sched.autostart_get("Evrakci")
+        self.otostart.setChecked(startup_command is not None)
         f.addRow(self.otostart)
+        import sys
+        self.startup_status = label(
+            "Açılış kaydı eski paket yolunu gösteriyor; Kaydet ile güncelleyin."
+            if startup_command and getattr(sys, "frozen", False)
+            and os.path.normcase(sys.executable) not in os.path.normcase(startup_command)
+            else "", "ikincil")
+        f.addRow(self.startup_status)
         self.tepsiye = QCheckBox("Kapatınca tepsiye küçült")
         self.tepsiye.setChecked(migrate.get_setting(self.con, "tepsiye", "1") == "1")
         f.addRow(self.tepsiye)
@@ -1316,7 +1441,14 @@ class AnaPencere(QMainWindow):
     def _ekran_ai(self):
         w = QWidget()
         layout = QVBoxLayout(w)
-        layout.addWidget(label("Gemini 3.8 Flash • yalnız açık gönderim", "ikincil"))
+        layout.addWidget(label("AI modeli • yalnız açık gönderim", "ikincil"))
+        self.ai_model = QComboBox()
+        self.ai_model.setAccessibleName("AI modeli")
+        for model_id, caption in ai.MODELS.items():
+            self.ai_model.addItem(caption, model_id)
+        selected = migrate.get_setting(self.con, "ai_model", ai.MODEL)
+        self.ai_model.setCurrentIndex(max(0, self.ai_model.findData(selected)))
+        layout.addWidget(self.ai_model)
         key_row = QHBoxLayout()
         self.ai_key_input = QLineEdit()
         self.ai_key_input.setEchoMode(QLineEdit.Password)
@@ -1385,7 +1517,13 @@ class AnaPencere(QMainWindow):
         self.ai_timeout.timeout.connect(self._ai_abort_timeout)
         self.ai_question.textChanged.connect(self._ai_clear_preview)
         self.ai_document.currentIndexChanged.connect(self._ai_clear_preview)
+        self.ai_model.currentIndexChanged.connect(self._ai_model_changed)
         self.yigin.addWidget(w)
+
+    def _ai_model_changed(self):
+        if self.con is not None:
+            migrate.set_setting(self.con, "ai_model", self.ai_model.currentData())
+        self._ai_clear_preview()
 
     def _ai_mode_changed(self):
         summary = self.ai_mode.currentData() == "summary"
@@ -1475,10 +1613,11 @@ class AnaPencere(QMainWindow):
         if not key:
             self.ai_status.setText("Önce Gemini API anahtarını kasaya kaydedin.")
             return
-        request = QNetworkRequest(QUrl(ai.ENDPOINT))
+        model = self.ai_model.currentData()
+        request = QNetworkRequest(QUrl(ai.endpoint(model)))
         request.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
         request.setRawHeader(b"x-goog-api-key", key.encode("utf-8"))
-        reply = self.ai_network.post(request, ai.request_body(preview))
+        reply = self.ai_network.post(request, ai.request_body(preview, model))
         self.ai_reply = reply
         self._ai_timed_out = False
         self.ai_send.setEnabled(False)
@@ -1562,7 +1701,7 @@ class AnaPencere(QMainWindow):
         migrate.set_setting(self.con, "saat", str(self.scan_time_edit.time().hour()))
         migrate.set_setting(self.con, "dakika", str(self.scan_time_edit.time().minute()))
         self.tarama_time.setText(f"{self.scan_time_edit.time().hour():02d}:{self.scan_time_edit.time().minute():02d}")
-        migrate.set_setting(self.con, "gecikme", "0" if self.gecikme.isChecked() else "0")
+        migrate.set_setting(self.con, "gecikme", "1" if self.gecikme.isChecked() else "0")
         migrate.set_setting(self.con, "tepsiye", "1" if self.tepsiye.isChecked() else "0")
         ks = self.kilit_sure.currentText()
         migrate.set_setting(self.con, "kilit_suresi", "0" if ks == "kapalı" else ks)
@@ -1572,8 +1711,10 @@ class AnaPencere(QMainWindow):
                 if not getattr(sys, "frozen", False):
                     raise RuntimeError("Otomatik başlatma paketlenmiş EXE üzerinden etkinleştirilmelidir.")
                 sched.autostart_set("Evrakci", sys.executable, self.kasa_yolu)
+                self.startup_status.clear()
             else:
                 sched.autostart_clear("Evrakci")
+                self.startup_status.clear()
         except Exception as e:  # noqa: BLE001
             QMessageBox.warning(self, "Otomatik başlatma", f"Yazılamadı: {e}")
         QMessageBox.information(self, "Ayarlar", "Kaydedildi.")
@@ -1656,7 +1797,8 @@ class AnaPencere(QMainWindow):
         self.durum.showMessage(f"Kasa açık • {kok_sayi} kök • Son tarama: {son}")
 
     def _tema_degistir(self, mode):
-        resolved = theme.apply(QApplication.instance(), mode)
+        diagnostics.record("theme", mode if mode in ("sistem", "acik", "koyu") else "unknown")
+        theme.apply(QApplication.instance(), mode)
         try:
             migrate.set_setting(self.con, "tema", mode)
         except Exception:
@@ -1677,7 +1819,7 @@ class AnaPencere(QMainWindow):
         self.tepsi.setToolTip("Evrakçı • Yerel belge arşivi")
         m = QMenu(self)
         self._tray_menu = m
-        for ad, fn in (("Aç", self.show), ("Şimdi tara", self._tara_baslat),
+        for ad, fn in (("Aç", self._bring_forward), ("Şimdi tara", self._tara_baslat),
                        ("Kasayı kilitle", self.kilitle), ("Çıkış", self._cikis)):
             a = QAction(ad, self)
             a.triggered.connect(fn)
@@ -1685,7 +1827,23 @@ class AnaPencere(QMainWindow):
             if ad == "Şimdi tara":
                 self._tray_scan_action = a
         self.tepsi.setContextMenu(m)
+        self.tepsi.activated.connect(self._tray_activated)
         self.tepsi.show()
+
+    def _tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.DoubleClick, QSystemTrayIcon.Trigger):
+            self._bring_forward()
+
+    def _bring_forward(self):
+        if self._locked:
+            if hasattr(self, "_unlock_dialog"):
+                self._unlock_dialog.show()
+                self._unlock_dialog.raise_()
+                self._unlock_dialog.activateWindow()
+            return
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
 
     def _scan_metrics_update(self, data):
         for key, value in self.scan_metrics.items():
@@ -1750,6 +1908,7 @@ class AnaPencere(QMainWindow):
     def kilitle(self):
         if self._locked:
             return
+        diagnostics.record("lock")
         remember.forget(self.kasa_yolu)
         self._locked = True
         self._ai_abort()
@@ -1774,6 +1933,7 @@ class AnaPencere(QMainWindow):
         self.source_status.clear()
         self._scan_state("idle")
         self.scan_log.clear()
+        self.scan_history.clear()
         self.scan_current.setText("Kasa kilitli.")
         self.scan_counts.clear()
         for value in self.scan_metrics.values():
@@ -1815,11 +1975,13 @@ class AnaPencere(QMainWindow):
             raise
 
     def _unlocked(self):
+        diagnostics.record("unlock")
         self._locked = False
         self._unlock_dialog.old.clear()
         self._son_hareket = dt.datetime.now()
         self._kok_tazele()
         self._yedek_tazele()
+        self._scan_history_refresh()
         self._scope_changed()
         self.ai_key_input.setPlaceholderText("API anahtarı kayıtlı" if migrate.get_setting(self.con, "gemini_api_key") else "Gemini API anahtarı")
         self.show()
@@ -1828,6 +1990,7 @@ class AnaPencere(QMainWindow):
         self._zamanlayici_kontrol()
 
     def _cikis(self):
+        diagnostics.record("exit")
         self._exiting = True
         self._ai_abort()
         if self.isci_thread is not None:
@@ -1857,6 +2020,8 @@ class AnaPencere(QMainWindow):
         except Exception:
             tepsiye = False
         if not self._exiting and tepsiye and getattr(self, "tepsi", None) is not None:
+            diagnostics.record("hide_to_tray")
+            self._save_window_geometry()
             ev.ignore()
             self.scan_dialog.hide()
             self.hide()
@@ -1866,6 +2031,7 @@ class AnaPencere(QMainWindow):
             self._cikis()
             return
         self._ai_abort()
+        self._save_window_geometry()
         try:
             if self.con is not None:
                 vault.lock(self.con, os.path.dirname(os.path.abspath(self.kasa_yolu)))
@@ -1896,6 +2062,50 @@ class AnaPencere(QMainWindow):
                 ctypes.windll.wtsapi32.WTSUnRegisterSessionNotification(int(self.winId()))
         except Exception:
             pass
+        if not self._exiting:
+            QTimer.singleShot(0, QApplication.instance().quit)
+
+
+def _instance_name(vault_path):
+    import hashlib
+    normalized = os.path.normcase(os.path.abspath(vault_path)).encode("utf-8")
+    return "Evrakci-" + hashlib.sha256(normalized).hexdigest()[:24]
+
+
+def _wake_existing(name):
+    socket = QLocalSocket()
+    socket.connectToServer(name)
+    if not socket.waitForConnected(1500):
+        return False
+    socket.disconnectFromServer()
+    return True
+
+
+def _serve_activation(app, name):
+    QLocalServer.removeServer(name)  # The per-vault lock is already owned here.
+    server = QLocalServer(app)
+    if not server.listen(name):
+        diagnostics.record("activation_server_failed")
+        return None
+
+    def incoming():
+        while server.hasPendingConnections():
+            socket = server.nextPendingConnection()
+            target = getattr(app, "_main_window", None)
+            if target is not None:
+                target._bring_forward()
+            else:
+                target = (getattr(app, "_login", None) or
+                          getattr(app, "_setup", None) or
+                          getattr(app, "_startup_dialog", None))
+                if target is not None:
+                    target.show()
+                    target.raise_()
+                    target.activateWindow()
+            socket.deleteLater()
+            diagnostics.record("activation")
+    server.newConnection.connect(incoming)
+    return server
 
 
 def main(kasa_yolu=None, sifre=None):
@@ -1905,6 +2115,7 @@ def main(kasa_yolu=None, sifre=None):
     ap.add_argument("--tray", action="store_true")
     args, _bilinmeyen = ap.parse_known_args()
     app = QApplication.instance() or QApplication([])
+    diagnostics.install()
     app.setApplicationName("Evrakçı")
     app.setQuitOnLastWindowClosed(False)
     from PySide6.QtCore import QSettings
@@ -1916,20 +2127,34 @@ def main(kasa_yolu=None, sifre=None):
     os.makedirs(os.path.dirname(os.path.abspath(args.kasa)), exist_ok=True)
     instance_lock = QLockFile(os.path.abspath(args.kasa) + ".app.lock")
     if not instance_lock.tryLock(0):
-        QMessageBox.information(None, "Evrakçı açık", "Bu kasa başka bir Evrakçı penceresinde açık.")
+        if _wake_existing(_instance_name(args.kasa)):
+            return 0
+        QMessageBox.warning(None, "Evrakçı yanıt vermiyor",
+                            "Evrakçı işlemi açık görünüyor ancak pencereyi gösterme isteğine yanıt vermedi. "
+                            "Görev Yöneticisi'nde işlemi kontrol edin; tanı kaydı Evrakci/Logs/lifecycle.log içindedir.")
         return 1
+    server = _serve_activation(app, _instance_name(args.kasa))
+    app._activation_server = server
+    diagnostics.record("instance_ready")
     setup = None
     if not os.path.exists(args.kasa):
         from .wizard import Sihirbaz
         setup = Sihirbaz()
+        app._setup = setup
+        diagnostics.record("setup_dialog")
         if setup.exec() != QDialog.Accepted:
+            diagnostics.record("setup_cancelled")
             return 1
+        diagnostics.record("setup_accepted")
         sifre = setup.s1.text()
         os.makedirs(os.path.dirname(os.path.abspath(args.kasa)), exist_ok=True)
     if setup is not None:
         from .ocr_setup_ui import prepare_ocr
+        diagnostics.record("ocr_prepare")
         if not prepare_ocr():
+            diagnostics.record("ocr_unavailable")
             return 1
+        diagnostics.record("ocr_ready")
         from .bootstrap import Bootstrap
         selection = dict(setup.secim)
         selection.pop("sifre", None)
@@ -1963,6 +2188,7 @@ def main(kasa_yolu=None, sifre=None):
                     event.ignore()
 
         progress = StartupDialog()
+        app._startup_dialog = progress
         progress.setWindowTitle("Evrakçı • Hazırlanıyor")
         progress.setWindowIcon(theme.app_icon())
         progress.setMinimumWidth(480)
@@ -1986,6 +2212,7 @@ def main(kasa_yolu=None, sifre=None):
         app._startup = {"dialog": progress, "lock": instance_lock}
 
         def failed(message):
+            diagnostics.record("setup_failed")
             status.setText(message)
             bar.hide()
             retry.show()
@@ -1993,6 +2220,7 @@ def main(kasa_yolu=None, sifre=None):
 
         def ready():
             try:
+                diagnostics.record("setup_ready")
                 pen = AnaPencere(args.kasa, sifre)
                 app._main_window = pen
                 pen._kok_tazele()
@@ -2000,6 +2228,7 @@ def main(kasa_yolu=None, sifre=None):
                 progress.hide()
                 QTimer.singleShot(0, lambda: pen._tara_baslat(automatic=True))
             except Exception as error:
+                diagnostics.record("main_window_failed", type(error).__name__)
                 failed(f"Çalışma alanı açılamadı: {error}")
 
         def prepare():
@@ -2030,6 +2259,8 @@ def main(kasa_yolu=None, sifre=None):
             return app.exec()
         finally:
             instance_lock.unlock()
+            if server is not None:
+                server.close()
 
     if sifre is None:
         sifre = remember.load(args.kasa)
@@ -2041,12 +2272,16 @@ def main(kasa_yolu=None, sifre=None):
                 remember.forget(args.kasa)
                 sifre = None
     if sifre is None:
+        diagnostics.record("login_dialog")
         def verify(password):
             con = vault.open_vault(args.kasa, password)
             con.close()
         login = ParolaDialog(verify=verify)
+        app._login = login
         if login.exec() != QDialog.Accepted:
+            diagnostics.record("login_cancelled")
             return 1
+        diagnostics.record("login_accepted")
         sifre = login.old.text()
         if login.remember.isChecked():
             try:
@@ -2055,15 +2290,25 @@ def main(kasa_yolu=None, sifre=None):
                 QMessageBox.warning(login, "Beni hatırla", str(error))
         login.old.clear()
     from .ocr_setup_ui import prepare_ocr
+    diagnostics.record("ocr_prepare")
     if not prepare_ocr():
+        diagnostics.record("ocr_unavailable")
         return 1
+    diagnostics.record("ocr_ready")
     try:
         pen = AnaPencere(args.kasa, sifre)
         app._main_window = pen
     except Exception as error:
+        diagnostics.record("main_window_failed", type(error).__name__)
         QMessageBox.critical(None, "Kasa", f"Açılamadı: {error}")
         return 2
     sifre = ""
-    if not args.tray:
+    if not args.tray or pen.tepsi is None:
         pen.show()
-    return app.exec()
+    diagnostics.record("main_window_ready")
+    try:
+        return app.exec()
+    finally:
+        instance_lock.unlock()
+        if server is not None:
+            server.close()

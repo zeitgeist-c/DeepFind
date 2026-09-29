@@ -9,7 +9,19 @@ from dataclasses import dataclass
 from . import rank
 
 MODEL = "gemini-3.8-flash"
+MODELS = {
+    "gemini-3.8-flash": "Gemini 3.8 Flash",
+    "gemini-3.5-flash": "Gemini 3.5 Flash",
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash-Lite",
+    "gemma-4-26b-a4b-it": "Gemma 4 26B A4B",
+}
 ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+
+
+def endpoint(model: str) -> str:
+    if model not in MODELS:
+        raise ValueError("Desteklenmeyen AI modeli.")
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 MAX_SOURCES = 12
 MAX_EXCERPT = 1600
 MAX_TOTAL = 24000
@@ -123,7 +135,8 @@ def preview_text(preview: Preview) -> str:
     return "\n".join(lines)
 
 
-def request_body(preview: Preview) -> bytes:
+def request_body(preview: Preview, model: str = MODEL) -> bytes:
+    endpoint(model)
     if preview.mode == "question":
         task = f"Soruyu yalnız verilen alıntılara dayanarak Türkçe yanıtla: {preview.question}"
     else:
@@ -135,11 +148,15 @@ def request_body(preview: Preview) -> bytes:
             "Yalnız sağlanan kanıta dayan. Kanıt yetmiyorsa açıkça söyle. "
             "JSON nesnesinde answer ve kullanılan source_ids dizisini döndür."}]},
             "contents": [{"role": "user", "parts": [{"text": task + "\n\nKANIT:\n" + evidence}]}],
-            "generationConfig": {"temperature": 0.1, "responseFormat": {"text": {
+            "generationConfig": {"responseFormat": {"text": {
                 "mimeType": "application/json", "schema": {"type": "object", "properties": {
                     "answer": {"type": "string"},
                     "source_ids": {"type": "array", "items": {"type": "string"}}},
                     "required": ["answer", "source_ids"]}}}}}
+    if model.startswith("gemma-"):
+        # Gemma's hosted GenerateContent docs do not promise the Gemini JSON
+        # responseFormat contract. Ask for JSON and validate it locally.
+        body.pop("generationConfig")
     return json.dumps(body, ensure_ascii=False).encode("utf-8")
 
 

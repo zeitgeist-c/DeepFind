@@ -19,7 +19,7 @@ class Bootstrap(QObject):
             con = vault.open_vault(self.path, self.password)
             schema.ensure_schema(con)
             ensure_v5(con)
-            migrate.ensure_v7(con)
+            migrate.ensure_v8(con)
             for root in self.selection['kokler']:
                 con.execute("INSERT OR IGNORE INTO roots(display_path, canonical_path, company_rule) VALUES (?,?,?)",
                             (root, os.path.normpath(root).lower(), self.selection['sirket_kurali']))

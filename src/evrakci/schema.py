@@ -41,7 +41,7 @@ SCHEMA_VERSION = "3"
 def ensure_schema(con) -> None:
     if con.execute("SELECT 1 FROM sqlite_master WHERE name='schema_meta'").fetchone():
         version = con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
-        if version and int(version[0]) > 7:
+        if version and int(version[0]) > 8:
             raise RuntimeError("Kasa daha yeni bir sürümle oluşturulmuş; bu sürümle açılamaz.")
     existing = con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
     rebuild = bool(existing and "remove_diacritics 0" not in existing[0])

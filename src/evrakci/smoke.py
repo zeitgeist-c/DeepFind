@@ -17,7 +17,7 @@ def run(report_path):
     from PySide6.QtWidgets import QApplication
     from openpyxl import Workbook
     from . import schema, vault, theme
-    from .migrate import ensure_v7
+    from .migrate import ensure_v8
     from .vocab import ensure_v5, rebuild_vocab
     from .index import index_entry
     from .scan import Entry
@@ -67,7 +67,7 @@ def run(report_path):
             con = vault.open_vault(db, password)
             schema.ensure_schema(con)
             ensure_v5(con)
-            ensure_v7(con)
+            ensure_v8(con)
             stat = source.stat()
             index_entry(con, Entry(str(source), source.name, ".xlsx", stat.st_size, stat.st_mtime_ns), result)
             rebuild_vocab(con)
@@ -96,6 +96,10 @@ def run(report_path):
             pen._ai_prepare()
             assert pen.ai_preview is not None and pen.ai_reply is None
             assert "Ankara" in pen.ai_preview_box.toPlainText()
+            gemma_index = pen.ai_model.findData("gemma-4-26b-a4b-it")
+            assert gemma_index >= 0
+            pen.ai_model.setCurrentIndex(gemma_index)
+            assert pen.ai_preview is None
             pen.ai_mode.setCurrentIndex(1)
             assert pen.ai_document.count() == 1
             pen._ai_prepare()
@@ -129,6 +133,7 @@ def run(report_path):
                 assert time.monotonic() < deadline
             assert pen.tara_btn.text() == "Şimdi tara"
             assert not pen.scan_dialog.isModal()
+            assert pen.scan_history.count() > 0
             pen._nav_toggle()
             assert pen.nav.horizontalScrollBar().maximum() == 0
             pen._nav_toggle()
@@ -149,7 +154,8 @@ def run(report_path):
                                            "excel-preview", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
-                                           "packaged-turkish-ocr", "ai-local-preview-no-network"])
+                                           "packaged-turkish-ocr", "ai-local-preview-no-network",
+                                           "ai-model-switch", "durable-scan-history"])
     except Exception as error:
         report["stage"] = current_stage
         report["error"] = repr(error)

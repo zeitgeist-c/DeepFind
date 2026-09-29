@@ -10,6 +10,7 @@ from . import ocr as ocr_mod
 from . import queue as q
 from . import scan as scan_mod
 from .migrate import EXTRACTOR_VERSION
+from . import migrate
 
 STABLE_NS = 2_000_000_000  # 2 sn icinde degismisse kararli degil
 DEFER_SEC = 60
@@ -283,6 +284,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
     stats = {"found": 0, "done": 0, "changed": 0, "unstable": 0, "failed": 0,
              "missing": 0, "ocr_done": 0, "ocr_deferred": 0, "ocr_failed": 0,
              "hashed": 0, "skipped": 0, "complete": False, "result": "partial"}
+    if "updated_at" not in {r[1] for r in con.execute("PRAGMA table_info(scan_runs)")}:
+        migrate.ensure_v8(con)
     with ScanLock(vault_path):
         con.execute("CREATE TEMP TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
         con.execute("DELETE FROM scan_selected")
@@ -295,10 +298,29 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         all_complete = True
         seen = set()
         last_report = 0.0
+        last_checkpoint = 0.0
+
+        def checkpoint(stage, *, force=False):
+            nonlocal last_checkpoint
+            now = time.monotonic()
+            if not force and now - last_checkpoint < 5:
+                return
+            con.execute(
+                "UPDATE scan_runs SET updated_at=?, stage=?, found=?, done=?, pending=?, "
+                "failed=?, ocr_done=?, ocr_failed=? WHERE run_id=?",
+                (int(time.time()), stage, stats["found"], stats["done"],
+                 con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
+                             "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0],
+                 stats["failed"], stats["ocr_done"],
+                 stats["ocr_failed"], run_id),
+            )
+            con.commit()
+            last_checkpoint = now
 
         def report(stage, path="", result="", force=False):
             nonlocal last_report
             now = time.monotonic()
+            checkpoint(stage)
             if progress and (force or now - last_report >= 0.2):
                 pending = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running')"
                                       " AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
@@ -439,8 +461,11 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             if not (stop and stop()):
                 report("Kopyalar doğrulanıyor", root, force=True)
                 stats["hashed"] = dup_mod.verify_pending(con, scoped=True, stop=stop).get("verified", 0)
-        except Exception:
-            pass
+        except Exception as error:
+            stats["failed"] += 1
+            con.execute("UPDATE scan_runs SET error_code='HASH_ERROR' WHERE run_id=?", (run_id,))
+            con.commit()
+            report("Kopya doğrulaması tamamlanamadı", root, type(error).__name__, force=True)
         # --- kayip dosya: yalniz tam kapsamda ---
         if all_complete and not (stop and stop()):
             rows = con.execute("SELECT file_id, path FROM files").fetchall()
@@ -456,10 +481,13 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                     con.execute("UPDATE files SET index_status='missing' WHERE file_id=?", (fid,))
                     stats["missing"] += 1
             con.commit()
-            pending = con.execute("SELECT count(*) FROM jobs WHERE file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
+            pending = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
+                                  "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
             stats["complete"] = not pending and not stats["failed"] and not stats["ocr_failed"]
             stats["result"] = "complete" if stats["complete"] else "partial"
-        stats["pending"] = con.execute("SELECT count(*) FROM jobs WHERE file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
+        stats["pending"] = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
+                                       "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
+        checkpoint("Bitti", force=True)
         report("Tarama tamamlandı" if stats["complete"] else "Tarama durdu", root, force=True)
         con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?",
                     (int(time.time()), stats["result"], run_id))

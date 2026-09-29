@@ -104,6 +104,15 @@ def test_tema_uc_mod(pencere):
     assert theme.apply(_app(), "koyu") == "koyu"
     assert theme.resolve("sistem", True) == "koyu"
     assert theme.resolve("sistem", False) == "acik"
+    from evrakci import ai
+    pencere.nav.setCurrentRow(6)
+    pencere.ai_question.setText("Ankara arayüz testi")
+    pencere._ai_prepare()
+    assert pencere.ai_preview is not None
+    index = pencere.ai_model.findData("gemini-3.1-flash-lite")
+    pencere.ai_model.setCurrentIndex(index)
+    assert migrate.get_setting(pencere.con, "ai_model") == "gemini-3.1-flash-lite"
+    assert pencere.ai_preview is None and ai.endpoint(pencere.ai_model.currentData())
 
 
 def test_arama_sonuc_ve_onizleme(pencere, tmp_path):
