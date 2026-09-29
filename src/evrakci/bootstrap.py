@@ -1,8 +1,7 @@
 """İlk kasayı arayüzü bekletmeden hazırlar; kaynak dosyalara dokunmaz."""
 import os
 from PySide6.QtCore import QObject, Signal
-from . import vault, schema, migrate
-from .vocab import ensure_v5
+from . import vault, migrate
 
 
 class Bootstrap(QObject):
@@ -17,9 +16,7 @@ class Bootstrap(QObject):
         con = None
         try:
             con = vault.open_vault(self.path, self.password)
-            schema.ensure_schema(con)
-            ensure_v5(con)
-            migrate.ensure_v8(con)
+            migrate.ensure_current(con)
             for root in self.selection['kokler']:
                 con.execute("INSERT OR IGNORE INTO roots(display_path, canonical_path, company_rule) VALUES (?,?,?)",
                             (root, os.path.normpath(root).lower(), self.selection['sirket_kurali']))

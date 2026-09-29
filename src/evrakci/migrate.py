@@ -111,7 +111,9 @@ SCAN_RUN_COLUMNS = {
 
 def ensure_v8(con) -> None:
     """Add encrypted scan checkpoints without replacing existing file/job records."""
-    ensure_v7(con)
+    version = con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
+    if not version or int(version[0]) < 7:
+        ensure_v7(con)
     columns = {row[1] for row in con.execute("PRAGMA table_info(scan_runs)")}
     for name, definition in SCAN_RUN_COLUMNS.items():
         if name not in columns:
@@ -121,6 +123,39 @@ def ensure_v8(con) -> None:
         "ON CONFLICT(k) DO UPDATE SET v=excluded.v"
     )
     con.commit()
+
+
+def ensure_current(con) -> None:
+    """Run the legacy backfill only for vaults that have not completed it."""
+    from . import schema
+    from . import normalize
+    from .vocab import ensure_v5
+
+    version = None
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name='schema_meta'").fetchone():
+        row = con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
+        version = int(row[0]) if row else None
+    if version is not None and version > 8:
+        raise RuntimeError("Kasa daha yeni bir sürümle oluşturulmuş; bu sürümle açılamaz.")
+    if version is not None and version < 7:
+        # Older startup paths wrote a lower version during their idempotent
+        # checks. The completed v5 marker plus v7 tables prove no backfill is
+        # needed, even if a previous launch stopped after rewriting the marker.
+        marker = con.execute("SELECT v FROM schema_meta WHERE k='normalizer_version'").fetchone()
+        tables = {row[0] for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE name IN "
+            "('roots','settings','docs_fts_folded','jobs','vocabulary')"
+        )}
+        if (marker and marker[0] == normalize.NORMALIZER_VERSION and
+                {'roots', 'settings', 'docs_fts_folded', 'jobs', 'vocabulary'} <= tables and
+                'folded_text' in {row[1] for row in con.execute("PRAGMA table_info(segments)")}):
+            con.execute("UPDATE schema_meta SET v='7' WHERE k='schema_version'")
+            con.commit()
+            version = 7
+    if version is None or version < 7:
+        schema.ensure_schema(con)
+        ensure_v5(con)
+    ensure_v8(con)
 
 
 def recover_scan_runs(con) -> int:

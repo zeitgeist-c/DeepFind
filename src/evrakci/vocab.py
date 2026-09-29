@@ -55,13 +55,19 @@ def ensure_v5(con) -> None:
         "INSERT INTO docs_fts_folded(docs_fts_folded, rowid, label, raw_text) "
         "VALUES ('delete', old.seg_id, old.label, old.folded_text); END"
     )
-    # mevcut satirlarin folded backfill'i (yalniz bos olanlar)
-    for seg_id, raw in con.execute(
-            "SELECT seg_id, raw_text FROM segments WHERE folded_text IS NULL OR folded_text=''").fetchall():
-        f = nz.folded(raw or "")
-        con.execute("UPDATE segments SET folded_text=? WHERE seg_id=?", (f, seg_id))
-        con.execute("INSERT INTO docs_fts_folded(rowid, label, raw_text)"
-                    " SELECT seg_id, label, ? FROM segments WHERE seg_id=?", (f, seg_id))
+    # Eski kasanın ilk geçişinde bile tüm içerikleri belleğe alma.
+    last_id = 0
+    while batch := con.execute(
+            "SELECT seg_id, raw_text FROM segments WHERE seg_id>? "
+            "AND (folded_text IS NULL OR folded_text='') ORDER BY seg_id LIMIT 100",
+            (last_id,)).fetchall():
+        for seg_id, raw in batch:
+            f = nz.folded(raw or "")
+            con.execute("UPDATE segments SET folded_text=? WHERE seg_id=?", (f, seg_id))
+            con.execute("INSERT INTO docs_fts_folded(rowid, label, raw_text)"
+                        " SELECT seg_id, label, ? FROM segments WHERE seg_id=?", (f, seg_id))
+            last_id = seg_id
+        con.commit()
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
         "ON CONFLICT(k) DO UPDATE SET v=excluded.v",

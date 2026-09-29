@@ -27,7 +27,7 @@ from . import coordinator, exclusions, history as hist_mod
 from . import ai, migrate, rank, sched, theme, vault, remember, diagnostics
 from .preview import Onizleme
 from .version import __version__
-from .vocab import ensure_v5, rebuild_vocab
+from .vocab import rebuild_vocab
 from .auth import ParolaDialog
 from .ui import brand, card, label, EmptyState, CardDelegate
 
@@ -166,13 +166,10 @@ class TaramaIsci(QObject):
 
     def kos(self):
         try:
-            from . import schema as schema_mod
-            from .migrate import ensure_v8
+            from .migrate import ensure_current
             con = vault.open_vault(self.kasa_yolu, self._sifre)
             try:
-                schema_mod.ensure_schema(con)
-                ensure_v5(con)
-                ensure_v8(con)
+                ensure_current(con)
                 toplam = {}
                 all_complete = True
                 for kok in self.kokler:
@@ -236,10 +233,13 @@ class AnaPencere(QMainWindow):
 
         self._kasa_ac()
         from . import ocr_setup
+        diagnostics.record("ocr_jobs_begin")
         ocr_setup.reopen_deferred(self.con)
+        diagnostics.record("ui_begin")
         self._arayuz()
         self._load_window_geometry()
         self._tepsi()
+        diagnostics.record("ui_ready")
         try:
             if QApplication.platformName() == "windows":
                 self._oturum_filtresi = OturumKilitFiltresi(self._otomatik_kilitle)
@@ -261,9 +261,10 @@ class AnaPencere(QMainWindow):
 
     # -- kurulum --
     def _kasa_ac(self):
-        from . import schema as schema_mod
-        from .migrate import ensure_v8, recover_scan_runs
+        from .migrate import ensure_current, recover_scan_runs
+        diagnostics.record("vault_open_begin")
         self.con = vault.open_vault(self.kasa_yolu, self._sifre)
+        diagnostics.record("vault_open_ready")
         current_fts = self.con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
         if current_fts and "remove_diacritics 0" not in current_fts[0]:
             try:
@@ -273,9 +274,9 @@ class AnaPencere(QMainWindow):
                 self.con.close()
                 self.con = None
                 raise RuntimeError("Geçiş öncesi indeks yedeği alınamadı; mevcut kasa korunuyor.")
-        schema_mod.ensure_schema(self.con)
-        ensure_v5(self.con)
-        ensure_v8(self.con)
+        diagnostics.record("schema_begin")
+        ensure_current(self.con)
+        diagnostics.record("schema_ready")
         recover_scan_runs(self.con)
 
     def _arayuz(self):
@@ -2295,16 +2296,32 @@ def main(kasa_yolu=None, sifre=None):
         diagnostics.record("ocr_unavailable")
         return 1
     diagnostics.record("ocr_ready")
+    opening = None
+    if os.path.getsize(args.kasa) > 100_000_000:
+        opening = QDialog()
+        opening.setWindowTitle("Evrakçı • Açılıyor")
+        opening.setWindowIcon(theme.app_icon())
+        opening.setMinimumWidth(380)
+        opening_layout = QVBoxLayout(opening)
+        opening_layout.addWidget(label("Şifreli kasa açılıyor…", "subheading"))
+        opening_layout.addWidget(label("Büyük arşiv hazırlanırken lütfen bekleyin.", "ikincil"))
+        opening.show()
+        app._startup_dialog = opening
+        app.processEvents()
     try:
         pen = AnaPencere(args.kasa, sifre)
         app._main_window = pen
     except Exception as error:
         diagnostics.record("main_window_failed", type(error).__name__)
+        if opening is not None:
+            opening.close()
         QMessageBox.critical(None, "Kasa", f"Açılamadı: {error}")
         return 2
     sifre = ""
     if not args.tray or pen.tepsi is None:
         pen.show()
+    if opening is not None:
+        opening.close()
     diagnostics.record("main_window_ready")
     try:
         return app.exec()

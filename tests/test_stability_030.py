@@ -116,6 +116,53 @@ def test_hash_failure_marks_scan_partial(tmp_path, monkeypatch):
         con.close()
 
 
+def test_existing_v7_vault_opens_without_legacy_backfill(tmp_path, monkeypatch):
+    db = str(tmp_path / "index.db")
+    con = vault.open_vault(db, "sentetik-mevcut-kasa-1234")
+    schema.ensure_schema(con)
+    ensure_v5(con)
+    migrate.ensure_v7(con)
+    con.execute("INSERT INTO files(path, name, ext) VALUES ('c:/ornek/koru.doc', 'koru.doc', '.doc')")
+    # A prior interrupted startup may have rewritten only this marker to v3.
+    con.execute("UPDATE schema_meta SET v='3' WHERE k='schema_version'")
+    con.commit()
+    con.close()
+
+    from evrakci import vocab
+
+    def legacy_called(_con):
+        raise AssertionError("Mevcut kasada ağır eski geçiş çalışmamalı")
+
+    monkeypatch.setattr(vocab, "ensure_v5", legacy_called)
+    con = vault.open_vault(db, "sentetik-mevcut-kasa-1234")
+    try:
+        migrate.ensure_current(con)
+        assert con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0] == "8"
+        assert con.execute("SELECT name FROM files").fetchone()[0] == "koru.doc"
+        migrate.ensure_current(con)
+        assert con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0] == "8"
+    finally:
+        con.close()
+
+
+def test_legacy_folded_backfill_processes_multiple_batches(tmp_path):
+    db = str(tmp_path / "index.db")
+    con = vault.open_vault(db, "sentetik-eski-kasa-1234")
+    try:
+        schema.ensure_schema(con)
+        fid = con.execute("INSERT INTO files(path, name, ext) VALUES ('c:/ornek/belge.doc', 'belge.doc', '.doc')").lastrowid
+        con.executemany(
+            "INSERT INTO segments(file_id, kind, label, raw_text) VALUES (?, 'body', 'satır', 'Ankara belge')",
+            [(fid,)] * 225,
+        )
+        con.commit()
+        ensure_v5(con)
+        assert con.execute("SELECT count(*) FROM segments WHERE folded_text='ankara belge'").fetchone()[0] == 225
+        assert con.execute("SELECT count(*) FROM docs_fts_folded").fetchone()[0] == 225
+    finally:
+        con.close()
+
+
 def test_second_launch_wakes_hidden_window():
     from concurrent.futures import ThreadPoolExecutor
     from PySide6.QtWidgets import QApplication
@@ -137,7 +184,7 @@ def test_second_launch_wakes_hidden_window():
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(_wake_existing, server.serverName())
             deadline = time.monotonic() + 4
-            while not future.done():
+            while not future.done() or window.calls == 0:
                 app.processEvents()
                 time.sleep(.01)
                 assert time.monotonic() < deadline
