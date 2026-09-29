@@ -216,10 +216,29 @@ def test_pdf_onizleme_sayfa_render(pencere):
     con = vault.open_vault(pencere.kasa_yolu, PW)
     try:
         row = con.execute("SELECT path FROM files").fetchone()
-        o.goster(con, {"path": row[0], "name": "belge.pdf", "ext": ".pdf",
-                       "label": "Sayfa 1", "page": 1, "snippet": "x", "why": ["ad"]})
+        class SegmentSorgusunuYasakla:
+            def execute(self, sql, args=()):
+                assert "segments" not in sql.lower(), "PDF seçimi arayüzde indeks taraması yaptı"
+                return con.execute(sql, args)
+
+        o.show()
+        o.goster(SegmentSorgusunuYasakla(),
+                 {"path": row[0], "name": "belge.pdf", "ext": ".pdf",
+                  "label": "Sayfa 1", "page": 1, "snippet": "Arama özeti", "why": ["ad"]})
+        assert o.yukleme.isVisible()
+        assert o.yukleme_cubugu.minimum() == o.yukleme_cubugu.maximum() == 0
         _wait_preview(o)
         assert o.goruntu.pixmap() is not None and not o.goruntu.pixmap().isNull()
+        assert not o.yukleme.isVisible()
+
+        o.goster(SegmentSorgusunuYasakla(),
+                 {"path": row[0] + ".yok", "name": "yok.pdf", "ext": ".pdf",
+                  "label": "Sayfa 1", "page": 1, "snippet": "Arama özeti", "why": ["ad"]})
+        assert o.yukleme.isVisible()
+        _wait_preview(o)
+        assert not o.yukleme.isVisible()
+        assert o.metin.toPlainText() == "Arama özeti"
+        assert "açılamadı" in o.uyari.text()
     finally:
         con.close()
         o.close()

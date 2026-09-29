@@ -90,6 +90,37 @@ def run(report_path):
                 time.sleep(0.01)
                 assert time.monotonic() < deadline
             assert pen.onizleme.tablo.rowCount() == 1
+            checkpoint("pdf-preview-loading")
+            import pypdfium2 as pdfium
+            from .preview import Onizleme
+            pdf_path = Path(temp) / "sentetik.pdf"
+            pdf = pdfium.PdfDocument.new()
+            pdf.new_page(width=612, height=792)
+            pdf.save(pdf_path)
+            pdf.close()
+
+            class NoSegmentQuery:
+                def execute(self, sql, args=()):
+                    assert "segments" not in sql.lower()
+                    return pen.con.execute(sql, args)
+
+            preview = Onizleme()
+            preview.show()
+            preview.goster(NoSegmentQuery(), {"path": str(pdf_path), "name": pdf_path.name,
+                                              "ext": ".pdf", "label": "Sayfa 1", "page": 1,
+                                              "snippet": "Sentetik özet"})
+            assert preview.yukleme.isVisible()
+            deadline = time.monotonic() + 30
+            while preview.busy():
+                app.processEvents()
+                time.sleep(0.01)
+                assert time.monotonic() < deadline
+            app.processEvents()
+            assert not preview.yukleme.isVisible()
+            assert preview.goruntu.pixmap() is not None and not preview.goruntu.pixmap().isNull()
+            preview.close()
+            preview.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             checkpoint("ai-local-preview")
             pen.nav.setCurrentRow(6)
             pen.ai_question.setText("Ankara denetim")
@@ -151,7 +182,7 @@ def run(report_path):
             from .startup_smoke import run as startup_run
             startup_run(temp)
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
-                                           "excel-preview", "dark-theme", "lock-unlock",
+                                           "excel-preview", "pdf-preview-loading", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",

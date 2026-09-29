@@ -11,7 +11,7 @@ import threading
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSpinBox,
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QProgressBar, QPushButton, QSpinBox,
                                QTableWidget, QTableWidgetItem, QTextBrowser,
                                QVBoxLayout, QWidget)
 from .ui import EmptyState, label
@@ -71,6 +71,20 @@ class Onizleme(QWidget):
         self.uyari.setWordWrap(True)
         self.uyari.hide()
         k.addWidget(self.uyari)
+
+        self.yukleme = QWidget()
+        yukleme_duzeni = QVBoxLayout(self.yukleme)
+        yukleme_duzeni.setContentsMargins(0, 12, 0, 12)
+        self.yukleme_yazisi = QLabel("PDF açılıyor…")
+        self.yukleme_yazisi.setAccessibleName("Önizleme yükleme durumu")
+        self.yukleme_cubugu = QProgressBar()
+        self.yukleme_cubugu.setRange(0, 0)
+        self.yukleme_cubugu.setTextVisible(False)
+        self.yukleme_cubugu.setAccessibleName("PDF önizlemesi hazırlanıyor")
+        yukleme_duzeni.addWidget(self.yukleme_yazisi)
+        yukleme_duzeni.addWidget(self.yukleme_cubugu)
+        self.yukleme.hide()
+        k.addWidget(self.yukleme)
 
         nav = QHBoxLayout()
         nav.setContentsMargins(0, 0, 0, 0)
@@ -147,13 +161,15 @@ class Onizleme(QWidget):
         self.bilgi.setText(f"{sonuc.get('ext', '').lstrip('.').upper()} • {sonuc.get('label','')}")
         self.uyari.hide()
         self._expected = con.execute("SELECT size,mtime_ns FROM files WHERE path=?", (path,)).fetchone()
-        rows = con.execute("SELECT label,raw_text FROM segments WHERE file_id="
-                           "(SELECT file_id FROM files WHERE path=?) ORDER BY seg_id LIMIT 60", (path,)).fetchall()
-        self._fallback = "\n\n".join(f"[{label}]\n{text}" for label, text in rows)
         ext = (sonuc.get("ext") or "").lower()
         if ext == ".pdf":
+            # Büyük kasada segments sorgusu arayüzü kilitleyebilir. Arama özeti hazırdır.
+            self._fallback = sonuc.get("snippet") or ""
             self._pdf(path, sonuc.get("page") or 1)
         elif ext in (".xlsx", ".xls"):
+            rows = con.execute("SELECT label,raw_text FROM segments WHERE file_id="
+                               "(SELECT file_id FROM files WHERE path=?) ORDER BY seg_id LIMIT 60", (path,)).fetchall()
+            self._fallback = "\n\n".join(f"[{label}]\n{text}" for label, text in rows)
             self._start("excel", (path, sonuc.get("label", "")))
         else:
             self._metin_goster(con, path)
@@ -171,6 +187,7 @@ class Onizleme(QWidget):
         self.tablo.setColumnCount(0)
         self.uyari.clear()
         self.uyari.hide()
+        self.yukleme.hide()
         self.pdf_nav.hide()
         self._expected = None
         self.baslik.setText("Önizleme")
@@ -189,8 +206,15 @@ class Onizleme(QWidget):
         self._generation += 1
         for thread in self._threads:
             thread.stop.set()
-        self.metin.show()
-        self.metin.setPlainText("Önizleme hazırlanıyor…")
+        if kind == "pdf":
+            self.canvas.hide()
+            self.goruntu.hide()
+            self.metin.hide()
+            self.yukleme_yazisi.setText("PDF sayfası açılıyor…")
+            self.yukleme.show()
+        else:
+            self.metin.show()
+            self.metin.setPlainText("Önizleme hazırlanıyor…")
         worker = PreviewWorker(kind, args, self._generation, self._expected, self)
         self._threads.append(worker)
         worker.ready.connect(self._ready)
@@ -205,11 +229,16 @@ class Onizleme(QWidget):
     def _ready(self, message):
         if message["generation"] != self._generation or self._path is None:
             return
+        self.yukleme.hide()
         if "error" in message:
             self.goruntu.hide()
             self.metin.show()
-            self.metin.setPlainText(self._fallback or "İndeks metni bulunamadı.")
-            self.uyari.setText("Kaynak önizlemesi açılamadı; son indeks metni gösteriliyor.")
+            self.metin.setPlainText(self._fallback or "Önizleme metni bulunamadı.")
+            if message.get("kind") == "pdf":
+                durum = "arama özeti gösteriliyor" if self._fallback else "arama özeti de bulunamadı"
+            else:
+                durum = "son indeks metni gösteriliyor" if self._fallback else "indeks metni bulunamadı"
+            self.uyari.setText(f"Kaynak önizlemesi açılamadı; {durum}.")
             self.uyari.show()
             return
         if message.get("changed"):
