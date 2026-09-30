@@ -1447,8 +1447,11 @@ class AnaPencere(QMainWindow):
         self.ai_model.setAccessibleName("AI modeli")
         for model_id, caption in ai.MODELS.items():
             self.ai_model.addItem(caption, model_id)
-        selected = migrate.get_setting(self.con, "ai_model", ai.MODEL)
-        self.ai_model.setCurrentIndex(max(0, self.ai_model.findData(selected)))
+        saved = migrate.get_setting(self.con, "ai_model", ai.MODEL)
+        selected = ai.selected_model(saved)
+        self.ai_model.setCurrentIndex(self.ai_model.findData(selected))
+        if selected != saved:
+            migrate.set_setting(self.con, "ai_model", selected)
         layout.addWidget(self.ai_model)
         key_row = QHBoxLayout()
         self.ai_key_input = QLineEdit()

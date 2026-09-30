@@ -67,6 +67,18 @@ def test_cancelled_scan_keeps_index_and_interrupted_run_is_recovered(tmp_path, m
 
 
 def test_model_allowlist_and_gemma_body():
+    assert list(ai.MODELS) == ["gemini-3.6-flash", "gemini-3.5-flash-lite",
+                               "gemini-3.1-flash-lite", "gemma-4-26b-a4b-it"]
+    assert ai.MODEL == "gemini-3.6-flash"
+    assert ai.selected_model("gemini-3.8-flash") == "gemini-3.6-flash"
+    assert ai.selected_model("gemini-3.5-flash") == "gemini-3.5-flash-lite"
+    assert ai.selected_model("gemma-4-26b-a4b-it") == "gemma-4-26b-a4b-it"
+    assert ai.endpoint("gemini-3.6-flash").endswith("gemini-3.6-flash:generateContent")
+    assert ai.endpoint("gemini-3.5-flash-lite").endswith("gemini-3.5-flash-lite:generateContent")
+    with pytest.raises(ValueError, match="Desteklenmeyen"):
+        ai.endpoint("gemini-3.8-flash")
+    with pytest.raises(ValueError, match="Desteklenmeyen"):
+        ai.endpoint("gemini-3.5-flash")
     assert ai.endpoint("gemini-3.1-flash-lite").endswith("gemini-3.1-flash-lite:generateContent")
     with pytest.raises(ValueError, match="Desteklenmeyen"):
         ai.endpoint("../../other")

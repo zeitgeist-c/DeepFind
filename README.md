@@ -1,14 +1,14 @@
-# Evrakçı 0.3.2
+# Evrakçı 0.3.3
 
 Windows için yerel, şifreli belge arama uygulaması. Kaynak belgeler PDF/XLSX/XLS/DOCX olarak okunur; arama indeksi bu bilgisayarda tutulur.
 
-0.3.2, PDF ön izlemesi seçildiğinde büyük kasada arayüzü durduran metin taramasını kaldırır. PDF sayfası hazırlanırken animasyonlu yükleme göstergesi görünür. 0.3.1'in büyük kasa açılış düzeltmesi ve önceki işlevler korunur.
+0.3.3, AI Yardımcısı model listesini Gemini 3.6 Flash, Gemini 3.5 Flash-Lite, Gemini 3.1 Flash-Lite ve Gemma 4 26B A4B olarak günceller. Eski 3.8 Flash ve 3.5 Flash seçimleri ilk açılışta karşılıklarına taşınır. 0.3.2'nin PDF ön izleme düzeltmesi ve önceki işlevler korunur.
 
-Bu sürüm denetim/pilot sürümüdür. Plan V4'ün tüm kabul kapıları geçmiş değildir. Doğrulama ve sınırlar: DENETIM-0.3.2.md.
+Bu sürüm denetim/pilot sürümüdür. Plan V4'ün tüm kabul kapıları geçmiş değildir. Doğrulama ve sınırlar: DENETIM-0.3.3.md.
 
 ## Çalıştırma
 
-Evrakçı-0.3.2.zip dosyasını bir klasöre açın; içindeki Evrakçı-0.3.2.exe veya aynı adlı BAT dosyasını çalıştırın. ZIP içinden doğrudan çalıştırmayın; `_internal` ve `licenses` klasörlerini EXE yanında koruyun. Tek başına EXE'yi kopyalamak yeterli değildir.
+Evrakçı-0.3.3.zip dosyasını bir klasöre açın; içindeki Evrakçı-0.3.3.exe veya aynı adlı BAT dosyasını çalıştırın. ZIP içinden doğrudan çalıştırmayın; `_internal` ve `licenses` klasörlerini EXE yanında koruyun. Tek başına EXE'yi kopyalamak yeterli değildir.
 
 İlk açılışta şifreyi iki kez belirleyin ve kaynak klasörleri seçin. Sonraki açılışta aynı şifre kullanılır. Ayarlar > Parolayı değiştir: mevcut şifre + yeni şifre + yeni şifre tekrarı. Önceki yedekler eski şifreyi gerektirir. Şifre unutulursa kasanın açılacağı vaat edilmez; kaynak belgeler etkilenmez.
 
@@ -18,7 +18,7 @@ Başka bilgisayarda mevcut arşivle devam etmek için uygulama klasörünü ve �
 
 OCR motoru ZIP içinde bulunur. İlk açılışta `tur`, `eng` ve `osd` dil modelleri indirilip SHA-256 ile doğrulanır; bu aşama için internet veya aynı doğrulanmış dosyaları içeren çevrimdışı klasör gerekir. Modeller `%LOCALAPPDATA%/Evrakci/OCR/tessdata` içinde tutulur. Eski DOC biçiminin içerik araması bu sürümde desteklenmiş sayılmaz.
 
-AI Yardımcısı isteğe bağlıdır. Gemini 3.8 Flash, Gemini 3.5 Flash, Gemini 3.1 Flash-Lite ve Gemma 4 26B A4B arasından model seçebilirsiniz. Gemini API anahtarını bu sayfada şifreli kasaya kaydedin. Soru veya özetlenecek belgeyi seçip **Alıntıları hazırla** ile yerel kanıtı görün; yalnız **Gösterilen alıntıları gönder** düğmesi Google API'sine ağ isteği yapar. Yanıtlar kaynak segment kimlikleriyle doğrulanır ve kaynak belgelere geri dönülebilir. Uzun belgelerde yalnız ekranda belirtilen kesitler özetlenir; AI yanıtı belge yerine geçmez. API anahtarı ve internet yoksa klasik arama ve OCR çalışmaya devam eder.
+AI Yardımcısı isteğe bağlıdır. Gemini 3.6 Flash, Gemini 3.5 Flash-Lite, Gemini 3.1 Flash-Lite ve Gemma 4 26B A4B arasından model seçebilirsiniz. Gemini API anahtarını bu sayfada şifreli kasaya kaydedin. Soru veya özetlenecek belgeyi seçip **Alıntıları hazırla** ile yerel kanıtı görün; yalnız **Gösterilen alıntıları gönder** düğmesi Google API'sine ağ isteği yapar. Yanıtlar kaynak segment kimlikleriyle doğrulanır ve kaynak belgelere geri dönülebilir. Uzun belgelerde yalnız ekranda belirtilen kesitler özetlenir; AI yanıtı belge yerine geçmez. API anahtarı ve internet yoksa klasik arama ve OCR çalışmaya devam eder.
 
 İlk denemeyi küçük izinli veya yapay bir klasörde yapın. Gerçek NAS, temiz Windows, yüksek DPI ve 50.000 dosya testleri ayrıca bekliyor.
 

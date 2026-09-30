@@ -100,6 +100,9 @@ def pencere(tmp_path):
 
 def test_tema_uc_mod(pencere):
     _app()
+    assert [pencere.ai_model.itemText(i) for i in range(pencere.ai_model.count())] == [
+        "Gemini 3.6 Flash", "Gemini 3.5 Flash-Lite", "Gemini 3.1 Flash-Lite",
+        "Gemma 4 26B A4B"]
     assert theme.apply(_app(), "acik") == "acik"
     assert theme.apply(_app(), "koyu") == "koyu"
     assert theme.resolve("sistem", True) == "koyu"

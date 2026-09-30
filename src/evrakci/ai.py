@@ -8,14 +8,22 @@ from dataclasses import dataclass
 
 from . import rank
 
-MODEL = "gemini-3.8-flash"
+MODEL = "gemini-3.6-flash"
 MODELS = {
-    "gemini-3.8-flash": "Gemini 3.8 Flash",
-    "gemini-3.5-flash": "Gemini 3.5 Flash",
+    "gemini-3.6-flash": "Gemini 3.6 Flash",
+    "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
     "gemini-3.1-flash-lite": "Gemini 3.1 Flash-Lite",
     "gemma-4-26b-a4b-it": "Gemma 4 26B A4B",
 }
 ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+
+
+def selected_model(saved: str) -> str:
+    """Eski model tercihini aynı ailedeki yeni seçeneğe taşı."""
+    replacements = {"gemini-3.8-flash": "gemini-3.6-flash",
+                    "gemini-3.5-flash": "gemini-3.5-flash-lite"}
+    model = replacements.get(saved, saved)
+    return model if model in MODELS else MODEL
 
 
 def endpoint(model: str) -> str:

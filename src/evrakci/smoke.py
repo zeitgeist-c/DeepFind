@@ -17,7 +17,7 @@ def run(report_path):
     from PySide6.QtWidgets import QApplication
     from openpyxl import Workbook
     from . import schema, vault, theme
-    from .migrate import ensure_v8
+    from .migrate import ensure_v8, get_setting, set_setting
     from .vocab import ensure_v5, rebuild_vocab
     from .index import index_entry
     from .scan import Entry
@@ -71,10 +71,18 @@ def run(report_path):
             stat = source.stat()
             index_entry(con, Entry(str(source), source.name, ".xlsx", stat.st_size, stat.st_mtime_ns), result)
             rebuild_vocab(con)
+            set_setting(con, "ai_model", "gemini-3.5-flash")
             con.close()
             checkpoint("window")
             pen = AnaPencere(db, password)
             pen.show()
+            assert [pen.ai_model.itemData(i) for i in range(pen.ai_model.count())] == [
+                "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+                "gemma-4-26b-a4b-it"]
+            assert pen.ai_model.currentData() == "gemini-3.5-flash-lite"
+            assert get_setting(pen.con, "ai_model") == "gemini-3.5-flash-lite"
+            pen.ai_model.setCurrentIndex(0)
+            assert get_setting(pen.con, "ai_model") == "gemini-3.6-flash"
             pen.arama_kutu.setText("Ankara denetim")
             pen._ara_simdi()
             deadline = time.monotonic() + 30
@@ -186,7 +194,7 @@ def run(report_path):
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
-                                           "ai-model-switch", "durable-scan-history"])
+                                           "ai-model-switch", "ai-model-migration", "durable-scan-history"])
     except Exception as error:
         report["stage"] = current_stage
         report["error"] = repr(error)
