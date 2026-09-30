@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS exclusions(
 """
 
 SCHEMA_VERSION = "4"
-EXTRACTOR_VERSION = "a4-2"
+EXTRACTOR_VERSION = "archive-034"
 OCR_VERSION = "a6-1"
 
 
@@ -156,6 +156,36 @@ def ensure_current(con) -> None:
         schema.ensure_schema(con)
         ensure_v5(con)
     ensure_v8(con)
+    ensure_archive(con)
+
+def ensure_archive(con):
+    """Additive archive capabilities; existing index and version remain readable."""
+    for table, definitions in {
+        'segments': {'start_offset': 'INTEGER NOT NULL DEFAULT 0', 'end_offset': 'INTEGER NOT NULL DEFAULT 0'},
+        'jobs': {'cursor': 'INTEGER NOT NULL DEFAULT 0'},
+        'files': {'coverage': "TEXT NOT NULL DEFAULT ''"},
+    }.items():
+        cols = {r[1] for r in con.execute(f'PRAGMA table_info({table})')}
+        for col, definition in definitions.items():
+            if col not in cols:
+                con.execute(f'ALTER TABLE {table} ADD COLUMN {col} {definition}')
+    con.executescript('''CREATE TABLE IF NOT EXISTS extraction_stage(
+        file_id INTEGER REFERENCES files(file_id) ON DELETE CASCADE, signature TEXT,
+        position INTEGER, kind TEXT, page INTEGER, label TEXT, raw_text TEXT,
+        PRIMARY KEY(file_id,signature,position));
+        CREATE TABLE IF NOT EXISTS scan_errors(
+        run_id INTEGER REFERENCES scan_runs(run_id) ON DELETE CASCADE,
+        path TEXT, error_code TEXT, PRIMARY KEY(run_id,path));
+        CREATE TABLE IF NOT EXISTS ocr_coverage(
+        file_id INTEGER REFERENCES files(file_id) ON DELETE CASCADE, rev_id INTEGER,
+        page INTEGER, outcome TEXT, error_code TEXT, PRIMARY KEY(file_id,rev_id,page));
+        CREATE INDEX IF NOT EXISTS segments_file ON segments(file_id,seg_id);
+        CREATE INDEX IF NOT EXISTS jobs_ready ON jobs(status,kind,not_before);
+        CREATE INDEX IF NOT EXISTS files_path_status ON files(index_status,path);''')
+    con.execute("INSERT INTO schema_meta(k,v) VALUES('archive_version','034') ON CONFLICT(k) DO UPDATE SET v=excluded.v")
+    if 'start_offset' not in {r[1] for r in con.execute('PRAGMA table_info(extraction_stage)')}:
+        con.execute('ALTER TABLE extraction_stage ADD COLUMN start_offset INTEGER NOT NULL DEFAULT 0')
+    con.commit()
 
 
 def recover_scan_runs(con) -> int:

@@ -14,6 +14,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QProgressBar, QPushButton, QSpinBox,
                                QTableWidget, QTableWidgetItem, QTextBrowser,
                                QVBoxLayout, QWidget)
+from .tasks import DatabaseTask, indexed_text
 from .ui import EmptyState, label
 
 
@@ -46,6 +47,7 @@ class Onizleme(QWidget):
         self.setObjectName("preview")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self._path = None
+        self._index_view = False
         self._zoom = 1.0
         self._sayfa = 1
         self._toplam = 1
@@ -147,10 +149,16 @@ class Onizleme(QWidget):
         k.addWidget(self.metin, 1)
         self.empty = EmptyState("İçeriğe yakından bakın", "Bir arama sonucunu seçtiğinizde\nbelgenin önizlemesi burada açılır.", "document")
         k.addWidget(self.empty, 1)
+        self.index_button=QPushButton('İndeks metnini göster')
+        self.index_button.clicked.connect(self._show_index)
+        k.addWidget(self.index_button)
+        self.more_button=QPushButton('Sonraki bölümleri yükle')
+        self.more_button.clicked.connect(self._load_more)
+        k.addWidget(self.more_button)
         self.temizle()
 
     # -- dis API --
-    def goster(self, con, sonuc: dict):
+    def goster(self, con, sonuc: dict, password=None):
         """sonuc: rank.search_ranked kaydi (path, name, ext, label, page, snippet, why...)."""
         path = sonuc["path"]
         self.temizle()
@@ -160,6 +168,14 @@ class Onizleme(QWidget):
         self.baslik.setText(sonuc["name"])
         self.bilgi.setText(f"{sonuc.get('ext', '').lstrip('.').upper()} • {sonuc.get('label','')}")
         self.uyari.hide()
+        self._dbpath = con.execute('PRAGMA database_list').fetchone()[2]
+        self._password = password
+        self._offset=0
+        self._result=sonuc
+        if password is not None:
+            self.metin.setPlainText('İndeks içeriği yükleniyor…'); self.metin.show()
+            self._load_more()
+            return
         self._expected = con.execute("SELECT size,mtime_ns FROM files WHERE path=?", (path,)).fetchone()
         ext = (sonuc.get("ext") or "").lower()
         if ext == ".pdf":
@@ -176,10 +192,14 @@ class Onizleme(QWidget):
 
     def temizle(self):
         self._generation += 1
+        self._index_view = False
         for thread in self._threads:
             thread.stop.set()
         self._fallback = ""
         self._path = None
+        self._password = None
+        self._offset = 0
+        if hasattr(self,'more_button'): self.more_button.hide()
         self._orijinal = None
         self.goruntu.clear()
         self.tablo.clear()
@@ -201,6 +221,52 @@ class Onizleme(QWidget):
 
     def busy(self):
         return bool(self._threads)
+
+    def _show_index(self):
+        self._index_view=True
+        self.canvas.hide(); self.tablo.hide(); self.goruntu.hide(); self.metin.show()
+        self.metin.setPlainText(self._fallback or 'İndeks metni bulunamadı.')
+
+    def _load_more(self):
+        if not self._path or self._password is None: return
+        self.more_button.setEnabled(False)
+        path=self._path; generation=self._generation; offset=self._offset
+        def load(con):
+            rows=indexed_text(con,path,offset)
+            expected=con.execute('SELECT size,mtime_ns,index_status,error_code FROM files WHERE path=?',(path,)).fetchone()
+            try:
+                stat=os.stat(path); changed=expected and tuple(expected[:2])!=(stat.st_size,stat.st_mtime_ns); offline=False
+            except OSError: changed=False; offline=True
+            return rows,expected,changed,offline
+        worker=DatabaseTask(self._dbpath,self._password,load,self)
+        self._threads.append(worker)
+        worker.ready.connect(lambda value:self._index_ready(generation,offset,value))
+        worker.failed.connect(lambda error:self._index_error(generation,error))
+        worker.finished.connect(lambda:self._finished(worker)); worker.start()
+
+    def _index_error(self,generation,error):
+        if generation==self._generation:
+            self.uyari.setText('İndeks metni yüklenemedi: '+error); self.uyari.show()
+
+    def _index_ready(self,generation,offset,value):
+        if generation!=self._generation or not self._path: return
+        self.more_button.setEnabled(True)
+        rows,expected,changed,offline=value
+        self._expected=expected[:2] if expected else None
+        self._offset+=min(20,len(rows))
+        self.more_button.setVisible(len(rows)>20)
+        text='\n\n'.join(f'[{label}]\n{raw}' for _,label,raw,_ in rows[:20])
+        self._fallback=(self._fallback+'\n\n'+text).strip() if offset else text
+        self.metin.setPlainText(self._fallback or 'İndeks metni bulunamadı.')
+        if offline or changed or (expected and expected[2]!='ok'):
+            self.uyari.setText('Kaynak erişilemiyor; son indeks metni gösteriliyor.' if offline else
+                'Kaynak değişti; indeks önceki sürüme ait olabilir.' if changed else f'İçerik kısmi: {expected[3] or expected[2]}')
+            self.uyari.show()
+        if offset or offline or self._index_view: return
+        ext=self._result.get('ext','').lower()
+        if ext=='.pdf': self._pdf(self._path,self._result.get('page') or 1)
+        elif ext in ('.xlsx','.xls'): self._start('excel',(self._path,self._result.get('label','').split(' • ')[0]))
+        elif ext in ('.jpg','.jpeg','.png','.tif','.tiff'): self._start('image',(self._path,self._result.get('page') or 1))
 
     def _start(self, kind, args):
         self._generation += 1
@@ -230,6 +296,7 @@ class Onizleme(QWidget):
         if message["generation"] != self._generation or self._path is None:
             return
         self.yukleme.hide()
+        if self._index_view: return
         if "error" in message:
             self.goruntu.hide()
             self.metin.show()
@@ -246,7 +313,7 @@ class Onizleme(QWidget):
             self.uyari.show()
         self.metin.hide()
         result = message["result"]
-        if message["kind"] == "pdf":
+        if message["kind"] in ('pdf','image'):
             self._sayfa, self._toplam = result["number"], result["total"]
             self.sayfa_no.blockSignals(True)
             self.sayfa_no.setMaximum(self._toplam)

@@ -98,6 +98,15 @@ def pencere(tmp_path):
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
+def _wait_jobs(window):
+    deadline=time.time()+15
+    while window._jobs and time.time()<deadline:
+        _app().processEvents()
+        time.sleep(0.01)
+    _app().processEvents()
+    assert not window._jobs
+
+
 def test_tema_uc_mod(pencere):
     _app()
     assert [pencere.ai_model.itemText(i) for i in range(pencere.ai_model.count())] == [
@@ -108,9 +117,10 @@ def test_tema_uc_mod(pencere):
     assert theme.resolve("sistem", True) == "koyu"
     assert theme.resolve("sistem", False) == "acik"
     from evrakci import ai
-    pencere.nav.setCurrentRow(6)
+    pencere._ai_show()
     pencere.ai_question.setText("Ankara arayüz testi")
     pencere._ai_prepare()
+    _wait_jobs(pencere)
     assert pencere.ai_preview is not None
     index = pencere.ai_model.findData("gemini-3.1-flash-lite")
     pencere.ai_model.setCurrentIndex(index)
@@ -474,9 +484,10 @@ def test_020_ai_requires_explicit_send_and_clears_on_lock(pencere):
 
     fake = FakeNetwork()
     pencere.ai_network = fake
-    pencere.nav.setCurrentRow(6)
+    pencere._ai_show()
     pencere.ai_question.setText("Ankara arayüz testi")
     pencere._ai_prepare()
+    _wait_jobs(pencere)
     assert pencere.ai_preview is not None
     assert pencere.ai_send.isEnabled()
     assert pencere.ai_reply is None

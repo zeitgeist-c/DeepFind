@@ -7,6 +7,19 @@ def _perform(kind, args):
     if kind == "extract":
         from .extract import extract
         return extract(*args)
+    if kind == 'extract_window':
+        from .extract import extract_window
+        return extract_window(*args)
+    if kind == 'image_ocr':
+        from .image_ocr import ocr_images
+        return ocr_images(*args)
+    if kind == 'image':
+        from PIL import Image, ImageOps
+        path, number = args
+        with Image.open(path) as im:
+            total=getattr(im,'n_frames',1); im.seek(max(0,min(number-1,total-1)))
+            rgb=ImageOps.exif_transpose(im).convert('RGB'); rgb.thumbnail((1600,1600))
+            return dict(number=number,total=total,data=rgb.tobytes(),width=rgb.width,height=rgb.height)
     if kind == "ocr":
         from .ocr import ocr_document
         return ocr_document(*args)

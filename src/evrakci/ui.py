@@ -72,7 +72,7 @@ class CardDelegate(QStyledItemDelegate):
         self.dark_icon = theme.symbol_icon(kind, "#67D9BC")
 
     def sizeHint(self, option, index):
-        return QSize(280, 64 if self.compact else (100 if self.kind == "document" else 92))
+        return QSize(280, 64 if self.compact else (120 if self.kind == "document" else 92))
 
     def paint(self, painter, option, index):
         from PySide6.QtWidgets import QApplication
@@ -104,7 +104,7 @@ class CardDelegate(QStyledItemDelegate):
         font.setWeight(QFont.Normal)
         painter.setFont(font)
         painter.setPen(QColor(pal["ikincil"]))
-        for i, text in enumerate(lines[1:2] if self.compact else lines[1:3]):
+        for i, text in enumerate(lines[1:2] if self.compact else lines[1:4]):
             painter.drawText(left, int(rect.top() + (44 if self.compact else 50) + i * 20),
                              painter.fontMetrics().elidedText(text, Qt.ElideRight, width))
         painter.restore()

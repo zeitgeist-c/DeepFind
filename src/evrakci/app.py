@@ -30,8 +30,9 @@ from .version import __version__
 from .vocab import rebuild_vocab
 from .auth import ParolaDialog
 from .ui import brand, card, label, EmptyState, CardDelegate
+from . import archive_ui
 
-EKRANLAR = ["Ara", "Kaynaklar", "Tarama", "Geçmiş", "Yedekler", "Ayarlar", "AI Yardımcısı"]
+EKRANLAR = ["Ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
 
 
 class RailDelegate(QStyledItemDelegate):
@@ -75,9 +76,9 @@ class AramaIsci(QThread):
             con.set_progress_handler(lambda: int(self.stop.is_set()), 1000)
             q, year, ext, folder = self.request
             out = rank.search_ranked(con, q, year=year, ext=ext, limit=50,
-                                     folder=folder or None)
+                                     folder=folder or None, offset=getattr(self,"offset",0))
             if not self.stop.is_set():
-                self.sonuc.emit({"request": self.request, "out": out})
+                self.sonuc.emit({"request": self.request, "offset":getattr(self,'offset',0), "out": out})
         except Exception as error:
             if not self.stop.is_set():
                 self.sonuc.emit({"request": self.request, "error": type(error).__name__})
@@ -223,6 +224,11 @@ class AnaPencere(QMainWindow):
         self._exiting = False
         self._search_thread = None
         self._pending_search = None
+        self._jobs=[]
+        self._job_keys={}
+        self._job_pending={}
+        self._job_generation=0
+        self._search_offset=0
         self.setWindowTitle(f"Evrakçı {__version__}")
         self.setWindowIcon(theme.app_icon())
         self.setMinimumSize(1000, 640)
@@ -266,16 +272,24 @@ class AnaPencere(QMainWindow):
         self.con = vault.open_vault(self.kasa_yolu, self._sifre)
         diagnostics.record("vault_open_ready")
         current_fts = self.con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
-        if current_fts and "remove_diacritics 0" not in current_fts[0]:
+        migration_backup=None
+        archive_marker=self.con.execute("SELECT 1 FROM schema_meta WHERE k='archive_version'").fetchone() if current_fts else None
+        if current_fts and ("remove_diacritics 0" not in current_fts[0] or not archive_marker):
             try:
-                backup_mod.create_backup(self.con, self.kasa_yolu, self._sifre,
+                migration_backup=backup_mod.create_backup(self.con, self.kasa_yolu, self._sifre,
                                          self._yedek_dizin(), manual=True)
             except Exception:
                 self.con.close()
                 self.con = None
                 raise RuntimeError("Geçiş öncesi indeks yedeği alınamadı; mevcut kasa korunuyor.")
         diagnostics.record("schema_begin")
-        ensure_current(self.con)
+        try:
+            ensure_current(self.con)
+        except Exception:
+            self.con.close(); self.con=None
+            if migration_backup:
+                backup_mod.restore_replace(self.kasa_yolu,self._sifre,migration_backup,os.path.join(os.path.dirname(self.kasa_yolu),'staging'))
+            raise
         diagnostics.record("schema_ready")
         recover_scan_runs(self.con)
 
@@ -323,7 +337,7 @@ class AnaPencere(QMainWindow):
         from PySide6.QtCore import QSize
         self.nav.setIconSize(QSize(19, 19))
         self.nav.setItemDelegate(RailDelegate(self, self.nav))
-        for i, kind in enumerate(("search", "folder", "scan", "history", "backup", "settings", "search")):
+        for i, kind in enumerate(("search", "folder", "scan", "history", "folder", "settings")):
             self.nav.item(i).setIcon(theme.symbol_icon(kind))
         self.nav.currentRowChanged.connect(self._ekran)
         side.addWidget(self.nav, 1)
@@ -396,11 +410,13 @@ class AnaPencere(QMainWindow):
         self._ekran_yedekler()
         self._ekran_ayarlar()
         self._ekran_ai()
+        workspace.removeWidget(self.search_bar)
+        archive_ui.install(self)
         descriptions = ["Ad, içerik ve klasör bağlamıyla belgelerinizi bulun.",
                         "Taranacak klasörleri ve kapsam dışında kalan yolları yönetin.",
                         "Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.",
                         "Önceki aramalarınıza tek tıkla dönün.",
-                        "Şifreli indeksinizi koruyun ve doğrulanmış yedeklere dönün.",
+                        "Kayıtlı dosyaları, tam yollarını ve içerik durumlarını inceleyin.",
                         "Çalışma tercihleri ve kasa güvenliği.",
                         "Şifreli kasanızdaki alıntıları inceleyip isteğe bağlı bulut yanıtı alın."]
         for i, name in enumerate(EKRANLAR):
@@ -421,13 +437,25 @@ class AnaPencere(QMainWindow):
                 layout.insertWidget(0, heading)
         govde.addWidget(self.yigin)
 
-        self.onizleme = Onizleme()
+        self.preview_dialog=QDialog(self)
+        self.preview_dialog.setWindowTitle('Evrakçı • Belge ön izlemesi')
+        self.preview_dialog.resize(950,740)
+        preview_layout=QVBoxLayout(self.preview_dialog)
+        self.preview_path=QLabel(); self.preview_path.setWordWrap(True); self.preview_path.setTextFormat(Qt.PlainText)
+        self.preview_path.setTextInteractionFlags(Qt.TextSelectableByMouse); preview_layout.addWidget(self.preview_path)
+        tools=QHBoxLayout()
+        for caption,callback in [('Yolu kopyala',self._copy_path),('Klasörü aç',self._open_folder),('Dosyayı aç',self._open_file)]:
+            button=QPushButton(caption); button.clicked.connect(callback); tools.addWidget(button)
+        preview_layout.addLayout(tools)
+        self.onizleme = Onizleme(self.preview_dialog)
         self.onizleme.setMinimumWidth(320)
-        govde.addWidget(self.onizleme)
+        preview_layout.addWidget(self.onizleme)
+        self.preview_dialog.finished.connect(lambda _:self.onizleme.temizle())
         govde.setChildrenCollapsible(False)
         govde.setSizes([550, 420])
         workspace.addWidget(govde, 1)
         dis.addLayout(workspace, 1)
+        QTimer.singleShot(0,lambda:archive_ui.layout_cards(self))
         self.nav.setCurrentRow(0)
 
         self.durum = QStatusBar()
@@ -483,6 +511,119 @@ class AnaPencere(QMainWindow):
     def _otomatik_kilitle(self):
         if not remember.enabled(self.kasa_yolu):
             self.kilitle()
+
+    def _open_preview(self,result):
+        if self.con is None or self._locked: return
+        self.preview_path.setText(result['path'])
+        self.onizleme.goster(self.con,result,self._sifre)
+        self.preview_dialog.show(); self.preview_dialog.raise_()
+
+    def _copy_path(self):
+        QApplication.clipboard().setText(self.preview_path.text())
+
+    def _copy_result_path(self):
+        idx=self.sonuc_liste.currentIndex()
+        if idx.isValid() and idx.row()<len(self.sonuclar):
+            QApplication.clipboard().setText(self.sonuclar[idx.row()]['path'])
+
+    def _open_folder(self):
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(self.preview_path.text())))
+
+    def _open_file(self):
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(self.preview_path.text()))
+
+    def _files_refresh(self,reset=False):
+        archive_ui.files_refresh(self,reset)
+
+    def _files_page(self,direction):
+        archive_ui.files_page(self,direction)
+
+    def _file_open(self,*args):
+        archive_ui.file_open(self,*args)
+
+    def _coverage_report(self):
+        if self.con is None: return
+        dialog=QDialog(self); dialog.setWindowTitle('Evrakçı • İndeks kapsamı'); dialog.resize(850,600)
+        layout=QVBoxLayout(dialog); text=QPlainTextEdit(); text.setReadOnly(True); layout.addWidget(text)
+        more=QPushButton('Sonraki hatalar'); layout.addWidget(more)
+        state={'offset':0,'generation':self._job_generation}
+        def load():
+            offset=state['offset']; text.appendPlainText('Kapsam raporu yükleniyor…')
+            def operation(con):
+                return con.execute('SELECT path,error_code FROM scan_errors ORDER BY run_id DESC,path LIMIT 101 OFFSET ?',(offset,)).fetchall(),con.execute('SELECT index_status,count(*) FROM files GROUP BY index_status').fetchall()
+            def ready(value):
+                if not dialog.isVisible(): return
+                rows,counts=value
+                if offset==0: text.setPlainText('\n'.join(f'{archive_ui.STATUS.get(s,s)}: {n}' for s,n in counts)+'\n\nErişim hataları:')
+                text.appendPlainText('\n'.join(f'{path} • {code}' for path,code in rows[:100]) or 'Kayıtlı erişim hatası yok.')
+                state['offset']+=min(100,len(rows)); more.setEnabled(len(rows)>100)
+            archive_ui.job(self,'coverage_report',operation,ready)
+        more.clicked.connect(load); dialog.show(); load()
+
+    def _search_next(self):
+        self._search_offset+=50
+        self._ara_simdi(reset=False)
+
+    def _ai_show(self):
+        self._ai_refresh_docs()
+        self.ai_dialog.show(); self.ai_dialog.raise_()
+
+    def _ai_doc_page(self,direction):
+        self.ai_doc_offset=max(0,self.ai_doc_offset+direction*100) if direction else 0
+        self._ai_refresh_docs()
+
+    def _ai_test(self):
+        if self.con is None: return
+        key=migrate.get_setting(self.con,'gemini_api_key','')
+        if not key:
+            self.ai_connection.setText('Önce anahtarı kaydedin.'); return
+        request=QNetworkRequest(QUrl(ai.endpoint(self.ai_model.currentData())))
+        request.setHeader(QNetworkRequest.ContentTypeHeader,'application/json')
+        request.setRawHeader(b'x-goog-api-key',key.encode())
+        request.setTransferTimeout(15000)
+        import json
+        reply=self.ai_network.post(request,json.dumps({'contents':[{'parts':[{'text':'Reply OK'}]}],'generationConfig':{'maxOutputTokens':8}}).encode())
+        self._connection_reply=reply
+        self.ai_connection.setText('Bağlantı sınanıyor…')
+        def ready():
+            if self._locked: return
+            code=reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+            self.ai_connection.setText('Bağlantı doğrulandı.' if code==200 else {400:'İstek veya model geçersiz.',401:'Anahtar geçersiz.',403:'Anahtar veya model erişimi reddedildi.',404:'Model bulunamadı.',429:'Kota sınırına ulaşıldı.'}.get(code,'Ağ bağlantısı kurulamadı.'))
+            reply.deleteLater(); self._connection_reply=None
+        reply.finished.connect(ready)
+
+    def _ai_suggest(self):
+        if self.con is None or self.ai_reply is not None: return
+        key=migrate.get_setting(self.con,'gemini_api_key','')
+        if not key:
+            self.ai_status.setText('Önce anahtarı kaydedin.'); return
+        question=self.ai_question.text().strip()
+        if not 3<=len(question)<=1000:
+            self.ai_status.setText('Soruyu 3–1000 karakter arasında yazın.'); return
+        import json
+        request=QNetworkRequest(QUrl(ai.endpoint(self.ai_model.currentData())))
+        request.setHeader(QNetworkRequest.ContentTypeHeader,'application/json')
+        request.setRawHeader(b'x-goog-api-key',key.encode()); request.setTransferTimeout(20000)
+        body={'contents':[{'parts':[{'text':'Bu sorudan belge aramak için en fazla 8 anahtar sözcük çıkar. Tarih, tutar ve evrak numarasını koru. Yalnız JSON nesnesi döndür: {"query":"sözcükler"}. Soru: '+question}]}]}
+        reply=self.ai_network.post(request,json.dumps(body,ensure_ascii=False).encode())
+        self._suggestion_reply=reply; self.ai_status.setText('Yalnız soru gönderildi; arama sözcükleri hazırlanıyor…')
+        def ready():
+            if self._locked or self.ai_question.text().strip()!=question:
+                reply.deleteLater(); self._suggestion_reply=None; return
+            try:
+                payload=bytes(reply.readAll())
+                if len(payload)>10000: raise ValueError()
+                envelope=json.loads(payload)
+                raw=''.join(p.get('text','') for p in envelope['candidates'][0]['content']['parts'])
+                query=json.loads(raw)['query']
+                if not isinstance(query,str) or not 1<=len(query)<=300 or len(query.split())>16: raise ValueError()
+                self.ai_retrieval.setText(query); self.ai_status.setText('Önerilen sözcükleri inceleyin, ardından Alıntıları hazırla’ya basın.')
+            except (ValueError,KeyError,IndexError,TypeError):
+                self.ai_status.setText('Sorgu önerisi alınamadı; arama sözcüklerini kendiniz yazabilirsiniz.')
+            reply.deleteLater(); self._suggestion_reply=None
+        reply.finished.connect(ready)
 
     def _kisaltmalar(self):
         self.hareketsizlik = QTimer(self)
@@ -547,7 +688,8 @@ class AnaPencere(QMainWindow):
         k.addWidget(self.oneri)
         self.yigin.addWidget(w)
 
-    def _ara_simdi(self):
+    def _ara_simdi(self, reset=True):
+        if reset: self._search_offset=0
         self._debounce.stop()
         if self.con is None:
             return
@@ -579,6 +721,8 @@ class AnaPencere(QMainWindow):
         self._pending_search = None
         self.oneri.setText("Belgeler aranıyor…")
         self._search_thread = AramaIsci(self.kasa_yolu, self._sifre, request, self)
+        self._search_thread.offset=self._search_offset
+        self.search_progress.show()
         self._search_thread.sonuc.connect(self._arama_bitti)
         self._search_thread.finished.connect(self._arama_temizle)
         self._search_thread.start()
@@ -599,10 +743,15 @@ class AnaPencere(QMainWindow):
                    self.sirket_filtre.text().strip().lower())
         if message["request"] != current:
             return
+        if message.get('offset',0)!=self._search_offset:
+            return
         if "error" in message:
+            self.search_progress.hide()
             self.oneri.setText(f"Arama tamamlanamadı: {message['error']}")
             return
+        self.search_progress.hide()
         out = message["out"]
+        self.search_more.setVisible(out.get("has_more",False))
         res = out["results"]
         self.sonuclar = res
         self.sonuc_model.clear()
@@ -614,9 +763,14 @@ class AnaPencere(QMainWindow):
             from PySide6.QtGui import QTextDocument
             snippet = QTextDocument()
             snippet.setHtml(r.get("snippet", ""))
-            item = QStandardItem(f"{r['name']}\n{r.get('ext', '').lstrip('.').upper()}  •  {r['label']}\n"
+            item = QStandardItem(f"{r['name']}\n{r['path']}\n{r.get('ext', '').lstrip('.').upper()}  •  {r['label']}\n"
                                  + snippet.toPlainText()[:150])
+            if r.get('index_status')!='ok' or not r.get('content_available',True):
+                lines=item.text().splitlines()
+                lines[2]+=' • '+archive_ui.STATUS.get(r.get('index_status'),r.get('index_status',''))+' • '+(r.get('error_code') or '')+(' • Yalnız ad/yol eşleşmesi' if not r.get('content_available',True) else '')
+                item.setText('\n'.join(lines))
             item.setEditable(False)
+            item.setToolTip(r['path']+'\n'+snippet.toPlainText())
             self.sonuc_model.appendRow(item)
         if not res:
             self.oneri.setText("Sonuç yok." + (f" Yakın: {', '.join(out['suggestions'])}"
@@ -635,12 +789,9 @@ class AnaPencere(QMainWindow):
             pass
 
     def _sec(self, idx):
-        if self.con is None or not idx.isValid() or idx.row() >= len(self.sonuclar):
-            return
-        r = self.sonuclar[idx.row()]
-        self.onizleme.goster(self.con, r)
+        if self.con is None or not idx.isValid() or idx.row() >= len(self.sonuclar): return
+        self._open_preview(self.sonuclar[idx.row()])
 
-    # -- kaynaklar --
     def _ekran_kaynaklar(self):
         w = QWidget()
         k = QVBoxLayout(w)
@@ -739,6 +890,7 @@ class AnaPencere(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         QTimer.singleShot(0, self._source_layout)
+        QTimer.singleShot(0,lambda:archive_ui.layout_cards(self))
         if self._geometry_ready and not self.isMaximized():
             self._geometry_timer.start(500)
 
@@ -1213,27 +1365,7 @@ class AnaPencere(QMainWindow):
         self.yigin.addWidget(w)
 
     def _gecmis_tazele(self):
-        self.gecmis_model.clear()
-        try:
-            rows = hist_mod.list_all(self.con)
-        except Exception:
-            rows = []
-        for qid, q, f, _p, _t in rows:
-            import json
-            try:
-                values = json.loads(f or "{}")
-                parts = [str(values.get("yil") or ""),
-                         str(values.get("tur") or "").replace("tümü", ""),
-                         str(values.get("klasor") or "")]
-                description = " • ".join(part for part in parts if part)
-            except (ValueError, TypeError, AttributeError):
-                description = "Kayıtlı arama filtreleri"
-            item = QStandardItem(f"{q}\n{description or 'Tüm belgelerde arama'}")
-            item.setEditable(False)
-            item.setData(qid)
-            item.setData((q, f), Qt.UserRole + 1)
-            self.gecmis_model.appendRow(item)
-        self.gecmis_panel.setCurrentIndex(0 if self.gecmis_model.rowCount() else 1)
+        archive_ui.refresh_history(self)
 
     def _gecmis_kullan(self, idx):
         import json
@@ -1301,27 +1433,16 @@ class AnaPencere(QMainWindow):
         return os.path.abspath(d)
 
     def _yedek_tazele(self):
-        self.yedek_model.clear()
-        for b in backup_mod.list_backups(self._yedek_dizin()):
-            item = QStandardItem(f"{'Manuel yedek' if b['manuel'] else 'Otomatik yedek'}\n"
-                                 f"{os.path.basename(b['path'])}\n{b['boyut'] // 1024} KB • Şifreli kasa")
-            item.setEditable(False)
-            item.setData(b["path"])
-            self.yedek_model.appendRow(item)
-        self.yedek_panel.setCurrentIndex(0 if self.yedek_model.rowCount() else 1)
+        archive_ui.refresh_backups(self)
 
     def _yedek_al(self):
-        if self.con is None:
-            return
-        try:
-            y = backup_mod.create_backup(self.con, self.kasa_yolu, self._sifre,
-                                         self._yedek_dizin(),
-                                         manual=True,
-                                         forbid_under=self._kokler())
-            QMessageBox.information(self, "Yedek", f"Oluşturuldu ve doğrulandı:\n{y}")
-        except Exception as e:  # noqa: BLE001
-            QMessageBox.warning(self, "Yedek", f"Başarısız: {e}")
-        self._yedek_tazele()
+        if self.con is None: return
+        path=self.kasa_yolu; password=self._sifre; directory=self._yedek_dizin(); roots=self._kokler()
+        self.durum.showMessage('Yedek oluşturuluyor…')
+        def ready(path):
+            self.durum.showMessage('Yedek oluşturuldu ve doğrulandı: '+path)
+            self._yedek_tazele()
+        archive_ui.job(self,'backup_create',lambda con:backup_mod.create_backup(con,path,password,directory,manual=True,forbid_under=roots),ready,writable=True)
 
     def _geri_yukle(self):
         if not self._exclusive_ready():
@@ -1330,7 +1451,7 @@ class AnaPencere(QMainWindow):
         if not idx.isValid():
             return
         yol = self.yedek_model.item(idx.row()).data()
-        password_dialog = ParolaDialog(self, verify=lambda pw: backup_mod.verify_backup(yol, pw))
+        password_dialog = ParolaDialog(self, verify=lambda pw: None)
         password_dialog.setWindowTitle("Yedek şifresini doğrulayın")
         if password_dialog.exec() != QDialog.Accepted:
             return
@@ -1341,22 +1462,18 @@ class AnaPencere(QMainWindow):
                 "Mevcut kasa rollback'e alınacak ve seçili yedek açılacak.\nDevam edilsin mi?") \
                 != QMessageBox.Yes:
             return
-        self.con.close()
-        self.con = None
-        try:
-            rap = backup_mod.restore_replace(
-                self.kasa_yolu, self._sifre, yol,
-                os.path.join(os.path.dirname(self.kasa_yolu), "staging"),
-                backup_password=backup_password)
-            QMessageBox.information(
-                self, "Geri yükle",
-                f"Tamam. Dosya: {rap['kasa_counts'].get('files', '?')} • "
-                f"Korunan kural: {len(rap.get('korunan_kurallar', []))}")
-        except Exception as e:  # noqa: BLE001
-            QMessageBox.critical(self, "Geri yükle", f"Başarısız, mevcut kasa korunuyor: {e}")
-        self._kasa_ac()
-        self._yedek_tazele()
-        self._durum_yaz()
+        path=self.kasa_yolu; password=self._sifre
+        def restore(con):
+            con.close()
+            return backup_mod.restore_replace(path,password,yol,os.path.join(os.path.dirname(path),'staging'),backup_password=backup_password)
+        def reopen(message):
+            self.centralWidget().setEnabled(True)
+            self._kasa_ac(); self._yedek_tazele(); self._durum_yaz()
+            self.durum.showMessage(message)
+        self.con.close(); self.con=None
+        archive_ui.job(self,'restore',restore,lambda result:reopen(f"Geri yükleme tamamlandı: {result['kasa_counts'].get('files','?')} dosya"),writable=True,failed=lambda error:reopen('Geri yükleme başarısız; mevcut kasa korunuyor: '+error))
+        self.centralWidget().setEnabled(False)
+        self.durum.showMessage('Yedek doğrulanıyor ve geri yükleniyor…')
 
     # -- ayarlar --
     def _ekran_ayarlar(self):
@@ -1538,20 +1655,7 @@ class AnaPencere(QMainWindow):
             self._ai_refresh_docs()
 
     def _ai_refresh_docs(self):
-        if self.con is None:
-            return
-        documents = ai.list_documents(self.con)
-        current = [(self.ai_document.itemData(i), self.ai_document.itemText(i))
-                   for i in range(self.ai_document.count())]
-        wanted = [(fid, name + " • " + path) for fid, name, path in documents]
-        if current == wanted:
-            return
-        old_id = self.ai_document.currentData()
-        self.ai_document.clear()
-        for fid, caption in wanted:
-            self.ai_document.addItem(caption, fid)
-        if old_id is not None:
-            self.ai_document.setCurrentIndex(max(0, self.ai_document.findData(old_id)))
+        archive_ui.refresh_docs(self)
 
     def _ai_save_key(self):
         key = self.ai_key_input.text().strip()
@@ -1588,22 +1692,23 @@ class AnaPencere(QMainWindow):
         if self.con is None or self.ai_reply is not None:
             return
         self._ai_clear_preview()
-        try:
-            if self.ai_mode.currentData() == "summary":
-                file_id = self.ai_document.currentData()
-                if file_id is None:
-                    raise ValueError("Özetlenecek içerikli belge yok. Önce tarama yapın.")
-                preview = ai.prepare_summary(self.con, file_id)
-            else:
-                preview = ai.prepare_question(self.con, self.ai_question.text())
-        except Exception as error:
-            self.ai_status.setText(str(error))
-            return
-        self.ai_preview = preview
-        self.ai_preview_box.setPlainText(ai.preview_text(preview))
-        self.ai_send.setEnabled(True)
-        self.ai_status.setText(f"{len(preview.sources)} alıntı hazır. Göndermeden önce metni inceleyin."
-                               + (" Belgenin yalnız gösterilen bölümü özetlenecek." if preview.truncated else ""))
+        question=self.ai_question.text()
+        retrieval=self.ai_retrieval.text().strip()
+        mode=self.ai_mode.currentData()
+        file_id=self.ai_document.currentData()
+        self.ai_status.setText('İlgili indeks bölümleri hazırlanıyor…')
+        def prepare(con):
+            if mode=='summary':
+                if file_id is None: raise ValueError('Önce bir belge seçin.')
+                return ai.prepare_summary(con,file_id)
+            return ai.prepare_question(con,question,retrieval or None)
+        def ready(preview):
+            if self.ai_question.text()!=question or self.ai_mode.currentData()!=mode or self.ai_retrieval.text().strip()!=retrieval: return
+            self.ai_preview=preview
+            self.ai_preview_box.setPlainText(ai.preview_text(preview))
+            self.ai_send.setEnabled(True)
+            self.ai_status.setText(f'{len(preview.sources)} alıntı hazır. Göndermeden önce inceleyin.' + (' Yalnız seçili kesitler gönderilecek.' if preview.truncated else ''))
+        archive_ui.job(self,'ai_prepare',prepare,ready,failed=lambda error:self.ai_status.setText(error))
 
     def _ai_send(self):
         preview = self.ai_preview
@@ -1677,7 +1782,7 @@ class AnaPencere(QMainWindow):
                 self.ai_status.setText("Kaynak indeksi değişti. Alıntıları yeniden hazırlayın.")
                 return
             self.nav.setCurrentRow(0)
-            self.onizleme.goster(self.con, source)
+            self._open_preview(source)
 
     def _ai_abort_timeout(self):
         if self.ai_reply is not None:
@@ -1692,8 +1797,14 @@ class AnaPencere(QMainWindow):
             reply.deleteLater()
         self._ai_clear_preview()
         self.ai_question.clear()
+        if hasattr(self,'ai_retrieval'): self.ai_retrieval.clear()
         self.ai_key_input.clear()
         self.ai_document.clear()
+        if hasattr(self,'ai_doc_query'): self.ai_doc_query.clear()
+        for attr in ('_suggestion_reply','_connection_reply'):
+            reply=getattr(self,attr,None)
+            if reply is not None:
+                reply.abort(); reply.deleteLater(); setattr(self,attr,None)
         self.ai_status.setText("Kasa kilitli.")
 
     def _forget_login(self):
@@ -1738,7 +1849,7 @@ class AnaPencere(QMainWindow):
     def _exclusive_ready(self):
         if self.con is None:
             return False
-        if self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy():
+        if self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy() or self._jobs:
             QMessageBox.information(self, "İşlem sürüyor", "Devam eden tarama, arama veya önizlemenin bitmesini bekleyin. Taramayı iptal edebilirsiniz.")
             return False
         return True
@@ -1770,27 +1881,18 @@ class AnaPencere(QMainWindow):
 
     # -- ekran/durum/tepsi/kilit --
     def _ekran(self, i):
+        started=time.perf_counter()
         if i == len(EKRANLAR):
             self.kilitle()
-            self.nav.blockSignals(True)
-            self.nav.setCurrentRow(0)
-            self.nav.blockSignals(False)
             return
+        if i<0 or i>=self.yigin.count(): return
         self.yigin.setCurrentIndex(i)
-        if hasattr(self, "search_bar"):
-            self.search_bar.setVisible(i == 0)
-        if hasattr(self, "onizleme"):
-            self.onizleme.setVisible(i == 0)
-        if i == 2 and self.isci_thread is not None:
-            self._scan_show()
-        if i == 3:
-            self._gecmis_tazele()
-        elif i == 4:
-            self._yedek_tazele()
-        elif i == 1:
-            self._kok_tazele()
-        elif i == 6:
-            self._ai_refresh_docs()
+        if i==2 and self.isci_thread is not None: self._scan_show()
+        if i==3: self._gecmis_tazele()
+        elif i==4: self._files_refresh(reset=True)
+        elif i==1: self._kok_tazele()
+        elif i==0: self._yedek_tazele()
+        QTimer.singleShot(0,lambda:diagnostics.record('tab_ready_ms',str(round((time.perf_counter()-started)*1000))))
 
     def _durum_yaz(self):
         try:
@@ -1913,6 +2015,17 @@ class AnaPencere(QMainWindow):
         if self._locked:
             return
         diagnostics.record("lock")
+        self._job_generation+=1
+        self._job_pending.clear()
+        self._list_cache.clear()
+        for worker in self._jobs: worker.stop.set()
+        from .vocab import clear_cache
+        clear_cache()
+        self.preview_dialog.hide(); self.ai_dialog.hide()
+        self.preview_path.clear(); self.file_rows=[]; self.file_model.clear(); self.file_filter.clear()
+        self.file_notice.clear(); self.search_progress.hide()
+        if getattr(self,'_connection_reply',None): self._connection_reply.abort()
+
         remember.forget(self.kasa_yolu)
         self._locked = True
         self._ai_abort()
@@ -1964,7 +2077,7 @@ class AnaPencere(QMainWindow):
         self._kilit_hazir()
 
     def _kilit_hazir(self):
-        if self.isci_thread is None and self._search_thread is None and not self.onizleme.busy():
+        if self.isci_thread is None and self._search_thread is None and not self.onizleme.busy() and not self._jobs:
             self._lock_poll.stop()
             from .ocr import clean_stale
             clean_stale(os.path.dirname(os.path.abspath(self.kasa_yolu)), max_age_sec=0)
@@ -1981,6 +2094,7 @@ class AnaPencere(QMainWindow):
     def _unlocked(self):
         diagnostics.record("unlock")
         self._locked = False
+        self.centralWidget().setEnabled(True)
         self._unlock_dialog.old.clear()
         self._son_hareket = dt.datetime.now()
         self._kok_tazele()
@@ -1996,6 +2110,11 @@ class AnaPencere(QMainWindow):
     def _cikis(self):
         diagnostics.record("exit")
         self._exiting = True
+        self._job_generation+=1
+        self._job_pending.clear()
+        for worker in self._jobs: worker.stop.set()
+        if self._jobs:
+            self.hide(); QTimer.singleShot(100,self._cikis); return
         self._ai_abort()
         if self.isci_thread is not None:
             if self.isci:
@@ -2030,7 +2149,7 @@ class AnaPencere(QMainWindow):
             self.scan_dialog.hide()
             self.hide()
             return
-        if self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy():
+        if self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy() or self._jobs:
             ev.ignore()
             self._cikis()
             return

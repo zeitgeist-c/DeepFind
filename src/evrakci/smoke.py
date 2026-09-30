@@ -32,7 +32,7 @@ def run(report_path):
     assert not QIcon(str(Path(__file__).parent / "assets/check-light.svg")).pixmap(16, 16).isNull()
     checkpoint("fixture")
     try:
-        with tempfile.TemporaryDirectory(prefix="evrakci-package-smoke-") as temp:
+        with tempfile.TemporaryDirectory(prefix="evrakci-package-smoke-",ignore_cleanup_errors=True) as temp:
             from .wizard import Sihirbaz
             from PySide6.QtWidgets import QWizard
             from PySide6.QtCore import QCoreApplication, QEvent
@@ -76,6 +76,11 @@ def run(report_path):
             checkpoint("window")
             pen = AnaPencere(db, password)
             pen.show()
+            app.processEvents()
+            from .archive_ui import layout_cards
+            pen.resize(1500,1000); app.processEvents(); layout_cards(pen); app.processEvents()
+            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == ['Ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']
+            assert len(pen.archive_cards)==4 and all(card.width()==card.height() for card in pen.archive_cards)
             assert [pen.ai_model.itemData(i) for i in range(pen.ai_model.count())] == [
                 "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
                 "gemma-4-26b-a4b-it"]
@@ -130,9 +135,13 @@ def run(report_path):
             preview.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             checkpoint("ai-local-preview")
-            pen.nav.setCurrentRow(6)
+            pen._ai_show()
             pen.ai_question.setText("Ankara denetim")
             pen._ai_prepare()
+            deadline=time.monotonic()+30
+            while pen._jobs:
+                app.processEvents(); time.sleep(0.01)
+                assert time.monotonic()<deadline
             assert pen.ai_preview is not None and pen.ai_reply is None
             assert "Ankara" in pen.ai_preview_box.toPlainText()
             gemma_index = pen.ai_model.findData("gemma-4-26b-a4b-it")
@@ -140,8 +149,15 @@ def run(report_path):
             pen.ai_model.setCurrentIndex(gemma_index)
             assert pen.ai_preview is None
             pen.ai_mode.setCurrentIndex(1)
+            deadline=time.monotonic()+30
+            while pen._jobs:
+                app.processEvents(); time.sleep(0.01)
+                assert time.monotonic()<deadline
             assert pen.ai_document.count() == 1
             pen._ai_prepare()
+            while pen._jobs:
+                app.processEvents(); time.sleep(0.01)
+                assert time.monotonic()<deadline
             assert pen.ai_preview is not None and pen.ai_preview.mode == "summary"
             assert pen.ai_reply is None
             checkpoint("packaged-ocr")
@@ -153,6 +169,7 @@ def run(report_path):
                                        fill="black", font=ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 65))
             ocr_image = str(Path(temp) / "ocr-probe.png")
             image.save(ocr_image)
+            os.utime(ocr_image,(time.time()-10,time.time()-10))
             tsv, _, error = ocr._run_tess(ocr_image, "tur", 6, 30, temp)
             assert error is None and "Ankara" in ocr.parse_tsv(tsv)[0]
             checkpoint("scan-popup")
@@ -173,6 +190,14 @@ def run(report_path):
             assert pen.tara_btn.text() == "Şimdi tara"
             assert not pen.scan_dialog.isModal()
             assert pen.scan_history.count() > 0
+            checkpoint('archive-file-list-image-ocr')
+            pen.nav.setCurrentRow(4)
+            deadline=time.monotonic()+30
+            while pen._jobs:
+                app.processEvents(); time.sleep(.01); assert time.monotonic()<deadline
+            assert any(row[1]==ocr_image for row in pen.file_rows)
+            from .rank import search_ranked
+            assert any(row['path']==ocr_image for row in search_ranked(pen.con,'Ankara belge')['results'])
             pen._nav_toggle()
             assert pen.nav.horizontalScrollBar().maximum() == 0
             pen._nav_toggle()
@@ -185,7 +210,10 @@ def run(report_path):
             pen._unlock_dialog._submit()
             assert pen.con is not None and not pen._locked
             pen._exiting = True
-            pen.close()
+            pen._cikis()
+            while pen._jobs or pen.onizleme.busy():
+                app.processEvents(); time.sleep(0.01)
+                assert time.monotonic()<deadline
             checkpoint("actual-first-run")
             from .startup_smoke import run as startup_run
             startup_run(temp)
@@ -194,9 +222,16 @@ def run(report_path):
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
-                                           "ai-model-switch", "ai-model-migration", "durable-scan-history"])
+                                           "ai-model-switch", "ai-model-migration", "durable-scan-history",
+                                           'four-square-cards','paged-archive-files','image-ocr-indexed'])
     except Exception as error:
         report["stage"] = current_stage
         report["error"] = repr(error)
+        if 'pen' in locals():
+            pen._cikis()
+            deadline=time.monotonic()+30
+            while pen._jobs or pen.onizleme.busy() or pen.isci_thread is not None:
+                app.processEvents(); time.sleep(.01)
+                if time.monotonic()>deadline: break
     Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if report["ok"] else 2

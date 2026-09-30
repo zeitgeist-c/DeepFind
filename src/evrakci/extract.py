@@ -18,6 +18,7 @@ class Segment:
     page: int | None
     label: str
     raw_text: str
+    start_offset: int = 0
 
 
 @dataclass
@@ -25,6 +26,92 @@ class ExtractResult:
     segments: list = field(default_factory=list)
     status: str = "ok"  # ok | partial | unsupported_content | corrupt | encrypted | size_limit
     error_code: str | None = None
+    next_cursor: int | None = None
+
+def chunks(segment, size=4000):
+    """Bounded search units with original text offsets (no content dropped)."""
+    raw = segment.raw_text or ''
+    if not raw:
+        yield segment, segment.start_offset, segment.start_offset
+    start=0
+    while start<len(raw):
+        end=min(len(raw),start+size)
+        if end<len(raw):
+            boundary=max(raw.rfind('\n',start+size//2,end),raw.rfind(' ',start+size//2,end))
+            if boundary>start: end=boundary+1
+        yield Segment(segment.kind, segment.page, segment.label, raw[start:end]),segment.start_offset+start,segment.start_offset+end
+        start=end
+
+def extract_window(path, ext, size, cursor=0, batch=100):
+    """Cursor counts source units; PDF and Excel continue beyond legacy caps."""
+    if size is not None and size>SIZE_LIMIT:
+        return ExtractResult(status='partial',error_code='SIZE_LIMIT')
+    if ext == '.pdf':
+        import pypdfium2 as pdfium
+        try:
+            doc = pdfium.PdfDocument(path)
+        except Exception as error:
+            return ExtractResult(status='encrypted' if 'password' in str(error).lower() else 'corrupt', error_code='PASSWORD_REQUIRED' if 'password' in str(error).lower() else 'CORRUPT_DOCUMENT')
+        try:
+            end=min(len(doc),cursor+batch); segments=[]
+            for i in range(cursor,end):
+                page=doc[i]
+                textpage=page.get_textpage()
+                try: text=textpage.get_text_range() or ''
+                finally: textpage.close(); page.close()
+                segments.append(Segment('pdf_page',i+1,f'Sayfa {i+1}',text))
+            return ExtractResult(segments,next_cursor=end if end<len(doc) else None)
+        finally: doc.close()
+    if ext in ('.xlsx','.xls'):
+        if ext=='.xlsx':
+            code=_zip_guard(path)
+            if code: return ExtractResult(status='partial',error_code=code)
+            import openpyxl
+            try: book=openpyxl.load_workbook(path,read_only=True,data_only=True)
+            except Exception: return ExtractResult(status='corrupt',error_code='CORRUPT_DOCUMENT')
+            sheets=((s.title,s.iter_rows(values_only=True)) for s in book.worksheets)
+        else:
+            import xlrd
+            try: book=xlrd.open_workbook(path,on_demand=True)
+            except Exception: return ExtractResult(status='corrupt',error_code='CORRUPT_DOCUMENT')
+            sheets=((s.name,(s.row_values(i) for i in range(s.nrows))) for s in book.sheets())
+        segments=[]; position=0; end=cursor+batch*10
+        try:
+            for title,rows in sheets:
+                for rowno,row in enumerate(rows,1):
+                    if position>=end: return ExtractResult(segments,next_cursor=position)
+                    if position>=cursor:
+                        values=[str(v) for v in row if v is not None and str(v).strip()]
+                        if values: segments.append(Segment('sheet',None,f'{title} • Satır {rowno}', ' | '.join(values)))
+                    position+=1
+            return ExtractResult(segments)
+        finally:
+            if ext=='.xlsx': book.close()
+            else: book.release_resources()
+    if ext in {'.jpg','.jpeg','.png','.tif','.tiff'}:
+        from PIL import Image
+        try:
+            with Image.open(path) as im: count=getattr(im,'n_frames',1)
+            end=min(count,cursor+batch)
+            return ExtractResult([Segment('image_page',i+1,f'Resim {i+1}','') for i in range(cursor,end)],next_cursor=end if end<count else None)
+        except Exception: return ExtractResult(status='corrupt',error_code='CORRUPT_IMAGE')
+    if ext=='.doc':
+        from .doc_adapter import extract_doc_guarded
+        result=extract_doc_guarded(path) or ExtractResult(status='unsupported_content',error_code='ENGINE_UNAVAILABLE')
+        if result.status!='ok': return result
+    elif ext=='.docx':
+        result=_docx(path,bounded=False)
+        if result.status!='ok': return result
+    else:
+        return extract(path,ext,size)
+    from itertools import islice
+    def units():
+        for segment in result.segments:
+            for part,start,end in chunks(segment):
+                part.start_offset=start
+                yield part
+    parts=list(islice(units(),cursor,cursor+batch+1))
+    return ExtractResult(parts[:batch],next_cursor=cursor+batch if len(parts)>batch else None)
 
 
 def _budget_text(parts: list, status: str = "ok",
@@ -193,7 +280,7 @@ def _xls(path: str) -> ExtractResult:
     return ExtractResult(segs, status, code)
 
 
-def _docx(path: str) -> ExtractResult:
+def _docx(path: str, bounded=True) -> ExtractResult:
     from docx import Document
 
     zg = _zip_guard(path)
@@ -229,6 +316,8 @@ def _docx(path: str) -> ExtractResult:
             text = "\n".join(p.text for p in part.paragraphs if p.text.strip())
             if text:
                 segs.append(Segment("para", None, label, text))
+    if not bounded:
+        return ExtractResult(segs)
     texts = [s.raw_text for s in segs]
     cut, status, code = _budget_text(texts)
     for s, t in zip(segs, cut):

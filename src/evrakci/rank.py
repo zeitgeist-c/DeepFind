@@ -1,166 +1,82 @@
-"""Belge duzeyi retrieval + sinifli siralama + aciklama (plan bolum 12-13).
-
-Sorgu kelimelerinin tek segmentte olmasi sart degil: her token icin eslesen
-belge kumeleri kesisir; konum/snippet en iyi segmentten (uydurma yok).
-"""
+"""Document retrieval in SQLite; limit only after intersection and filters."""
 from __future__ import annotations
-
 import re
+from . import normalize as nz, snippet as snip, vocab as vc
 
-from . import normalize as nz
-from . import snippet as snip
-from . import vocab as vc
-
-MAX_DOCS = 500
+MAX_DOCS = 500  # compatibility; never a per-token cutoff
 FUZZY_MIN_RESULTS = 5
 RAWTOK_RE = re.compile(r"[A-Za-zÇçĞğIıİiÖöŞşÜü0-9]+")
 
+def _files_with(con, table, token):
+    if table not in ('docs_fts', 'docs_fts_folded'):
+        raise ValueError('Invalid index')
+    return {r[0] for r in con.execute(f'SELECT DISTINCT s.file_id FROM {table} JOIN segments s ON s.seg_id={table}.rowid WHERE {table} MATCH ?', ('"'+token.replace('"','""')+'"',))}
 
-def _files_with(con, table: str, token: str) -> set:
-    rows = con.execute(
-        f"SELECT DISTINCT s.file_id FROM {table}"
-        f" JOIN segments s ON s.seg_id = {table}.rowid"
-        f" WHERE {table} MATCH ? LIMIT {MAX_DOCS}",
-        (f'"{token}"',)).fetchall()
-    return {r[0] for r in rows}
+def _intersect(sets):
+    return set.intersection(*sets) if sets else set()
 
+def _query(con, query, year, ext, folder, limit, offset, fuzzy=None):
+    raw = RAWTOK_RE.findall(query)
+    folded = nz.tokens_folded(query)
+    quoted = re.findall(r'"([^"]+)"', query)
+    args=[]
+    def group(table, tokens, phrases):
+        expressions = ['"'+t.replace('"','""')+'"' for t in tokens]
+        expressions += ['"'+p.replace('"','""')+'"' for p in phrases]
+        if fuzzy and table=='docs_fts_folded':
+            expressions = ['('+' OR '.join('"'+x+'"' for x in [t]+fuzzy.get(t, []))+')' for t in tokens]
+            expressions += ['"'+p+'"' for p in phrases]
+        if not expressions:
+            return 'SELECT file_id FROM files WHERE 0'
+        args.extend(expressions)
+        return ' INTERSECT '.join(f'SELECT s.file_id FROM {table} JOIN segments s ON s.seg_id={table}.rowid WHERE {table} MATCH ?' for _ in expressions)
+    strict=group('docs_fts',raw,quoted)
+    fold=group('docs_fts_folded',folded,[nz.folded(p) for p in quoted])
+    hit_expr=' + '.join('CASE WHEN instr(s.folded_text, ?) > 0 THEN 1 ELSE 0 END' for _ in folded) or '0'
+    args.extend(folded)
+    # Rank/filter before fetching content. Only one segment per output document.
+    filters=["f.index_status NOT IN ('excluded','pending')"]
+    if year:
+        filters.append('EXISTS(SELECT 1 FROM file_years y WHERE y.file_id=f.file_id AND y.year=?)'); args.append(year)
+    if ext:
+        filters.append('f.ext=?'); args.append(ext)
+    if folder:
+        filters.append('instr(lower(f.path),lower(?))>0'); args.append(folder)
+    args.extend([limit,offset])
+    sql=f'''WITH strict AS ({strict}), folded AS ({fold}), candidates AS (
+      SELECT file_id,100 base FROM strict UNION ALL SELECT file_id,{30 if fuzzy else 60} FROM folded WHERE file_id NOT IN (SELECT file_id FROM strict)
+    ), chosen AS (SELECT f.file_id,f.path,f.name,f.ext,f.index_status,f.error_code,c.base,
+      (SELECT s.seg_id FROM segments s WHERE s.file_id=f.file_id ORDER BY ({hit_expr}) DESC,
+        CASE WHEN s.kind IN ('name_only','context') THEN 1 ELSE 0 END,s.seg_id LIMIT 1) seg_id
+      FROM candidates c JOIN files f ON f.file_id=c.file_id WHERE {' AND '.join(filters)}
+      ORDER BY c.base DESC,f.path LIMIT ? OFFSET ?)
+      SELECT c.*,s.label,s.page,s.raw_text,s.kind FROM chosen c JOIN segments s ON s.seg_id=c.seg_id'''
+    return con.execute(sql,args).fetchall()
 
-def _intersect(sets: list) -> set:
-    if not sets:
-        return set()
-    out = set(sets[0])
-    for s in sets[1:]:
-        out &= s
-    return out
-
-
-def _segments_of(con, fids: set) -> dict:
-    if not fids:
-        return {}
-    q = ",".join("?" * len(fids))
-    out: dict = {}
-    for seg_id, fid, label, page, raw in con.execute(
-            f"SELECT seg_id, file_id, label, page, raw_text FROM segments WHERE file_id IN ({q})",
-            tuple(fids)).fetchall():
-        out.setdefault(fid, []).append({"seg_id": seg_id, "label": label, "page": page,
-                                        "raw": raw or "", "fold": nz.folded(raw or "")})
-    return out
-
-
-def _best_segment(segs: list, tokens: list) -> dict:
-    def hits(s):
-        return sum(1 for t in tokens if t in s["fold"])
-    return sorted(segs, key=lambda s: (-hits(s), s["seg_id"]))[0]
-
-
-def _file_rows(con, fids: set) -> dict:
-    if not fids:
-        return {}
-    q = ",".join("?" * len(fids))
-    rows = con.execute(
-        f"SELECT file_id, path, name, ext, index_status FROM files WHERE file_id IN ({q})",
-        tuple(fids)).fetchall()
-    return {r[0]: r for r in rows}
-
-
-def _file_years(con, fids: set) -> dict:
-    if not fids:
-        return {}
-    q = ",".join("?" * len(fids))
-    out: dict = {}
-    for fid, y in con.execute(f"SELECT file_id, year FROM file_years WHERE file_id IN ({q})",
-                              tuple(fids)).fetchall():
-        out.setdefault(fid, []).append(y)
-    return out
-
-
-def search_ranked(con, query: str, year: str | None = None, ext: str | None = None,
-                  limit: int = 50, folder: str | None = None) -> dict:
-    if len(query) > 2000 or len(RAWTOK_RE.findall(query)) > 32:
-        raise ValueError("sorgu çok uzun")
-    raw_toks = RAWTOK_RE.findall(query)
-    qtokens = nz.tokens_folded(query)
-    qyears = nz.extract_years(query)
-    if not qtokens and not qyears:
-        return {"results": [], "suggestions": [], "class_counts": {}, "empty": True}
-
-    strict_docs = _intersect([_files_with(con, "docs_fts", t) for t in raw_toks]) if raw_toks else set()
-    folded_docs = _intersect([_files_with(con, "docs_fts_folded", t) for t in qtokens])
-    counts = {"strict": len(strict_docs), "folded": len(folded_docs), "fuzzy": 0}
-
-    suggestions: list = []
-    fuzzy_docs: set = set()
-    if len(strict_docs | folded_docs) < FUZZY_MIN_RESULTS and qtokens:
-        alts = {}
-        for t in qtokens:
-            alts[t] = [c for c, _s in vc.suggest(con, t)]
-            for c in alts[t][:2]:
-                if c not in suggestions:
-                    suggestions.append(c)
-        suggestions = suggestions[:5]
-        exprs = []
-        for t in qtokens:
-            opts = [t] + alts.get(t, [])[:3]
-            exprs.append("(" + " OR ".join(f'"{o}"' for o in opts) + ")")
-        fuzzy_docs = _intersect([
-            {r[0] for r in con.execute(
-                "SELECT DISTINCT s.file_id FROM docs_fts_folded"
-                " JOIN segments s ON s.seg_id = docs_fts_folded.rowid"
-                " WHERE docs_fts_folded MATCH ? LIMIT 500", (e,)).fetchall()}
-            for e in exprs])
-    counts["fuzzy"] = len(fuzzy_docs - strict_docs - folded_docs)
-
-    ranked_fids = [(fid, 100) for fid in strict_docs] + \
-                  [(fid, 60) for fid in folded_docs - strict_docs] + \
-                  [(fid, 30) for fid in fuzzy_docs - strict_docs - folded_docs]
-    if not ranked_fids:
-        return {"results": [], "suggestions": suggestions, "class_counts": counts, "empty": False}
-
-    fids = {f for f, _b in ranked_fids}
-    frows = _file_rows(con, fids)
-    fyears = _file_years(con, fids)
-    segmap = _segments_of(con, fids)
-
-    results = []
-    for fid, base in ranked_fids:
-        fr = frows.get(fid)
-        if not fr:
-            continue
-        _fid, path, name, fext, ist = fr
-        if folder and folder.lower() not in path.lower():
-            continue
-        if ist in ("missing", "excluded", "pending"):
-            continue
-        years = fyears.get(fid, [])
-        if year and year not in years:
-            continue  # acik yil filtresi kati kural
-        if ext and fext != ext:
-            continue
-        segs = segmap.get(fid, [])
-        if not segs:
-            continue
-        best = _best_segment(segs, qtokens)
-        allfold = " ".join(s["fold"] for s in segs)
-        cover = sum(1 for t in qtokens if t in allfold) / max(1, len(qtokens))
-        name_cover = sum(1 for t in qtokens if t in nz.folded(name)) / max(1, len(qtokens))
-        score = base + round(name_cover * 40) + round(cover * 20)
-        if year and year in years:
-            score += 10
-        elif qyears and any(y in years for y in qyears):
-            score += 10
-        cls = "strict" if fid in strict_docs else ("folded" if fid in folded_docs else "fuzzy")
-        why = []
-        if name_cover > 0:
-            why.append("ad")
-        why.append({"strict": "birebir icerik", "folded": "toleransli icerik",
-                    "fuzzy": "yaklasik icerik"}[cls])
-        if years:
-            why.append("yil:" + ",".join(years))
-        results.append({
-            "path": path, "name": name, "ext": fext, "label": best["label"], "page": best["page"],
-            "snippet": snip.highlight(best["raw"], qtokens), "score_class": cls,
-            "score": score, "why": why, "years": years,
-        })
-    results.sort(key=lambda r: (-r["score"], r["path"]))
-    return {"results": results[:limit], "suggestions": suggestions,
-            "class_counts": counts, "empty": False}
+def search_ranked(con, query, year=None, ext=None, limit=50, folder=None, offset=0):
+    tokens=nz.tokens_folded(query)
+    if len(query)>2000 or len(RAWTOK_RE.findall(query))>32:
+        raise ValueError('sorgu çok uzun')
+    if not tokens:
+        return {'results':[], 'suggestions':[], 'class_counts':{}, 'empty':True}
+    limit=max(1,min(int(limit),200)); offset=max(0,int(offset))
+    rows=_query(con,query,year,ext,folder,limit+1,offset)
+    suggestions=[]
+    if len(rows)<FUZZY_MIN_RESULTS and not re.findall(r'"([^"]+)"',query):
+        alternatives={t:[c for c,_ in vc.suggest(con,t)] for t in tokens}
+        suggestions=list(dict.fromkeys(c for values in alternatives.values() for c in values))[:5]
+        if any(alternatives.values()):
+            known={r[0] for r in rows}
+            rows += [r for r in _query(con,query,year,ext,folder,limit+1,offset,alternatives) if r[0] not in known]
+    more=len(rows)>limit
+    results=[]; counts={'strict':0,'folded':0,'fuzzy':0}
+    for fid,path,name,fext,status,error,base,sid,label,page,raw,kind in rows[:limit]:
+        cls={100:'strict',60:'folded',30:'fuzzy'}[base]; counts[cls]+=1
+        years=[r[0] for r in con.execute('SELECT year FROM file_years WHERE file_id=?',(fid,))]
+        name_hit=any(t in nz.folded(name) for t in tokens)
+        why=(['ad'] if name_hit else [])+[{'strict':'birebir icerik','folded':'toleransli icerik','fuzzy':'yaklasik icerik'}[cls]]
+        if years: why.append('yil:'+','.join(years))
+        results.append(dict(file_id=fid,seg_id=sid,path=path,name=name,ext=fext,label=label,page=page,
+          snippet=snip.highlight(raw or '',tokens),score_class=cls,score=base,why=why,years=years,
+          index_status=status,error_code=error,content_available=kind not in ('name_only','context')))
+    return dict(results=results,suggestions=suggestions,class_counts=counts,empty=False,has_more=more,offset=offset)

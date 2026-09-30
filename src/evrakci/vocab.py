@@ -2,6 +2,13 @@
 from __future__ import annotations
 
 from . import normalize as nz
+from threading import RLock
+_cache = {}
+_cache_lock = RLock()
+
+def clear_cache():
+    with _cache_lock:
+        _cache.clear()
 
 SCHEMA_V5_EXTRA = """
 CREATE TABLE IF NOT EXISTS vocabulary(term TEXT PRIMARY KEY, freq INTEGER NOT NULL);
@@ -106,6 +113,7 @@ def rebuild_vocab(con, min_len: int = 2) -> int:
         con.execute("DELETE FROM vocabulary")
         con.execute("INSERT INTO vocabulary(term, freq) SELECT term, freq FROM vocabulary_build")
         con.execute("DELETE FROM vocabulary_build")
+        con.execute("INSERT INTO schema_meta(k,v) VALUES ('vocabulary_generation','1') ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1")
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
@@ -120,7 +128,17 @@ def suggest(con, token: str, limit: int = 3) -> list:
     if not tok or len(tok) < 2:
         return []
     cutoff = 85 if len(tok) <= 4 else 75
-    terms = [r[0] for r in con.execute("SELECT term FROM vocabulary").fetchall()]
+    path = con.execute('PRAGMA database_list').fetchone()[2]
+    generation = con.execute("SELECT v FROM schema_meta WHERE k='vocabulary_generation'").fetchone()
+    key = (path or id(con), generation[0] if generation else '0')
+    with _cache_lock:
+        terms = _cache.get(key)
+    if terms is None:
+        terms = tuple(r[0] for r in con.execute('SELECT term FROM vocabulary'))
+        with _cache_lock:
+            if len(_cache) >= 4:
+                _cache.clear()
+            _cache[key] = terms
     if not terms:
         return []
     out = []

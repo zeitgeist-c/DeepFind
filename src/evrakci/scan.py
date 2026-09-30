@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 
 SKIP_DIRS = {"$RECYCLE.BIN", "System Volume Information"}
-SUPPORTED_EXTS = {".pdf", ".xlsx", ".xls", ".docx"}
+SUPPORTED_EXTS = {".pdf", ".xlsx", ".xls", ".docx", '.jpg', '.jpeg', '.png', '.tif', '.tiff'}
 NAME_ONLY_EXTS = {".doc"}  # A3: DOC ad/yol; icerik adaptoru A4 karariyla
 
 

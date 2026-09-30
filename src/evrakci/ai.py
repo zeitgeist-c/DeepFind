@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 
 from . import rank
+from . import normalize as nz
 
 MODEL = "gemini-3.6-flash"
 MODELS = {
@@ -45,11 +46,17 @@ class Preview:
     truncated: bool
 
 
-def _source(row, *, limit=MAX_EXCERPT):
+def _source(row, *, limit=MAX_EXCERPT, terms=(), start=None):
     seg_id, fid, path, name, ext, page, label, raw = row
+    if start is None:
+        # Preserve character positions while tolerating Turkish spellings.
+        mapped = raw.replace('I','ı').replace('İ','i').lower().translate(nz._FOLD)
+        positions = [mapped.find(nz.folded(t)) for t in terms]
+        positions = [p for p in positions if p >= 0]
+        start = max(0, min(positions) - 300) if positions else 0
     return {"id": f"S{seg_id}", "seg_id": seg_id, "file_id": fid,
             "path": path, "name": name, "ext": ext, "page": page,
-            "label": label, "text": raw[:limit],
+            "label": label, "text": raw[start:start + limit], "start": start,
             "raw_sha": hashlib.sha256(raw.encode("utf-8")).hexdigest()}
 
 
@@ -58,26 +65,34 @@ def _fingerprint(sources):
     return hashlib.sha256(json.dumps(data, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
-def prepare_question(con, question: str) -> Preview:
+def prepare_question(con, question: str, retrieval_query: str | None = None) -> Preview:
     question = question.strip()
     if not 3 <= len(question) <= 1000:
         raise ValueError("Soruyu 3–1000 karakter arasında yazın.")
-    results = rank.search_ranked(con, question, limit=8)["results"]
-    terms = {t.casefold() for t in _TOKEN.findall(question)}
+    stopwords = {'nedir', 'hangi', 'kadar', 'olan', 'olarak', 'bir', 'bu', 've', 'ile', 'için', 'bana', 'getir', 'göster', 'bul', 'var', 'mı', 'mi', 'ne', 'nasıl', 'özetle', 'eder', 'misin'}
+    terms = {t.casefold() for t in _TOKEN.findall(retrieval_query or question)} - stopwords
+    results = rank.search_ranked(con, ' '.join(sorted(terms)), limit=8)["results"]
+    if not results:
+        # Natural questions need not match every grammatical word.
+        found = {}
+        for term in sorted(terms, key=len, reverse=True)[:8]:
+            for result in rank.search_ranked(con, term, limit=8)['results']:
+                found.setdefault(result['path'], result)
+        results = list(found.values())[:8]
     sources = []
     total = 0
     for result in results:
+        hits=' + '.join('CASE WHEN instr(s.folded_text,?)>0 THEN 1 ELSE 0 END' for _ in terms) or '0'
         rows = con.execute(
             "SELECT s.seg_id,f.file_id,f.path,f.name,f.ext,s.page,s.label,s.raw_text "
             "FROM files f JOIN segments s ON s.file_id=f.file_id "
             "WHERE f.path=? AND f.index_status IN ('ok','partial') "
-            "AND s.kind NOT IN ('name_only','context') ORDER BY s.seg_id",
-            (result["path"],)).fetchall()
-        rows = sorted(rows, key=lambda r: -sum(t in r[7].casefold() for t in terms))
+            f"AND s.kind NOT IN ('name_only','context') ORDER BY ({hits}) DESC,s.seg_id LIMIT 2",
+            (result["path"],*(nz.folded(t) for t in terms))).fetchall()
         for row in rows[:2]:
             if not row[7].strip():
                 continue
-            source = _source(row)
+            source = _source(row, terms=terms)
             if total + len(source["text"]) > MAX_TOTAL or len(sources) == MAX_SOURCES:
                 break
             sources.append(source)
@@ -86,15 +101,17 @@ def prepare_question(con, question: str) -> Preview:
             break
     if not sources:
         raise ValueError("Bu soru için içerik kanıtı bulunamadı. Farklı sözcüklerle arayın.")
-    return Preview("question", question, tuple(sources), _fingerprint(sources), False)
+    partial=any(con.execute('SELECT index_status FROM files WHERE file_id=?',(s['file_id'],)).fetchone()[0]!='ok' for s in sources)
+    return Preview("question", question, tuple(sources), _fingerprint(sources),
+                   partial or any(s['start'] or len(s['text']) == MAX_EXCERPT for s in sources))
 
 
-def list_documents(con, limit=500):
+def list_documents(con, limit=100, offset=0, query=''):
     return con.execute(
         "SELECT f.file_id,f.name,f.path FROM files f "
-        "WHERE f.index_status IN ('ok','partial') AND EXISTS "
+        "WHERE f.index_status IN ('ok','partial') AND (instr(lower(f.name),lower(?))>0 OR instr(lower(f.path),lower(?))>0) AND EXISTS "
         "(SELECT 1 FROM segments s WHERE s.file_id=f.file_id AND s.kind NOT IN ('name_only','context')) "
-        "ORDER BY f.name,f.path LIMIT ?", (limit,)).fetchall()
+        "ORDER BY f.name,f.path LIMIT ? OFFSET ?", (query,query,limit,offset)).fetchall()
 
 
 def prepare_summary(con, file_id: int) -> Preview:
@@ -102,7 +119,7 @@ def prepare_summary(con, file_id: int) -> Preview:
         "SELECT s.seg_id,f.file_id,f.path,f.name,f.ext,s.page,s.label,s.raw_text "
         "FROM files f JOIN segments s ON s.file_id=f.file_id "
         "WHERE f.file_id=? AND f.index_status IN ('ok','partial') "
-        "AND s.kind NOT IN ('name_only','context') ORDER BY s.seg_id", (file_id,)).fetchall()
+        "AND s.kind NOT IN ('name_only','context') ORDER BY s.seg_id LIMIT ?", (file_id,MAX_SOURCES+1)).fetchall()
     sources = []
     total = 0
     for row in rows:
@@ -127,7 +144,7 @@ def still_current(con, preview: Preview) -> bool:
             "FROM segments s JOIN files f ON f.file_id=s.file_id "
             "WHERE s.seg_id=? AND f.index_status IN ('ok','partial')",
             (source["seg_id"],)).fetchone()
-        if row is None or _source(row) != source:
+        if row is None or _source(row, start=source.get('start', 0)) != source:
             return False
     return _fingerprint(preview.sources) == preview.fingerprint
 
@@ -137,9 +154,10 @@ def preview_text(preview: Preview) -> str:
     lines = [f"{title}: {preview.question}", "", "Buluta gönderilecek alıntılar:"]
     for source in preview.sources:
         place = f" • sayfa {source['page']}" if source["page"] is not None else ""
-        lines.extend([f"[{source['id']}] {source['name']}{place}", source["text"], ""])
+        lines.extend([f"[{source['id']}] {source['name']}{place}",source['path'], source["text"], ""])
     if preview.truncated:
         lines.append("Belge uzun: yalnız yukarıdaki kesitler özetlenecek.")
+        lines.append('Seçili kesitler bütün arşivin kapsamı değildir; kısmi veya güncelliği bekleyen indeks kayıtları içerebilir.')
     return "\n".join(lines)
 
 

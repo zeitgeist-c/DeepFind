@@ -29,7 +29,7 @@ def search(con, query: str, limit: int = 50):
         " FROM docs_fts"
         " JOIN segments s ON s.seg_id = docs_fts.rowid"
         " JOIN files f ON f.file_id = s.file_id"
-        " WHERE docs_fts MATCH ? LIMIT ?",
+        " WHERE docs_fts MATCH ? AND f.index_status NOT IN ('missing','excluded','pending') LIMIT ?",
         (match, limit),
     ).fetchall()
     return [

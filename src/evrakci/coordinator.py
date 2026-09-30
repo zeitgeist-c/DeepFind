@@ -76,6 +76,8 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
     """Dosya + revizyon + segment + FTS tek transaction (DB-01: yarim FTS yok)."""
     import unicodedata
     from . import normalize as nz
+    if 'start_offset' not in {r[1] for r in con.execute('PRAGMA table_info(segments)')}:
+        migrate.ensure_archive(con)
     cur = con.execute("BEGIN IMMEDIATE")
     try:
         con.execute("UPDATE file_revisions SET active=0 WHERE file_id=?", (file_id,))
@@ -91,10 +93,13 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
             raw = unicodedata.normalize("NFC", raw or "")
             return (file_id, rev_id, kind, page, label, raw, nz.folded(raw))
 
-        to_write = []
         if res.segments:
-            to_write = [_row(s.kind, s.page, s.label, s.raw_text) for s in res.segments]
-        else:
+            for segment in res.segments:
+                for part, start, end in ex.chunks(segment):
+                    con.execute('INSERT INTO segments(file_id,rev_id,kind,page,label,raw_text,folded_text,start_offset,end_offset) VALUES (?,?,?,?,?,?,?,?,?)',
+                                _row(part.kind,part.page,part.label,part.raw_text)+(start,end))
+        to_write = []
+        if not res.segments:
             row = con.execute("SELECT name FROM files WHERE file_id=?", (file_id,)).fetchone()
             to_write = [_row("name_only", None, row[0], row[0])]
         if context.strip():
@@ -110,7 +115,10 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
         )
         con.execute("DELETE FROM file_years WHERE file_id=?", (file_id,))
         name = con.execute("SELECT name FROM files WHERE file_id=?", (file_id,)).fetchone()[0]
-        for y in nz.extract_years(name, context, *[s.raw_text for s in (res.segments or [])]):
+        years=set(nz.extract_years(name, context))
+        for segment in res.segments or []:
+            years.update(nz.extract_years(segment.raw_text))
+        for y in sorted(years):
             con.execute(
                 "INSERT INTO file_years(file_id, year, source, evidence) VALUES (?,?,?,?)"
                 " ON CONFLICT(file_id, year) DO NOTHING",
@@ -149,6 +157,7 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
         return "excluded"
     st = _stat_sig(path)
     if st is None:
+        con.execute("UPDATE files SET source_status='offline',error_code='SOURCE_OFFLINE' WHERE file_id=?",(fid,)); con.commit()
         q.fail(con, job["job_id"], "SOURCE_OFFLINE")
         return "offline"
     size, mtime = st
@@ -160,11 +169,17 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
         con.commit()
         return "unstable"
     cur_sig = q.signature_of(size, mtime)
+    if cur_sig!=sig:
+        q.enqueue(con,fid,cur_sig)
+        con.execute('DELETE FROM extraction_stage WHERE file_id=? AND signature=?',(fid,sig))
+        con.commit(); q.complete(con,job['job_id'])
+        return 'changed'
+    cursor = con.execute('SELECT cursor FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0]
     if guarded:
         from .workers import run_work
-        res = run_work("extract", (path, ext, size), stop=stop)
+        res = run_work("extract_window", (path, ext, size, cursor), stop=stop,timeout=180 if ext=='.doc' else 60)
     else:
-        res = ex.extract(path, ext, size)
+        res = ex.extract_window(path, ext, size, cursor)
     st2 = _stat_sig(path)
     if st2 is None or st2 != (size, mtime):
         # SCN-03: okuma sirasinda degisti -> karisik cikti aktif yapilmaz
@@ -175,16 +190,43 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
         con.commit()
         q.complete(con, job["job_id"])
         return "changed"
-    if res.status == "corrupt" and res.error_code == "CORRUPT_DOCUMENT":
-        pass  # asagida fail/retry politikasi
+    previous=con.execute('SELECT 1 FROM segments WHERE file_id=? AND kind NOT IN (\'name_only\',\'context\') LIMIT 1',(fid,)).fetchone()
+    if res.status not in ('ok','partial') or (res.status=='partial' and not res.segments):
+        if not previous:
+            write_revision(con,fid,cur_sig,res,_context_for(path,root))
+        con.execute('UPDATE files SET index_status=?,error_code=?,coverage=? WHERE file_id=?',
+                    ('partial' if previous else res.status,res.error_code,'Önceki indeks korunuyor' if previous else 'İçerik okunamadı',fid))
+        con.commit()
+        return q.fail(con,job['job_id'],res.error_code or 'EXTRACT_FAILED')
+    if cursor==0:
+        con.execute('DELETE FROM extraction_stage WHERE file_id=?',(fid,))
+    position=con.execute('SELECT coalesce(max(position),-1)+1 FROM extraction_stage WHERE file_id=? AND signature=?',(fid,cur_sig)).fetchone()[0]
+    for segment in res.segments:
+        con.execute('INSERT INTO extraction_stage VALUES (?,?,?,?,?,?,?,?)',(fid,cur_sig,position,segment.kind,segment.page,segment.label,segment.raw_text,segment.start_offset)); position+=1
+    if res.next_cursor is not None:
+        con.execute("UPDATE jobs SET cursor=?,status='pending',lease_until=0 WHERE job_id=?",(res.next_cursor,job['job_id']))
+        con.execute("UPDATE files SET coverage=? WHERE file_id=?",(f'{res.next_cursor} kaynak bölümü işlendi; devam ediyor',fid))
+        con.commit()
+        return 'continuing'
+    class StagedSegments:
+        def __bool__(self): return bool(position)
+        def __iter__(self):
+            for kind,page,label,raw,start in con.execute('SELECT kind,page,label,raw_text,start_offset FROM extraction_stage WHERE file_id=? AND signature=? ORDER BY position',(fid,cur_sig)):
+                yield ex.Segment(kind,page,label,raw,start)
+    res.segments=StagedSegments()
+    con.commit()
     write_revision(con, fid, cur_sig, res, _context_for(path, root))
+    con.execute("UPDATE files SET source_status='ok' WHERE file_id=?",(fid,)); con.commit()
     # Ince metinli PDF sayfalari -> agir OCR fazi (ayri is; ayni kaynagi paralel okumaz)
-    if ext == ".pdf" and res.status in ("ok", "partial"):
+    if ext in ({'.pdf'} | {'.jpg','.jpeg','.png','.tif','.tiff'}) and res.status in ("ok", "partial"):
         thin = [s.page for s in (res.segments or [])
-                if s.kind == "pdf_page" and ocr_mod.needs_ocr(s.raw_text)]
+                if s.kind in ('pdf_page','image_page') and ocr_mod.needs_ocr(s.raw_text)]
         if thin:
             q.enqueue(con, fid, cur_sig, kind="ocr")
+            con.execute("UPDATE files SET index_status='partial',error_code='OCR_PENDING' WHERE file_id=?",(fid,))
             con.commit()
+    con.execute('DELETE FROM extraction_stage WHERE file_id=?',(fid,))
+    con.execute("UPDATE files SET coverage=? WHERE file_id=?",('Metin kaydedildi; OCR durumu ayrıca izlenir',fid))
     q.complete(con, job["job_id"])
     return "done"
 
@@ -196,11 +238,11 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
     if active_signature(con, fid) != sig:
         q.complete(con, job["job_id"])  # eski surum; yeni extract isi gecerli
         return "stale"
-    row = con.execute("SELECT path FROM files WHERE file_id=?", (fid,)).fetchone()
+    row = con.execute("SELECT path,ext FROM files WHERE file_id=?", (fid,)).fetchone()
     if not row:
         q.complete(con, job["job_id"])
         return "gone"
-    path = row[0]
+    path,ext = row
     rev = con.execute("SELECT rev_id FROM file_revisions WHERE file_id=? AND active=1",
                       (fid,)).fetchone()
     if not rev:
@@ -208,8 +250,8 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
         return "gone"
     rev_id = rev[0]
     thin = [(r[0], r[1]) for r in con.execute(
-        "SELECT page, raw_text FROM segments WHERE file_id=? AND kind='pdf_page'",
-        (fid,)).fetchall() if ocr_mod.needs_ocr(r[1])]
+        "SELECT DISTINCT page, raw_text FROM segments WHERE file_id=? AND kind IN ('pdf_page','image_page') AND page NOT IN (SELECT page FROM ocr_coverage WHERE file_id=? AND rev_id=?)",
+        (fid,fid,rev_id)).fetchall() if ocr_mod.needs_ocr(r[1])]
     if not thin:
         q.complete(con, job["job_id"])
         return "noop"
@@ -218,7 +260,7 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
                     (q.now() + DEFER_SEC, job["job_id"]))
         con.commit()
         return "deferred"
-    pages_0 = [p - 1 for p, _t in thin if p]
+    pages_0 = sorted({p - 1 for p, _t in thin if p})[:20]
     from . import migrate
     try:
         language = migrate.get_setting(con, "ocr_dili", "tur")
@@ -226,7 +268,14 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
         language = "tur"
     if language not in ("tur", "eng"):
         language = "tur"
-    if guarded:
+    if ext != '.pdf':
+        if guarded:
+            from .workers import run_work
+            results,_wd=run_work('image_ocr',(path,pages_0,vault_dir,language),timeout=max(60,len(pages_0)*90),stop=stop)
+        else:
+            from .image_ocr import ocr_images
+            results,_wd=ocr_images(path,pages_0,vault_dir,language)
+    elif guarded:
         from .workers import run_work
         results, _wd = run_work("ocr", (path, pages_0, vault_dir, language),
                                timeout=min(1800, max(60, len(pages_0) * 180)), stop=stop)
@@ -250,6 +299,7 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
                 continue  # klasik metin aramasi surer; dosya basarisiz sayilmaz
             if r.method == "timeout":
                 raise TimeoutError("PROCESS_TIMEOUT")
+            con.execute('INSERT OR REPLACE INTO ocr_coverage VALUES (?,?,?,?,?)',(fid,rev_id,r.page,r.method,r.error_code))
             if r.words == 0 or not r.text.strip():
                 continue
             raw = r.text.strip()
@@ -272,6 +322,14 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
         except Exception:
             pass
         return q.fail(con, job["job_id"], "CORRUPT_DOCUMENT")
+    if any(r.error_code or r.method=='low' or (r.words and r.mean_conf<40) for r in results):
+        con.execute("UPDATE files SET index_status='partial',error_code='OCR_LOW_QUALITY' WHERE file_id=?",(fid,)); con.commit()
+    if len({p for p,_ in thin})>len(pages_0):
+        con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?",(job['job_id'],)); con.commit()
+        return 'continuing'
+    previous_low=con.execute("SELECT 1 FROM ocr_coverage WHERE file_id=? AND rev_id=? AND (outcome='low' OR error_code IS NOT NULL) LIMIT 1",(fid,rev_id)).fetchone()
+    if not previous_low and results and all(r.words and not r.error_code and r.mean_conf>=40 for r in results):
+        con.execute("UPDATE files SET index_status='ok',error_code=NULL WHERE file_id=? AND error_code='OCR_PENDING'",(fid,)); con.commit()
     # Tum sayfalar timeout/unavailable ise retry; aksi halde tamamla
     if results and all(r.method in ("timeout",) for r in results):
         return q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
@@ -286,6 +344,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
              "hashed": 0, "skipped": 0, "complete": False, "result": "partial"}
     if "updated_at" not in {r[1] for r in con.execute("PRAGMA table_info(scan_runs)")}:
         migrate.ensure_v8(con)
+    migrate.ensure_archive(con)
     with ScanLock(vault_path):
         con.execute("CREATE TEMP TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
         con.execute("DELETE FROM scan_selected")
@@ -376,6 +435,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 entries = []
                 dir_ok = False
                 stats["failed"] += 1
+                con.execute('INSERT OR REPLACE INTO scan_errors VALUES (?,?,?)',(run_id,cur,'ACCESS_DENIED'))
                 report("Klasöre erişilemiyor", cur, "erişim hatası", force=True)
             con.execute("INSERT OR IGNORE INTO scan_scopes(run_id, dir, complete) VALUES (?,?,?)",
                         (run_id, cur, 0))
@@ -409,7 +469,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                         sig = q.signature_of(entry.size, entry.mtime_ns)
                         status = con.execute("SELECT index_status FROM files WHERE file_id=?", (fid,)).fetchone()[0]
                         if active_signature(con, fid) != sig or status in ("missing", "excluded"):
-                            con.execute("UPDATE files SET index_status='pending' WHERE file_id=?", (fid,))
+                            con.execute("UPDATE files SET index_status=CASE WHEN EXISTS(SELECT 1 FROM segments s WHERE s.file_id=files.file_id) THEN 'partial' ELSE 'pending' END,error_code='REINDEX_PENDING' WHERE file_id=?", (fid,))
                             q.enqueue(con, fid, sig)
                         else:
                             stats["skipped"] += 1
@@ -420,6 +480,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                         report("Klasörler keşfediliyor", cur)
                 except OSError:
                     dir_ok = False
+                    stats['failed']+=1
+                    con.execute('INSERT OR REPLACE INTO scan_errors VALUES (?,?,?)',(run_id,e.path,'ACCESS_DENIED'))
                     continue
             if dir_ok:
                 con.execute("UPDATE scan_scopes SET complete=1 WHERE run_id=? AND dir=?", (run_id, cur))
@@ -477,13 +539,15 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 except ValueError:
                     continue
                 if p not in seen and not exc.is_excluded(p, rules):
-                    con.execute("DELETE FROM segments WHERE file_id=?", (fid,))
+                    # Preserve searchable historical content when the source vanishes.
                     con.execute("UPDATE files SET index_status='missing' WHERE file_id=?", (fid,))
                     stats["missing"] += 1
             con.commit()
             pending = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
                                   "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
-            stats["complete"] = not pending and not stats["failed"] and not stats["ocr_failed"]
+            incomplete=con.execute("SELECT count(*) FROM files WHERE file_id IN (SELECT file_id FROM scan_selected) AND index_status NOT IN ('ok','excluded')").fetchone()[0]
+            stats['incomplete']=incomplete
+            stats["complete"] = not pending and not stats["failed"] and not stats["ocr_failed"] and not incomplete
             stats["result"] = "complete" if stats["complete"] else "partial"
         stats["pending"] = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
                                        "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]

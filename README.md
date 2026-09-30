@@ -36,3 +36,14 @@ $env:PYTHONPATH = 'src'
 ```
 
 Gerçek kasa şifresini CLI --sifre parametresinde kullanmayın. Arayüz, şifreyi etkileşimli alır. İşlemler gerçek kaynaklara yazmak için tasarlanmamıştır; harici uygulamada belge açma/silme/düzenleme özelliği yoktur.
+# Evrakçı 0.3.4 ile güncelleme ve içerik arşivi
+
+Yeni dağıtım klasörünü ZIP'ten bütün olarak açın ve `Evrakçı-0.3.4.exe` dosyasını çalıştırın. EXE'nin yanındaki `_internal` ve diğer destek dosyaları aynı pakete ait olmalıdır; yalnız EXE kopyalamayın. Güncellemeden önce programdan çıkın; yeni paketi ayrı klasöre açarak önceki program klasörünü geri dönüş için koruyabilirsiniz.
+
+Kasa varsayılan olarak `%LOCALAPPDATA%\Evrakci\Data\evrakci.db` altında, yedekler `%LOCALAPPDATA%\Evrakci\Backups` altında bulunur. Özel kasa yolu kullanıyorsanız yeni sürümü aynı kasa ile açın. Bu klasörler program güncellemesinde değiştirilmez/silinmez. Kaynak evraklar kendi klasörlerinde kalır; indeks yedeği kaynak evrakların yedeği değildir.
+
+Arama ekranındaki dört karttan arayın, Gemini anahtarını kaydedin veya yedek işlemlerini yapın. “Taranmış Evraklar” dosya yolu ve içerik durumunu listeler. Evrakı çift tıklayarak veya Ön izle ile popup'ta açın; uzun metinde “Sonraki bölümleri yükle” kullanın. Kaynak erişilemiyorsa kayıtlı indeks metni gösterilir.
+
+İlk içerik taraması uzun sürebilir; sonraki taramalar değişen kaynakları ve yarım işleri işler. Eski çıkarım sürümünün kayıtları kontrollü yeniden işlemeye alınır; güncellemede indeks silinmez. Kısmi/OCR bekleyen/hatalı kayıtları tam içerik olarak değerlendirmeyin. Ayrı JPG/PNG/TIFF evraklar OCR kapsamındadır; Word/Excel içine gömülü resimler kapsam dışıdır. DOC içeriği için LibreOffice gerekir.
+
+Gemini bağlantı testi küçük bir metin isteği yapar; evrak göndermez. Sorgu önerileri yalnız soruyu gönderir. Evrak alıntıları sadece açık Gönder işlemiyle iletilir. Kararlılık ve doğrulama sınırları: `DENETIM-0.3.4.md`.

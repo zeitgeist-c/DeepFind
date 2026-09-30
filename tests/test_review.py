@@ -26,7 +26,7 @@ def make_vault(tmp_path):
 def test_scanning_second_root_preserves_first_and_reappearance(tmp_path, monkeypatch):
     con, db = make_vault(tmp_path)
     roots = [tmp_path / "a", tmp_path / "b"]
-    monkeypatch.setattr(extract, "extract", lambda *a: extract.ExtractResult(
+    monkeypatch.setattr(extract, "extract_window", lambda *a: extract.ExtractResult(
         [extract.Segment("para", None, "Paragraf 1", "Ankara denetim")]))
     for root in roots:
         root.mkdir()
