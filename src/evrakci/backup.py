@@ -54,10 +54,15 @@ def _pragma_sifre(pw: str) -> str:
     return "'" + pw.replace("'", "''") + "'"
 
 
-def verify_backup(backup_path: str, password: str) -> dict:
+def verify_backup(backup_path: str, password: str, progress=None) -> dict:
     """Yedegi ayri baglantiyla ac: sifre + butunluk + ornek icerik/arama."""
     from . import vault
     con = vault.open_vault(backup_path, password)
+    if progress:
+        def tick():
+            progress('verify', 0, 0)
+            return 0
+        con.set_progress_handler(tick, 10000)
     try:
         try:
             rows = con.execute("PRAGMA integrity_check").fetchall()
@@ -78,7 +83,8 @@ def verify_backup(backup_path: str, password: str) -> dict:
 
 
 def create_backup(con, vault_path: str, password: str, dest_dir: str,
-                  manual: bool = False, forbid_under: list | None = None) -> str:
+                  manual: bool = False, forbid_under: list | None = None,
+                  progress=None) -> str:
     """Aktif kasadan sifreli snapshot. Donus: finalize edilmis yedek yolu."""
     from . import vault
     dest_dir = os.path.abspath(dest_dir)
@@ -97,11 +103,20 @@ def create_backup(con, vault_path: str, password: str, dest_dir: str,
     try:
         tgt = vault.open_vault(tmp, password)
         try:
-            con.backup(tgt)
+            # Snapshot has no concurrent readers; avoid a second database-sized WAL.
+            tgt.execute('PRAGMA journal_mode=DELETE')
+            if progress:
+                def copied(status, remaining, total):
+                    progress('backup', total - remaining, total)
+                con.backup(tgt, pages=256, progress=copied)
+            else:
+                con.backup(tgt)
             tgt.commit()
         finally:
             tgt.close()
-        v = verify_backup(tmp, password)
+        if progress:
+            progress('verify', 0, 0)
+        v = verify_backup(tmp, password, progress=progress) if progress else verify_backup(tmp, password)
         if not v["ok"]:
             raise RuntimeError(f"yedek dogrulama basarisiz: {v['counts']}")
         final = os.path.join(dest_dir, f"{prefix}{_stamp()}.db")

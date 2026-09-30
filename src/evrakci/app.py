@@ -214,7 +214,7 @@ class TaramaIsci(QObject):
 
 
 class AnaPencere(QMainWindow):
-    def __init__(self, kasa_yolu, sifre):
+    def __init__(self, kasa_yolu, sifre, prepared=False):
         super().__init__()
         self.kasa_yolu = kasa_yolu
         self._sifre = sifre
@@ -237,7 +237,10 @@ class AnaPencere(QMainWindow):
         self._geometry_timer.setSingleShot(True)
         self._geometry_timer.timeout.connect(self._save_window_geometry)
 
-        self._kasa_ac()
+        if prepared:
+            self.con = vault.open_vault(self.kasa_yolu, self._sifre)
+        else:
+            self._kasa_ac()
         from . import ocr_setup
         diagnostics.record("ocr_jobs_begin")
         ocr_setup.reopen_deferred(self.con)
@@ -267,31 +270,8 @@ class AnaPencere(QMainWindow):
 
     # -- kurulum --
     def _kasa_ac(self):
-        from .migrate import ensure_current, recover_scan_runs
-        diagnostics.record("vault_open_begin")
-        self.con = vault.open_vault(self.kasa_yolu, self._sifre)
-        diagnostics.record("vault_open_ready")
-        current_fts = self.con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
-        migration_backup=None
-        archive_marker=self.con.execute("SELECT 1 FROM schema_meta WHERE k='archive_version'").fetchone() if current_fts else None
-        if current_fts and ("remove_diacritics 0" not in current_fts[0] or not archive_marker):
-            try:
-                migration_backup=backup_mod.create_backup(self.con, self.kasa_yolu, self._sifre,
-                                         self._yedek_dizin(), manual=True)
-            except Exception:
-                self.con.close()
-                self.con = None
-                raise RuntimeError("Geçiş öncesi indeks yedeği alınamadı; mevcut kasa korunuyor.")
-        diagnostics.record("schema_begin")
-        try:
-            ensure_current(self.con)
-        except Exception:
-            self.con.close(); self.con=None
-            if migration_backup:
-                backup_mod.restore_replace(self.kasa_yolu,self._sifre,migration_backup,os.path.join(os.path.dirname(self.kasa_yolu),'staging'))
-            raise
-        diagnostics.record("schema_ready")
-        recover_scan_runs(self.con)
+        from .startup import prepare_connection
+        self.con = prepare_connection(self.kasa_yolu, self._sifre, self._yedek_dizin())
 
     def _arayuz(self):
         kok = QWidget()
@@ -2418,20 +2398,19 @@ def main(kasa_yolu=None, sifre=None):
         diagnostics.record("ocr_unavailable")
         return 1
     diagnostics.record("ocr_ready")
-    opening = None
-    if os.path.getsize(args.kasa) > 100_000_000:
-        opening = QDialog()
-        opening.setWindowTitle("Evrakçı • Açılıyor")
-        opening.setWindowIcon(theme.app_icon())
-        opening.setMinimumWidth(380)
-        opening_layout = QVBoxLayout(opening)
-        opening_layout.addWidget(label("Şifreli kasa açılıyor…", "subheading"))
-        opening_layout.addWidget(label("Büyük arşiv hazırlanırken lütfen bekleyin.", "ikincil"))
-        opening.show()
-        app._startup_dialog = opening
-        app.processEvents()
+    from .startup import OpeningDialog
+    opening = OpeningDialog(args.kasa, sifre,
+                            os.path.abspath(os.path.join(os.path.dirname(args.kasa), '..', 'Backups')))
+    opening.setWindowIcon(theme.app_icon())
+    app._startup_dialog = opening
+    result = opening.prepare()
+    if opening.worker.error and not opening.worker.stop.is_set():
+        QMessageBox.critical(None, 'Kasa', f'Açılamadı: {opening.worker.error}')
+        return 2
+    if result != QDialog.Accepted:
+        return 1
     try:
-        pen = AnaPencere(args.kasa, sifre)
+        pen = AnaPencere(args.kasa, sifre, prepared=True)
         app._main_window = pen
     except Exception as error:
         diagnostics.record("main_window_failed", type(error).__name__)

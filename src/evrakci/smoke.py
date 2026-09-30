@@ -14,7 +14,7 @@ def run(report_path):
     current_stage = "start"
     checkpoint("imports")
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QDialog
     from openpyxl import Workbook
     from . import schema, vault, theme
     from .migrate import ensure_v8, get_setting, set_setting
@@ -217,13 +217,27 @@ def run(report_path):
             checkpoint("actual-first-run")
             from .startup_smoke import run as startup_run
             startup_run(temp)
+            checkpoint('background-startup-migration')
+            from .startup import OpeningDialog
+            from .migrate import ensure_current
+            old_db = str(Path(temp) / 'startup-legacy.db')
+            old_con = vault.open_vault(old_db, password)
+            ensure_current(old_con)
+            old_con.execute("DELETE FROM schema_meta WHERE k='archive_version'")
+            old_con.commit(); old_con.close()
+            opening = OpeningDialog(old_db, password, str(Path(temp) / 'startup-backups'))
+            phases = []
+            opening.worker.progress.connect(lambda phase, *_: phases.append(phase))
+            assert opening.prepare() == QDialog.Accepted
+            assert {'backup', 'verify', 'schema'} <= set(phases)
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
                                            "excel-preview", "pdf-preview-loading", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
                                            "ai-model-switch", "ai-model-migration", "durable-scan-history",
-                                           'four-square-cards','paged-archive-files','image-ocr-indexed'])
+                                           'four-square-cards','paged-archive-files','image-ocr-indexed',
+                                           'background-startup-migration'])
     except Exception as error:
         report["stage"] = current_stage
         report["error"] = repr(error)
