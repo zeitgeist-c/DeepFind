@@ -89,7 +89,7 @@ def pencere(tmp_path):
     pen._exiting = True
     pen.close()
     deadline = time.monotonic() + 20
-    while pen._search_thread is not None or pen.isci_thread is not None or pen.onizleme.busy():
+    while pen._search_thread is not None or pen.isci_thread is not None or pen.onizleme.busy() or pen._jobs:
         _app().processEvents()
         time.sleep(0.01)
         assert time.monotonic() < deadline

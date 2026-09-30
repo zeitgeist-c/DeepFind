@@ -42,7 +42,9 @@ Yeni dağıtım klasörünü ZIP'ten bütün olarak açın ve `Evrakçı-0.3.4.e
 
 Kasa varsayılan olarak `%LOCALAPPDATA%\Evrakci\Data\evrakci.db` altında, yedekler `%LOCALAPPDATA%\Evrakci\Backups` altında bulunur. Özel kasa yolu kullanıyorsanız yeni sürümü aynı kasa ile açın. Bu klasörler program güncellemesinde değiştirilmez/silinmez. Kaynak evraklar kendi klasörlerinde kalır; indeks yedeği kaynak evrakların yedeği değildir.
 
-Arama ekranındaki dört karttan arayın, Gemini anahtarını kaydedin veya yedek işlemlerini yapın. “Taranmış Evraklar” dosya yolu ve içerik durumunu listeler. Evrakı çift tıklayarak veya Ön izle ile popup'ta açın; uzun metinde “Sonraki bölümleri yükle” kullanın. Kaynak erişilemiyorsa kayıtlı indeks metni gösterilir.
+Ara ekranında Arama ve Sonuçlar kartları bulunur. Hemen altındaki “AI ile ara” sekmesinde Gemini anahtarı/modeli, arşive soru sorma, belge özetleme, alıntılar ve AI kaynakları yer alır. Yedekler, Ayarlar sekmesindeki Çalışma düzeni ve Kasa güvenliği kartlarının altındadır. “Taranmış Evraklar” dosya yolu ve içerik durumunu listeler. Evrakı çift tıklayarak veya Ön izle ile popup'ta açın; uzun metinde “Sonraki bölümleri yükle” kullanın. Kaynak erişilemiyorsa kayıtlı indeks metni gösterilir.
+
+Büyük kasa açılışında tam geçiş yedeği yalnız indeks yapısına geçiş gerektiğinde alınır. Başarılı geçiş kaydı sonraki açılışlarda bu yedeğin tekrarını önler. Yarım kalan geçiş sonraki açılışta yeniden denenir; normal açılış süresi de kasa ve disk hızına bağlıdır.
 
 İlk içerik taraması uzun sürebilir; sonraki taramalar değişen kaynakları ve yarım işleri işler. Eski çıkarım sürümünün kayıtları kontrollü yeniden işlemeye alınır; güncellemede indeks silinmez. Kısmi/OCR bekleyen/hatalı kayıtları tam içerik olarak değerlendirmeyin. Ayrı JPG/PNG/TIFF evraklar OCR kapsamındadır; Word/Excel içine gömülü resimler kapsam dışıdır. DOC içeriği için LibreOffice gerekir.
 

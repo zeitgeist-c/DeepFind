@@ -79,8 +79,10 @@ def run(report_path):
             app.processEvents()
             from .archive_ui import layout_cards
             pen.resize(1500,1000); app.processEvents(); layout_cards(pen); app.processEvents()
-            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == ['Ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']
-            assert len(pen.archive_cards)==4 and all(card.width()==card.height() for card in pen.archive_cards)
+            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == ['Ara','AI ile ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']
+            assert len(pen.archive_cards)==2 and all(card.width()==card.height() for card in pen.archive_cards)
+            assert pen.ai_page.isAncestorOf(pen.ai_key_input) and pen.ai_page.isAncestorOf(pen.ai_question)
+            assert pen.settings_page.isAncestorOf(pen.yedek_liste)
             assert [pen.ai_model.itemData(i) for i in range(pen.ai_model.count())] == [
                 "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
                 "gemma-4-26b-a4b-it"]
@@ -191,7 +193,7 @@ def run(report_path):
             assert not pen.scan_dialog.isModal()
             assert pen.scan_history.count() > 0
             checkpoint('archive-file-list-image-ocr')
-            pen.nav.setCurrentRow(4)
+            pen.nav.setCurrentRow(5)
             deadline=time.monotonic()+30
             while pen._jobs:
                 app.processEvents(); time.sleep(.01); assert time.monotonic()<deadline
@@ -236,7 +238,7 @@ def run(report_path):
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
                                            "ai-model-switch", "ai-model-migration", "durable-scan-history",
-                                           'four-square-cards','paged-archive-files','image-ocr-indexed',
+                                           'search-two-cards-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration'])
     except Exception as error:
         report["stage"] = current_stage

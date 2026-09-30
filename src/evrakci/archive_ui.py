@@ -3,7 +3,7 @@ import os,time
 from PySide6.QtCore import Qt,QTimer,QUrl
 from PySide6.QtGui import QStandardItem,QDesktopServices
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QGridLayout,QScrollArea,QPushButton,QLineEdit,
-    QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar)
+    QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar,QBoxLayout,QLabel)
 from .ui import card,label
 from .tasks import DatabaseTask,list_files
 from . import ai,backup,history,diagnostics
@@ -62,16 +62,18 @@ def install(w):
     w.gemini_card=QWidget(); gemini=QVBoxLayout(w.gemini_card)
     assistant.layout().removeWidget(w.ai_model); gemini.addWidget(w.ai_model)
     key_layout=assistant.layout().takeAt(1)
-    if key_layout and key_layout.layout(): gemini.addLayout(key_layout.layout())
+    if key_layout and key_layout.layout():
+        key_layout.layout().removeWidget(w.ai_key_input)
+        gemini.addWidget(w.ai_key_input)
+        gemini.addLayout(key_layout.layout())
+    old_heading=assistant.layout().takeAt(0)
+    if old_heading and old_heading.widget(): old_heading.widget().deleteLater()
     # Explicitly move key controls if their row index changes in a later release.
     if w.ai_key_input.parent() is assistant:
         gemini.addWidget(w.ai_key_input)
     test=QPushButton('Bağlantıyı test et'); test.clicked.connect(w._ai_test); gemini.addWidget(test)
     w.ai_connection=label('Anahtar şifreli kasada saklanır.','ikincil'); w.ai_connection.setWordWrap(True); gemini.addWidget(w.ai_connection)
-    open_ai=QPushButton('Arşive soru sor / Belgeyi özetle'); open_ai.clicked.connect(w._ai_show); gemini.addWidget(open_ai)
     gemini.addWidget(label('Word/Excel içine gömülü resimler OCR kapsamına dahil değildir.','ikincil')); gemini.addStretch()
-    w.ai_dialog=QDialog(w); w.ai_dialog.setWindowTitle('Evrakçı • Gemini'); w.ai_dialog.resize(850,700)
-    QVBoxLayout(w.ai_dialog).addWidget(assistant)
     suggestions=QPushButton('Gemini ile sorgu önerileri üret (yalnız soru gönderilir)')
     suggestions.clicked.connect(w._ai_suggest)
     assistant.layout().insertWidget(0,suggestions)
@@ -91,10 +93,26 @@ def install(w):
     page=QWidget(); outer=QVBoxLayout(page); outer.setContentsMargins(0,0,0,0)
     canvas=QWidget(); w.archive_grid=QGridLayout(canvas); w.archive_grid.setContentsMargins(0,0,0,0)
     w.archive_cards=[]
-    for title,body in [('Arama',search),('Sonuçlar',results),('Gemini',w.gemini_card),('Yedekler',backups)]:
+    for title,body in [('Arama',search),('Sonuçlar',results)]:
         frame,layout=card(); layout.addWidget(label(title,'baslik')); layout.addWidget(scroll(body),1)
         w.archive_cards.append(frame)
     outer.addWidget(scroll(canvas)); w.yigin.insertWidget(0,page)
+    for body in (w.gemini_card,assistant):
+        for text in body.findChildren(QLabel): text.setWordWrap(True)
+    w.ai_page=QWidget(); ai_layout=QVBoxLayout(w.ai_page)
+    ai_canvas=QWidget(); ai_row=QHBoxLayout(ai_canvas); w.ai_row=ai_row; w.ai_cards=[]
+    for title,body in [('AI ayarları',w.gemini_card),('AI ile arama ve özetleme',assistant)]:
+        frame,inner=card(); inner.addWidget(label(title,'baslik')); inner.addWidget(scroll(body),1)
+        ai_row.addWidget(frame,1 if body is w.gemini_card else 2)
+        w.ai_cards.append(frame)
+    ai_layout.addWidget(scroll(ai_canvas),1)
+    w.backup_card,backup_layout=card(); backup_layout.addWidget(label('Yedekler','baslik'))
+    w.backup_card.setMinimumHeight(300)
+    backup_layout.addWidget(backups)
+    settings.layout().insertWidget(1,w.backup_card)
+    settings_index=w.yigin.indexOf(settings); w.yigin.removeWidget(settings)
+    w.settings_page=QWidget(); QVBoxLayout(w.settings_page).addWidget(scroll(settings))
+    w.yigin.insertWidget(settings_index,w.settings_page)
     files=QWidget(); layout=QVBoxLayout(files)
     filters=QHBoxLayout(); w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText('Dosya adı veya tam yol')
     w.file_status=QComboBox(); w.file_status.addItem('Tüm durumlar','')
@@ -110,19 +128,23 @@ def install(w):
     w.file_next=QPushButton('Sonraki'); w.file_next.clicked.connect(lambda:w._files_page(1))
     for button in (preview,refresh,errors,prev,w.file_next): controls.addWidget(button)
     layout.addLayout(controls); w.yigin.insertWidget(4,files)
+    w.yigin.insertWidget(1,w.ai_page)
     w.file_offset=0; w.file_rows=[]
     w.file_debounce=QTimer(w); w.file_debounce.setSingleShot(True); w.file_debounce.setInterval(300)
     w.file_debounce.timeout.connect(lambda:w._files_refresh(reset=True))
     w.file_filter.textChanged.connect(lambda:w.file_debounce.start()); w.file_status.currentIndexChanged.connect(lambda:w._files_refresh(reset=True))
     w.file_list.doubleClicked.connect(w._file_open)
-    w.nav.blockSignals(True); w.nav.clear(); w.nav.addItems(['Ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']); w.nav.setCurrentRow(0); w.nav.blockSignals(False)
+    w.nav.blockSignals(True); w.nav.clear(); w.nav.addItems(['Ara','AI ile ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']); w.nav.setCurrentRow(0); w.nav.blockSignals(False)
     from . import theme
-    for i,kind in enumerate(('search','folder','scan','history','folder','settings')): w.nav.item(i).setIcon(theme.symbol_icon(kind))
+    for i,kind in enumerate(('search','search','folder','scan','history','folder','settings')): w.nav.item(i).setIcon(theme.symbol_icon(kind))
     w.yigin.setCurrentIndex(0)
 
 def layout_cards(w):
     if not hasattr(w,'archive_grid'): return
     width=w.yigin.width()-70; columns=2 if width>=850 else 1
+    w.ai_row.setDirection(QBoxLayout.LeftToRight if columns==2 else QBoxLayout.TopToBottom)
+    for i,frame in enumerate(w.ai_cards):
+        frame.setMinimumHeight((300 if i==0 else 600) if columns==1 else 0)
     side=max(300,(width-20*(columns-1))//columns)
     if getattr(w,'_grid_geometry',None)==(columns,side): return
     w._grid_geometry=(columns,side)

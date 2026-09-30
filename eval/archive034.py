@@ -13,7 +13,8 @@ def pump(app,predicate=lambda:False,seconds=30):
     app.processEvents()
 
 def main():
-    output=Path('build/archive034'); output.mkdir(parents=True,exist_ok=True)
+    from evrakci.version import __version__
+    output=Path('build/archive'+__version__.replace('.','')); output.mkdir(parents=True,exist_ok=True)
     con=sqlite3.connect(':memory:'); schema.ensure_schema(con); ensure_v5(con); migrate.ensure_current(con)
     count=10000
     con.executemany("INSERT INTO files(file_id,path,name,ext,index_status) VALUES (?,?,?,'.pdf','ok')",[(i,f'C:/synthetic/{i:05}.pdf',f'{i}.pdf') for i in range(1,count+1)])
@@ -40,7 +41,9 @@ def main():
                 theme.apply(app,mode); window.resize(width,height); window.nav.setCurrentRow(0); app.processEvents()
                 from evrakci.archive_ui import layout_cards
                 layout_cards(window); app.processEvents()
-                window.grab().save(str(output/f'{mode}-{width}.png'))
+                for page,name in ((0,'ara'),(1,'ai'),(6,'ayarlar')):
+                    window.nav.setCurrentRow(page); pump(app,lambda:bool(window._jobs))
+                    window.grab().save(str(output/f'{mode}-{width}-{name}.png'))
         timings=[]
         for _ in range(20):
             for tab in (0,1,3,4,5):
@@ -59,7 +62,7 @@ def main():
                 start=time.perf_counter(); window.nav.setCurrentRow(tab); app.processEvents(); active_timings.append((time.perf_counter()-start)*1000)
         pump(app,lambda:window.isci_thread is not None,seconds=60)
         pump(app,lambda:bool(window._jobs))
-        window.nav.setCurrentRow(4); pump(app,lambda:bool(window._jobs)); assert window.file_model.rowCount()==4
+        window.nav.setCurrentRow(5); pump(app,lambda:bool(window._jobs)); assert window.file_model.rowCount()==4
         window.file_list.setCurrentIndex(window.file_model.index(0,0)); window._file_open(); pump(app,window.onizleme.busy)
         assert '54321' in window.onizleme._fallback
         window.preview_dialog.close(); window._cikis(); pump(app,lambda:bool(window._jobs) or window.onizleme.busy())

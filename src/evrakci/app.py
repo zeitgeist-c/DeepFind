@@ -32,7 +32,7 @@ from .auth import ParolaDialog
 from .ui import brand, card, label, EmptyState, CardDelegate
 from . import archive_ui
 
-EKRANLAR = ["Ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
+EKRANLAR = ["Ara", "AI ile ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
 
 
 class RailDelegate(QStyledItemDelegate):
@@ -393,12 +393,12 @@ class AnaPencere(QMainWindow):
         workspace.removeWidget(self.search_bar)
         archive_ui.install(self)
         descriptions = ["Ad, içerik ve klasör bağlamıyla belgelerinizi bulun.",
+                        "AI ayarlarını yönetin; alıntılarla soru sorun ve belgeleri özetleyin.",
                         "Taranacak klasörleri ve kapsam dışında kalan yolları yönetin.",
                         "Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.",
                         "Önceki aramalarınıza tek tıkla dönün.",
                         "Kayıtlı dosyaları, tam yollarını ve içerik durumlarını inceleyin.",
-                        "Çalışma tercihleri ve kasa güvenliği.",
-                        "Şifreli kasanızdaki alıntıları inceleyip isteğe bağlı bulut yanıtı alın."]
+                        "Çalışma tercihleri, kasa güvenliği ve yedekler."]
         for i, name in enumerate(EKRANLAR):
             layout = self.yigin.widget(i).layout()
             self.yigin.widget(i).setObjectName("pageCard")
@@ -547,8 +547,8 @@ class AnaPencere(QMainWindow):
         self._ara_simdi(reset=False)
 
     def _ai_show(self):
+        self.nav.setCurrentRow(EKRANLAR.index('AI ile ara'))
         self._ai_refresh_docs()
-        self.ai_dialog.show(); self.ai_dialog.raise_()
 
     def _ai_doc_page(self,direction):
         self.ai_doc_offset=max(0,self.ai_doc_offset+direction*100) if direction else 0
@@ -1761,7 +1761,6 @@ class AnaPencere(QMainWindow):
             if self.ai_preview is None or not ai.still_current(self.con, self.ai_preview):
                 self.ai_status.setText("Kaynak indeksi değişti. Alıntıları yeniden hazırlayın.")
                 return
-            self.nav.setCurrentRow(0)
             self._open_preview(source)
 
     def _ai_abort_timeout(self):
@@ -1867,11 +1866,13 @@ class AnaPencere(QMainWindow):
             return
         if i<0 or i>=self.yigin.count(): return
         self.yigin.setCurrentIndex(i)
-        if i==2 and self.isci_thread is not None: self._scan_show()
-        if i==3: self._gecmis_tazele()
-        elif i==4: self._files_refresh(reset=True)
-        elif i==1: self._kok_tazele()
-        elif i==0: self._yedek_tazele()
+        name=EKRANLAR[i]
+        if name=='Tarama' and self.isci_thread is not None: self._scan_show()
+        if name=='Geçmiş': self._gecmis_tazele()
+        elif name=='Taranmış Evraklar': self._files_refresh(reset=True)
+        elif name=='Kaynaklar': self._kok_tazele()
+        elif name=='Ayarlar': self._yedek_tazele()
+        elif name=='AI ile ara': self._ai_refresh_docs()
         QTimer.singleShot(0,lambda:diagnostics.record('tab_ready_ms',str(round((time.perf_counter()-started)*1000))))
 
     def _durum_yaz(self):
@@ -2001,7 +2002,7 @@ class AnaPencere(QMainWindow):
         for worker in self._jobs: worker.stop.set()
         from .vocab import clear_cache
         clear_cache()
-        self.preview_dialog.hide(); self.ai_dialog.hide()
+        self.preview_dialog.hide()
         self.preview_path.clear(); self.file_rows=[]; self.file_model.clear(); self.file_filter.clear()
         self.file_notice.clear(); self.search_progress.hide()
         if getattr(self,'_connection_reply',None): self._connection_reply.abort()
