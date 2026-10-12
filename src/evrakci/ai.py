@@ -35,6 +35,11 @@ MAX_SOURCES = 12
 MAX_EXCERPT = 1600
 MAX_TOTAL = 24000
 _TOKEN = re.compile(r"[\wçğıöşüÇĞİÖŞÜ]{2,}", re.UNICODE)
+YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+# Belge türü ipuçları (katlanmış metinde alt-dize aranır).
+DOC_TYPES = ("fatura", "makbuz", "rapor", "sozlesme", "dekont", "bordro",
+             "teklif", "senet", "makbuzu", "faturasi", "sozlesmesi", "belge")
+STOPWORDS = {'nedir', 'hangi', 'kadar', 'olan', 'olarak', 'bir', 'bu', 've', 'ile', 'için', 'bana', 'getir', 'göster', 'bul', 'var', 'mı', 'mi', 'ne', 'nasıl', 'özetle', 'eder', 'misin'}
 
 
 @dataclass(frozen=True)
@@ -65,20 +70,38 @@ def _fingerprint(sources):
     return hashlib.sha256(json.dumps(data, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
+def parse_question(question: str, retrieval_query: str | None = None) -> dict:
+    """Soruyu ayrıştır: içerik terimleri + tekil yıl filtresi + tür ipuçları.
+    Tekil yıl FTS terimlerinden çıkarılır; year filtresi onu kapsar
+    (INTERSECT'in segmentte yıl arama zorunluluğu kalkar)."""
+    base = retrieval_query or question
+    years = YEAR_RE.findall(base)
+    year = years[0] if len(set(years)) == 1 else None
+    terms = {t.casefold() for t in _TOKEN.findall(base)} - STOPWORDS
+    if year:
+        terms = {t for t in terms if t != year}
+    folded_q = nz.folded(base)
+    doctypes = [d for d in DOC_TYPES if d in folded_q]
+    return {"terms": terms, "year": year, "doctypes": doctypes}
+
+
 def prepare_question(con, question: str, retrieval_query: str | None = None) -> Preview:
     question = question.strip()
     if not 3 <= len(question) <= 1000:
         raise ValueError("Soruyu 3–1000 karakter arasında yazın.")
-    stopwords = {'nedir', 'hangi', 'kadar', 'olan', 'olarak', 'bir', 'bu', 've', 'ile', 'için', 'bana', 'getir', 'göster', 'bul', 'var', 'mı', 'mi', 'ne', 'nasıl', 'özetle', 'eder', 'misin'}
-    terms = {t.casefold() for t in _TOKEN.findall(retrieval_query or question)} - stopwords
-    results = rank.search_ranked(con, ' '.join(sorted(terms)), limit=8)["results"]
+    parsed = parse_question(question, retrieval_query)
+    terms, year = parsed["terms"], parsed["year"]
+    results = rank.search_ranked(con, ' '.join(sorted(terms)), year=year, limit=8)["results"]
     if not results:
         # Natural questions need not match every grammatical word.
         found = {}
         for term in sorted(terms, key=len, reverse=True)[:8]:
-            for result in rank.search_ranked(con, term, limit=8)['results']:
+            for result in rank.search_ranked(con, term, year=year, limit=8)['results']:
                 found.setdefault(result['path'], result)
         results = list(found.values())[:8]
+    if parsed["doctypes"]:
+        # Tür ipucu dosya adında geçiyorsa öne al (kararlı sıralama).
+        results.sort(key=lambda r: 0 if any(d in nz.folded(r["name"]) for d in parsed["doctypes"]) else 1)
     sources = []
     total = 0
     for result in results:
