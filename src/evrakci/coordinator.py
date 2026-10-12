@@ -500,10 +500,10 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 break
             cur = stack.pop()
             if cur in done_dirs:
-                # Bitmis ve run basladigindan beri degismemis klasore tekrar girilmez;
-                # icine yeni dosya girdiyse mtime artar ve normal gezilir.
+                # Bitmis ve run baslangic saniyesinden eski klasore tekrar girilmez;
+                # ayni/ileri saniyede degismis klasor normal gezilir (yeni dosya kacmaz).
                 try:
-                    if os.stat(cur).st_mtime_ns // 1_000_000_000 <= run_started:
+                    if os.stat(cur).st_mtime_ns // 1_000_000_000 < run_started:
                         continue
                 except OSError:
                     pass
