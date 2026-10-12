@@ -48,3 +48,18 @@ def test_batch_limit_processes_at_most_n(tmp_path):
         assert q.pending_count(con) == 0
     finally:
         con.close()
+
+
+def test_daily_quota_blocks_second_run(tmp_path):
+    from evrakci import migrate as M
+    from evrakci import sched
+    con = database(tmp_path / "kasa.db")
+    try:
+        assert sched.quota_left(con, "2026-10-12") is None  # ayar yoksa sinirsiz
+        M.set_setting(con, "gunluk_kota", "100")
+        M.set_setting(con, "kota_tuketilen_2026-10-12", "100")
+        assert sched.quota_left(con, "2026-10-12") == 0
+        M.set_setting(con, "kota_tuketilen_2026-10-12", "30")
+        assert sched.quota_left(con, "2026-10-12") == 70
+    finally:
+        con.close()

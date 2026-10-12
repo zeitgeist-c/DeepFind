@@ -49,6 +49,22 @@ def mark_done() -> dt.datetime:
     return dt.datetime.now()
 
 
+def quota_left(con, day_iso: str) -> int | None:
+    """Gunluk tarama kotasindan kalan. Ayar yoksa/sifirsa None (sinirsiz)."""
+    from . import migrate as M
+    try:
+        kota = int(M.get_setting(con, "gunluk_kota", "0"))
+    except ValueError:
+        kota = 0
+    if kota <= 0:
+        return None
+    try:
+        used = int(M.get_setting(con, f"kota_tuketilen_{day_iso}", "0"))
+    except ValueError:
+        used = 0
+    return max(0, kota - used)
+
+
 def autostart_set(app_name: str, exe_path: str, vault_path: str | None = None) -> None:
     """HKCU Run'a kullanici-duzeyi otomatik baslatma yazar (yonetici yok)."""
     import winreg
