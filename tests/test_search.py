@@ -174,3 +174,49 @@ def test_eski_arama_calismaya_devam(tmp_path):
     r = search.search(con, "Ankara")
     assert r, "v1 search geriye uyumlu olmali"
     con.close()
+
+
+def _hafiza():
+    import sqlite3
+    from evrakci import index, migrate, schema
+    from evrakci.extract import ExtractResult, Segment
+    from evrakci.scan import Entry
+    con = sqlite3.connect(":memory:")
+    schema.ensure_schema(con)
+    ensure_v5(con)
+    migrate.ensure_v7(con)
+    for path, metin in {
+        "C:/a/fatura.pdf": "ABC kira faturası 2023",
+        "C:/a/fatura-elektrik.pdf": "XYZ elektrik faturası",
+        "C:/a/makbuz.pdf": "tahsilat makbuzu 54321",
+        "C:/a/not.pdf": "or use this",
+    }.items():
+        index.index_entry(con, Entry(path, os.path.basename(path), ".pdf", 10, 1),
+                          ExtractResult([Segment("pdf_page", 1, "Sayfa 1", metin)]))
+    return con
+
+
+def _yollar(r):
+    return [x["path"] for x in r["results"]]
+
+
+def test_or_operator_terim_degil():
+    con = _hafiza()
+    try:
+        yollar = _yollar(rank.search_ranked(con, "fatura OR makbuz"))
+        assert "C:/a/fatura.pdf" in yollar and "C:/a/makbuz.pdf" in yollar
+        assert "C:/a/not.pdf" not in yollar  # 'or' içerik terimi sayılmaz
+        yollar2 = _yollar(rank.search_ranked(con, "fatura VEYA makbuz"))
+        assert "C:/a/fatura.pdf" in yollar2 and "C:/a/not.pdf" not in yollar2
+    finally:
+        con.close()
+
+
+def test_not_dislar():
+    con = _hafiza()
+    try:
+        yollar = _yollar(rank.search_ranked(con, "fatura -kira"))
+        assert yollar == ["C:/a/fatura-elektrik.pdf"]
+        assert _yollar(rank.search_ranked(con, "makbuz NOT 54321")) == []
+    finally:
+        con.close()

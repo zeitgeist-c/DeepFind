@@ -15,25 +15,77 @@ def _files_with(con, table, token):
 def _intersect(sets):
     return set.intersection(*sets) if sets else set()
 
+_OR_SPLIT_RE = re.compile(r"\s+(?:OR|VEYA)\s+", re.IGNORECASE)
+_NOT_PHRASE_RE = re.compile(r'-"([^"]+)"')
+_NOT_WORD_RE = re.compile(r"(?:^|\s)- ?([A-Za-zÇçĞğIıİiÖöŞşÜü0-9]+)")
+_NOT_KW_RE = re.compile(r"\bNOT\s+")  # yalnız büyük harf; küçük 'not' Türkçe kelimedir
+
+
+def _split_groups(query):
+    """OR/VEYA gruplarına böl (tırnak içindeki korunur)."""
+    groups, cur = [], []
+    for chunk in re.split(r'("[^"]*")', query):
+        if chunk.startswith('"'):
+            cur.append(chunk)
+        else:
+            parts = _OR_SPLIT_RE.split(chunk)
+            cur.append(parts[0])
+            for p in parts[1:]:
+                groups.append("".join(cur))
+                cur = [p]
+    groups.append("".join(cur))
+    return [g.strip() for g in groups if g.strip()] or [query]
+
+
+def _split_excluded(group):
+    """(pozitif_metin, [dislanan...]). -terim, -"kalıp", NOT terim."""
+    excl = []
+    g = _NOT_PHRASE_RE.sub(lambda m: (excl.append(m.group(1)), " ")[1], group)
+    g = _NOT_KW_RE.sub("-", g)
+    g = _NOT_WORD_RE.sub(lambda m: (excl.append(m.group(1)), " ")[1], g)
+    return g, excl
+
+
+def _quote(t):
+    return '"' + t.replace('"', '""') + '"'
+
 def _query(con, query, year, ext, folder, limit, offset, fuzzy=None):
-    raw = RAWTOK_RE.findall(query)
-    folded = nz.tokens_folded(query)
-    quoted = re.findall(r'"([^"]+)"', query)
     args=[]
     def group(table, tokens, phrases):
-        expressions = ['"'+t.replace('"','""')+'"' for t in tokens]
-        expressions += ['"'+p.replace('"','""')+'"' for p in phrases]
+        expressions = [_quote(t) for t in tokens]
+        expressions += [_quote(p) for p in phrases]
         if fuzzy and table=='docs_fts_folded':
             expressions = ['('+' OR '.join('"'+x+'"' for x in [t]+fuzzy.get(t, []))+')' for t in tokens]
             expressions += ['"'+p+'"' for p in phrases]
         if not expressions:
-            return 'SELECT file_id FROM files WHERE 0'
-        args.extend(expressions)
-        return ' INTERSECT '.join(f'SELECT s.file_id FROM {table} JOIN segments s ON s.seg_id={table}.rowid WHERE {table} MATCH ?' for _ in expressions)
-    strict=group('docs_fts',raw,quoted)
-    fold=group('docs_fts_folded',folded,[nz.folded(p) for p in quoted])
-    hit_expr=' + '.join('CASE WHEN instr(s.folded_text, ?) > 0 THEN 1 ELSE 0 END' for _ in folded) or '0'
-    args.extend(folded)
+            return 'SELECT file_id FROM files WHERE 0', []
+        sql = ' INTERSECT '.join(f'SELECT s.file_id FROM {table} JOIN segments s ON s.seg_id={table}.rowid WHERE {table} MATCH ?' for _ in expressions)
+        return sql, expressions
+    strict_parts, fold_parts, excl_selects = [], [], []
+    strict_args, fold_args, excl_args, hit_tokens = [], [], [], []
+    for grp in _split_groups(query):
+        pos, excl = _split_excluded(grp)
+        raw = RAWTOK_RE.findall(pos)
+        folded = nz.tokens_folded(pos)
+        quoted = re.findall(r'"([^"]+)"', pos)
+        hit_tokens.extend(folded)
+        s_sql, s_args = group('docs_fts', raw, quoted)
+        strict_parts.append(s_sql)
+        strict_args.extend(s_args)
+        f_sql, f_args = group('docs_fts_folded', folded, [nz.folded(p) for p in quoted])
+        fold_parts.append(f_sql)
+        fold_args.extend(f_args)
+        for e in excl:
+            excl_selects.append(f'SELECT s.file_id FROM docs_fts JOIN segments s ON s.seg_id=docs_fts.rowid WHERE docs_fts MATCH ?')
+            excl_args.append(_quote(e))
+            excl_selects.append(f'SELECT s.file_id FROM docs_fts_folded JOIN segments s ON s.seg_id=docs_fts_folded.rowid WHERE docs_fts_folded MATCH ?')
+            excl_args.append(_quote(nz.folded(e)))
+    strict=' UNION '.join(strict_parts)
+    fold=' UNION '.join(fold_parts)
+    args.extend(strict_args)
+    args.extend(fold_args)
+    hit_expr=' + '.join('CASE WHEN instr(s.folded_text, ?) > 0 THEN 1 ELSE 0 END' for _ in hit_tokens) or '0'
+    args.extend(hit_tokens)
     # Rank/filter before fetching content. Only one segment per output document.
     filters=["f.index_status NOT IN ('excluded','pending')"]
     if year:
@@ -42,6 +94,9 @@ def _query(con, query, year, ext, folder, limit, offset, fuzzy=None):
         filters.append('f.ext=?'); args.append(ext)
     if folder:
         filters.append('instr(lower(f.path),lower(?))>0'); args.append(folder)
+    if excl_selects:
+        filters.append(f"f.file_id NOT IN ({' UNION '.join(excl_selects)})")
+        args.extend(excl_args)
     args.extend([limit,offset])
     sql=f'''WITH strict AS ({strict}), folded AS ({fold}), candidates AS (
       SELECT file_id,100 base FROM strict UNION ALL SELECT file_id,{30 if fuzzy else 60} FROM folded WHERE file_id NOT IN (SELECT file_id FROM strict)
