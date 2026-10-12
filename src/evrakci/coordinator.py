@@ -100,9 +100,11 @@ def note_discovered(con, entry) -> str:
 
 
 def find_resumable_run(con, root: str):
-    """Bitmemis (finished_at NULL) son taramayi dondur; yoksa None."""
+    """Bitmemis (finished_at NULL) son taramayi dondur; yoksa None.
+    Manifest anlik goruntuleri (result='manifest') resume'a konu olmaz."""
     row = con.execute(
         "SELECT run_id FROM scan_runs WHERE root=? AND finished_at IS NULL"
+        " AND COALESCE(result, '') <> 'manifest'"
         " ORDER BY run_id DESC LIMIT 1", (root,)).fetchone()
     return row[0] if row else None
 
@@ -118,7 +120,8 @@ def build_manifest(con, root: str) -> tuple:
     Anlik goruntu satiridir (result='manifest'); resume'a konu olmaz."""
     absroot = os.path.abspath(root)
     run_id = con.execute(
-        "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (absroot, int(time.time()))
+        "INSERT INTO scan_runs(root, started_at, result) VALUES (?, ?, 'manifest')",
+        (absroot, int(time.time()))
     ).lastrowid
     total = 0
     for e in scan_mod.walk_ro(absroot):

@@ -70,6 +70,20 @@ def test_interrupted_run_resumes_same_run_id(tmp_path):
         con.close()
 
 
+def test_manifest_run_never_resumed(tmp_path):
+    (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4 a")
+    con = database(tmp_path / "kasa.db")
+    try:
+        rid, _total = C.build_manifest(con, str(tmp_path))
+        absroot = os.path.abspath(str(tmp_path))
+        assert C.find_resumable_run(con, absroot) is None
+        con.execute("UPDATE scan_runs SET finished_at=NULL WHERE run_id=?", (rid,))
+        con.commit()
+        assert C.find_resumable_run(con, absroot) is None
+    finally:
+        con.close()
+
+
 def test_changed_signature_requeued(tmp_path):
     con = database(tmp_path / "kasa.db")
     try:
