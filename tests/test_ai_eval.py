@@ -95,3 +95,12 @@ def test_eval_yil_filtresi_yanlis_yili_eler(arsiv):
     yollar23 = [s["path"] for s in preview23.sources]
     assert any("2023/fatura-abc.pdf" in y for y in yollar23)
     assert not any("2024/fatura-abc.pdf" in y for y in yollar23)
+
+
+def test_eval_pencere_kelime_ortasindan_kesmez():
+    ham = "Giriş cümlesi. " + "kelime " * 100 + "hedef cümle burada bitiyor. Son."
+    isabet = ham.index("hedef")
+    basla, bit = ai._window(ham, isabet)
+    assert basla == 0 or ham[basla - 1] in " \n"
+    assert bit == len(ham) or ham[bit - 1] in ".!?\n"
+    assert "hedef cümle burada bitiyor." in ham[basla:bit]

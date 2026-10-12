@@ -51,6 +51,31 @@ class Preview:
     truncated: bool
 
 
+def _snap_back(raw: str, pos: int, max_back: int = 40) -> int:
+    """Kelime ortasından kesmemek için en yakın boşluğa geri sar."""
+    if pos <= 0:
+        return 0
+    i = max(raw.rfind(" ", 0, pos), raw.rfind("\n", 0, pos))
+    if i != -1 and pos - (i + 1) <= max_back:
+        return i + 1
+    return pos
+
+
+def _snap_fwd(raw: str, end: int, max_fwd: int = 200) -> int:
+    """Pencere sonunu cümle sonuna tamamla (en fazla max_fwd ileri)."""
+    for i in range(end, min(len(raw), end + max_fwd)):
+        if raw[i] in ".!?\n":
+            return i + 1
+    return end
+
+
+def _window(raw: str, hit: int, limit: int = MAX_EXCERPT, lead: int = 300) -> tuple:
+    """(baslangic, bitis): isabet cümlesi kesilmeden pencerele."""
+    start = _snap_back(raw, max(0, hit - lead))
+    end = _snap_fwd(raw, min(len(raw), start + limit))
+    return start, end
+
+
 def _source(row, *, limit=MAX_EXCERPT, terms=(), start=None):
     seg_id, fid, path, name, ext, page, label, raw = row
     if start is None:
@@ -58,10 +83,13 @@ def _source(row, *, limit=MAX_EXCERPT, terms=(), start=None):
         mapped = raw.replace('I','ı').replace('İ','i').lower().translate(nz._FOLD)
         positions = [mapped.find(nz.folded(t)) for t in terms]
         positions = [p for p in positions if p >= 0]
-        start = max(0, min(positions) - 300) if positions else 0
+        hit = min(positions) if positions else 0
+        start, end = _window(raw, hit, limit)
+    else:
+        end = start + limit
     return {"id": f"S{seg_id}", "seg_id": seg_id, "file_id": fid,
             "path": path, "name": name, "ext": ext, "page": page,
-            "label": label, "text": raw[start:start + limit], "start": start,
+            "label": label, "text": raw[start:end], "start": start,
             "raw_sha": hashlib.sha256(raw.encode("utf-8")).hexdigest()}
 
 
@@ -91,14 +119,14 @@ def prepare_question(con, question: str, retrieval_query: str | None = None) -> 
         raise ValueError("Soruyu 3–1000 karakter arasında yazın.")
     parsed = parse_question(question, retrieval_query)
     terms, year = parsed["terms"], parsed["year"]
-    results = rank.search_ranked(con, ' '.join(sorted(terms)), year=year, limit=8)["results"]
+    results = rank.search_ranked(con, ' '.join(sorted(terms)), year=year, limit=16)["results"]
     if not results:
         # Natural questions need not match every grammatical word.
         found = {}
         for term in sorted(terms, key=len, reverse=True)[:8]:
             for result in rank.search_ranked(con, term, year=year, limit=8)['results']:
                 found.setdefault(result['path'], result)
-        results = list(found.values())[:8]
+        results = list(found.values())[:16]
     if parsed["doctypes"]:
         # Tür ipucu dosya adında geçiyorsa öne al (kararlı sıralama).
         results.sort(key=lambda r: 0 if any(d in nz.folded(r["name"]) for d in parsed["doctypes"]) else 1)
@@ -110,9 +138,9 @@ def prepare_question(con, question: str, retrieval_query: str | None = None) -> 
             "SELECT s.seg_id,f.file_id,f.path,f.name,f.ext,s.page,s.label,s.raw_text "
             "FROM files f JOIN segments s ON s.file_id=f.file_id "
             "WHERE f.path=? AND f.index_status IN ('ok','partial') "
-            f"AND s.kind NOT IN ('name_only','context') ORDER BY ({hits}) DESC,s.seg_id LIMIT 2",
+            f"AND s.kind NOT IN ('name_only','context') ORDER BY ({hits}) DESC,s.seg_id LIMIT 3",
             (result["path"],*(nz.folded(t) for t in terms))).fetchall()
-        for row in rows[:2]:
+        for row in rows[:3]:
             if not row[7].strip():
                 continue
             source = _source(row, terms=terms)
@@ -126,7 +154,7 @@ def prepare_question(con, question: str, retrieval_query: str | None = None) -> 
         raise ValueError("Bu soru için içerik kanıtı bulunamadı. Farklı sözcüklerle arayın.")
     partial=any(con.execute('SELECT index_status FROM files WHERE file_id=?',(s['file_id'],)).fetchone()[0]!='ok' for s in sources)
     return Preview("question", question, tuple(sources), _fingerprint(sources),
-                   partial or any(s['start'] or len(s['text']) == MAX_EXCERPT for s in sources))
+                   partial or any(s['start'] or len(s['text']) >= MAX_EXCERPT for s in sources))
 
 
 def list_documents(con, limit=100, offset=0, query=''):
