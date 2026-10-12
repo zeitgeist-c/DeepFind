@@ -125,6 +125,17 @@ def test_completed_dirs_skipped_on_resume(tmp_path):
         con.close()
 
 
+def test_progress_distinguishes_discovery_and_work():
+    events = []
+    C.emit_progress(events.append, stage="Klasörler keşfediliyor",
+                    found=100, done=10, pending=90)
+    assert events[0]["phase"] == "kesif"
+    assert events[0]["found"] == 100
+    C.emit_progress(events.append, stage="İçerik okunuyor",
+                    found=100, done=10, pending=90)
+    assert events[1]["phase"] == "islem"
+
+
 def test_run_scan_resumes_unfinished_run(tmp_path):
     root = tmp_path / "kaynak"
     root.mkdir()

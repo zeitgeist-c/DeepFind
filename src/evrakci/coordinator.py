@@ -15,6 +15,18 @@ from . import migrate
 STABLE_NS = 2_000_000_000  # 2 sn icinde degismisse kararli degil
 DEFER_SEC = 60
 
+KESIF_ASAMALARI = {"Klasörler keşfediliyor", "Kopyalar doğrulanıyor"}
+
+
+def emit_progress(sink, payload=None, **kw):
+    """Ilerleme olayi: kesif mi islem mi oldugunu 'phase' ile ayirir.
+    payload tam sayac sozlugu olabilir; eksik cagrida yalniz verilenler gider."""
+    data = dict(payload or {})
+    data.update(kw)
+    stage = data.get("stage", "")
+    data["phase"] = "kesif" if stage in KESIF_ASAMALARI else "islem"
+    sink(data)
+
 
 class AlreadyRunning(Exception):
     pass
@@ -416,7 +428,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             if progress and (force or now - last_report >= 0.2):
                 pending = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running')"
                                       " AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
-                progress(dict(stats, stage=stage, path=path, item_result=result, pending=pending))
+                emit_progress(progress, dict(stats, stage=stage, path=path, item_result=result, pending=pending))
                 last_report = now
 
         def process_batch(limit=None):
