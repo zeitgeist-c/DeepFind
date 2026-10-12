@@ -87,6 +87,14 @@ def note_discovered(con, entry) -> str:
     return "skipped"
 
 
+def find_resumable_run(con, root: str):
+    """Bitmemis (finished_at NULL) son taramayi dondur; yoksa None."""
+    row = con.execute(
+        "SELECT run_id FROM scan_runs WHERE root=? AND finished_at IS NULL"
+        " ORDER BY run_id DESC LIMIT 1", (root,)).fetchone()
+    return row[0] if row else None
+
+
 def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
                      context: str = "") -> None:
     """Dosya + revizyon + segment + FTS tek transaction (DB-01: yarim FTS yok)."""
@@ -363,13 +371,16 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
     migrate.ensure_archive(con)
     with ScanLock(vault_path):
         con.execute("CREATE TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
-        con.execute("DELETE FROM scan_selected")
+        absroot = os.path.abspath(root)
+        run_id = find_resumable_run(con, absroot)
+        if run_id is None:
+            run_id = con.execute(
+                "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (absroot, int(time.time()))
+            ).lastrowid
+            con.execute("DELETE FROM scan_selected")
+            con.commit()
         q.recover_running(con)
         rules = exc.list_rules(con)
-        run_id = con.execute(
-            "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (root, int(time.time()))
-        ).lastrowid
-        con.commit()
         all_complete = True
         seen = set()
         last_report = 0.0

@@ -53,6 +53,23 @@ def test_same_signature_not_requeued(tmp_path):
         con.close()
 
 
+def test_interrupted_run_resumes_same_run_id(tmp_path):
+    con = database(tmp_path / "kasa.db")
+    try:
+        migrate.ensure_archive(con)
+        rid = con.execute(
+            "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", ("/root", 1)).lastrowid
+        con.execute("INSERT INTO scan_scopes(run_id, dir, complete) VALUES (?, ?, ?)",
+                    (rid, "/root/a", 1))
+        con.commit()
+        assert C.find_resumable_run(con, "/root") == rid
+        con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?", (2, "complete", rid))
+        con.commit()
+        assert C.find_resumable_run(con, "/root") is None
+    finally:
+        con.close()
+
+
 def test_changed_signature_requeued(tmp_path):
     con = database(tmp_path / "kasa.db")
     try:
@@ -67,5 +84,25 @@ def test_changed_signature_requeued(tmp_path):
         changed = _entry("C:/arsiv/a.pdf", size=11, mtime_ns=1000)
         assert C.note_discovered(con, changed) == "queued"
         assert q.pending_count(con) == 1
+    finally:
+        con.close()
+
+
+def test_run_scan_resumes_unfinished_run(tmp_path):
+    root = tmp_path / "kaynak"
+    root.mkdir()
+    (root / "a.xlsx").write_bytes(b"degil")
+    con = database(tmp_path / "kasa.db")
+    try:
+        absroot = os.path.abspath(str(root))
+        rid = con.execute(
+            "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (absroot, 1)).lastrowid
+        con.commit()
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        rows = con.execute("SELECT run_id FROM scan_runs").fetchall()
+        assert [r[0] for r in rows] == [rid]
+        assert con.execute(
+            "SELECT finished_at FROM scan_runs WHERE run_id=?", (rid,)).fetchone()[0] is not None
+        assert stats["found"] >= 1
     finally:
         con.close()
