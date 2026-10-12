@@ -637,7 +637,8 @@ class AnaPencere(QMainWindow):
         self.yil_filtre.setPlaceholderText("Yıl (ör. 2024)")
         self.yil_filtre.setFixedWidth(120)
         self.tur_filtre = QComboBox()
-        self.tur_filtre.addItems(["tümü", ".pdf", ".xlsx", ".xls", ".docx", ".doc"])
+        self.tur_filtre.addItems(["tümü", ".pdf", ".xlsx", ".xls", ".docx", ".doc",
+                                  ".txt", ".csv", ".pptx", ".epub", ".eml", ".zip"])
         self.sirket_filtre = QLineEdit()
         self.sirket_filtre.setPlaceholderText("Şirket veya klasör")
         for x in (self.yil_filtre, self.tur_filtre, self.sirket_filtre):
@@ -646,6 +647,21 @@ class AnaPencere(QMainWindow):
         self.tur_filtre.currentTextChanged.connect(lambda _t: self._ara_simdi())
         self.sirket_filtre.textChanged.connect(lambda _t: self._ara_simdi())
         k.addLayout(fil)
+        kayit_satir = QHBoxLayout()
+        self.kayitli_liste = QComboBox()
+        self.kayitli_liste.setPlaceholderText("Kayıtlı arama")
+        self.kayitli_liste.activated.connect(self._kayitli_calistir)
+        kayit_satir.addWidget(self.kayitli_liste, 1)
+        self.kaydet_btn = QPushButton("Kaydet")
+        self.kaydet_btn.clicked.connect(self._arama_kaydet)
+        kayit_satir.addWidget(self.kaydet_btn)
+        self.kayit_sil_btn = QPushButton("Sil")
+        self.kayit_sil_btn.clicked.connect(self._kayitli_sil)
+        kayit_satir.addWidget(self.kayit_sil_btn)
+        self.csv_btn = QPushButton("CSV indir")
+        self.csv_btn.clicked.connect(self._sonuc_csv)
+        kayit_satir.addWidget(self.csv_btn)
+        k.addLayout(kayit_satir)
         self.aktif_filtre = QLabel("")
         self.aktif_filtre.setProperty("ikincil", True)
         k.addWidget(self.aktif_filtre)
@@ -771,6 +787,74 @@ class AnaPencere(QMainWindow):
     def _sec(self, idx):
         if self.con is None or not idx.isValid() or idx.row() >= len(self.sonuclar): return
         self._open_preview(self.sonuclar[idx.row()])
+
+    # -- kayitli aramalar --
+    def _kayitli_tazele(self):
+        self.kayitli_liste.clear()
+        if self.con is None:
+            return
+        try:
+            for s in rank.saved_searches(self.con):
+                self.kayitli_liste.addItem(s["name"], s)
+        except Exception:
+            pass
+
+    def _mevcut_filtreler(self):
+        yil = self.yil_filtre.text().strip() or None
+        tur = self.tur_filtre.currentText()
+        return yil, None if tur == "tümü" else tur, self.sirket_filtre.text().strip().lower() or None
+
+    def _arama_kaydet(self):
+        if self.con is None:
+            return
+        from PySide6.QtWidgets import QInputDialog
+        ad, ok = QInputDialog.getText(self, "Aramayı kaydet", "Ad:")
+        if not ok or not (ad or "").strip():
+            return
+        q = self.arama_kutu.text()
+        if not q.strip():
+            QMessageBox.information(self, "Arama", "Önce bir sorgu yazın.")
+            return
+        yil, tur, kokf = self._mevcut_filtreler()
+        try:
+            rank.save_search(self.con, ad.strip(), q, yil, tur, kokf)
+        except ValueError as e:
+            QMessageBox.warning(self, "Arama", str(e))
+            return
+        self._kayitli_tazele()
+
+    def _kayitli_calistir(self, idx):
+        s = self.kayitli_liste.itemData(idx)
+        if not s:
+            return
+        self.arama_kutu.setText(s["query"])
+        self.yil_filtre.setText(s["year"] or "")
+        self.tur_filtre.setCurrentText(s["ext"] or "tümü")
+        self.sirket_filtre.setText(s["folder"] or "")
+        self._ara_simdi()
+
+    def _kayitli_sil(self):
+        s = self.kayitli_liste.currentData()
+        if not s:
+            return
+        rank.delete_search(self.con, s["name"])
+        self._kayitli_tazele()
+
+    def _sonuc_csv(self):
+        if not self.sonuclar:
+            QMessageBox.information(self, "CSV", "İndirilecek sonuç yok.")
+            return
+        yol, _ = QFileDialog.getSaveFileName(self, "Sonuçları indir", "arama-sonuclari.csv",
+                                             "CSV (*.csv)")
+        if not yol:
+            return
+        try:
+            from pathlib import Path
+            Path(yol).write_bytes(rank.results_csv(self.sonuclar).encode("utf-8-sig"))
+        except OSError as e:
+            QMessageBox.warning(self, "CSV", f"Yazılamadı: {e}")
+            return
+        QMessageBox.information(self, "CSV", f"{len(self.sonuclar)} sonuç kaydedildi.")
 
     def _ekran_kaynaklar(self):
         w = QWidget()
@@ -2083,6 +2167,7 @@ class AnaPencere(QMainWindow):
         self.hide()
         self.sonuclar = []
         self.arama_kutu.clear()
+        self.kayitli_liste.clear()
         self.sonuc_model.clear()
         self.gecmis_model.clear()
         self.kok_model.clear()
@@ -2149,6 +2234,7 @@ class AnaPencere(QMainWindow):
         self._son_hareket = dt.datetime.now()
         self._kok_tazele()
         self._yedek_tazele()
+        self._kayitli_tazele()
         self._scan_history_refresh()
         self._scope_changed()
         self.ai_key_input.setPlaceholderText("API anahtarı kayıtlı" if migrate.get_setting(self.con, "gemini_api_key") else "Gemini API anahtarı")

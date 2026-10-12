@@ -135,3 +135,38 @@ def search_ranked(con, query, year=None, ext=None, limit=50, folder=None, offset
           snippet=snip.highlight(raw or '',tokens),score_class=cls,score=base,why=why,years=years,
           index_status=status,error_code=error,content_available=kind not in ('name_only','context')))
     return dict(results=results,suggestions=suggestions,class_counts=counts,empty=False,has_more=more,offset=offset)
+
+
+def save_search(con, name: str, query: str, year=None, ext=None, folder=None) -> None:
+    name = (name or "").strip()
+    if not name or not (query or "").strip():
+        raise ValueError("ad ve sorgu gerekli")
+    con.execute("INSERT INTO saved_searches(name, query, year, ext, folder) VALUES (?,?,?,?,?)"
+                " ON CONFLICT(name) DO UPDATE SET query=excluded.query, year=excluded.year,"
+                " ext=excluded.ext, folder=excluded.folder",
+                (name, query.strip(), year, ext, folder))
+    con.commit()
+
+
+def saved_searches(con) -> list:
+    return [dict(name=r[0], query=r[1], year=r[2], ext=r[3], folder=r[4]) for r in
+            con.execute("SELECT name, query, year, ext, folder FROM saved_searches ORDER BY name").fetchall()]
+
+
+def delete_search(con, name: str) -> None:
+    con.execute("DELETE FROM saved_searches WHERE name=?", (name,))
+    con.commit()
+
+
+def results_csv(results) -> str:
+    """Arama sonuçlarını CSV metni yapar (dosya yazımı çağıranda)."""
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["dosya", "yol", "tur", "sayfa", "yil", "neden"])
+    for r in results:
+        w.writerow([r.get("name", ""), r.get("path", ""), r.get("ext", ""),
+                    r.get("page") or "", ",".join(r.get("years", [])),
+                    " + ".join(r.get("why", []))])
+    return buf.getvalue()

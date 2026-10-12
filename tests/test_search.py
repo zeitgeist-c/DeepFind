@@ -3,6 +3,8 @@ import os
 import sys
 import time
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from evrakci import history, normalize, rank, vocab  # noqa: E402
@@ -218,5 +220,34 @@ def test_not_dislar():
         yollar = _yollar(rank.search_ranked(con, "fatura -kira"))
         assert yollar == ["C:/a/fatura-elektrik.pdf"]
         assert _yollar(rank.search_ranked(con, "makbuz NOT 54321")) == []
+    finally:
+        con.close()
+
+
+def test_kayitli_arama_crud():
+    from evrakci import migrate
+    con = _hafiza()
+    try:
+        migrate.ensure_archive(con)
+        rank.save_search(con, "kiralar", "kira faturası", year="2023")
+        assert rank.saved_searches(con) == [
+            {"name": "kiralar", "query": "kira faturası", "year": "2023", "ext": None, "folder": None}]
+        rank.save_search(con, "kiralar", "kira")
+        assert rank.saved_searches(con)[0]["query"] == "kira"
+        rank.delete_search(con, "kiralar")
+        assert rank.saved_searches(con) == []
+        with pytest.raises(ValueError):
+            rank.save_search(con, "  ", "kira")
+    finally:
+        con.close()
+
+
+def test_csv_satirlari():
+    con = _hafiza()
+    try:
+        out = rank.results_csv(rank.search_ranked(con, "fatura")["results"])
+        satirlar = out.strip().split("\n")
+        assert satirlar[0] == "dosya,yol,tur,sayfa,yil,neden"
+        assert any("fatura.pdf" in s for s in satirlar[1:])
     finally:
         con.close()

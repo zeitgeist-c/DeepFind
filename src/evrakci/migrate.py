@@ -174,6 +174,8 @@ def ensure_archive(con):
         position INTEGER, kind TEXT, page INTEGER, label TEXT, raw_text TEXT,
         PRIMARY KEY(file_id,signature,position));
         CREATE TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS saved_searches(
+        name TEXT PRIMARY KEY, query TEXT NOT NULL, year TEXT, ext TEXT, folder TEXT);
         CREATE TABLE IF NOT EXISTS scan_manifest(
         run_id INTEGER NOT NULL REFERENCES scan_runs(run_id) ON DELETE CASCADE,
         file_id INTEGER NOT NULL, size INTEGER, mtime_ns INTEGER,
