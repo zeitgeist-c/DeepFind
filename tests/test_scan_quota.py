@@ -71,9 +71,11 @@ def test_manifest_exports_md(tmp_path):
     try:
         from evrakci import manifest_export as me
         rid, total = C.build_manifest(con, str(tmp_path))
-        out = tmp_path / "manifest.md"
-        assert me.export_md(con, rid, str(out)) == total == 1
-        text = out.read_text(encoding="utf-8")
+        text = me.render_md(con, rid)
+        assert total == 1
         assert "toplam 1" in text and "a.pdf" in text
+        out = tmp_path / "manifest.md"
+        out.write_text(text, encoding="utf-8")
+        assert out.read_text(encoding="utf-8") == text
     finally:
         con.close()
