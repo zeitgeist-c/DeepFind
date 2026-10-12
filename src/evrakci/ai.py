@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from . import rank
 from . import normalize as nz
 
-MODEL = "gemini-3.6-flash"
+MODEL = "gemini-3.5-flash-lite"
 MODELS = {
     "gemini-3.6-flash": "Gemini 3.6 Flash",
     "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
