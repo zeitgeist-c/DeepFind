@@ -84,6 +84,26 @@ def test_manifest_run_never_resumed(tmp_path):
         con.close()
 
 
+def test_batched_discovery_defers_durability(tmp_path):
+    db = tmp_path / "kasa.db"
+    con = database(db)
+    entry = _entry("C:/arsiv/a.pdf")
+    assert C.note_discovered(con, entry, commit=False) == "queued"
+    assert q.pending_count(con) == 1  # ayni baglantida gorunur
+    con.close()  # commit yok -> geri alinir
+    con2 = database(db)
+    try:
+        assert con2.execute("SELECT count(*) FROM files").fetchone()[0] == 0
+        assert C.note_discovered(con2, entry) == "queued"  # varsayilan kalici
+    finally:
+        con2.close()
+    con3 = database(db)
+    try:
+        assert con3.execute("SELECT count(*) FROM files").fetchone()[0] == 1
+    finally:
+        con3.close()
+
+
 def test_changed_signature_requeued(tmp_path):
     con = database(tmp_path / "kasa.db")
     try:

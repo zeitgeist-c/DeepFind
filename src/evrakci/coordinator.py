@@ -66,13 +66,14 @@ def _stat_sig(path: str):
         return None
 
 
-def ensure_file(con, entry) -> int:
+def ensure_file(con, entry, *, commit=True) -> int:
     con.execute(
         "INSERT INTO files(path, name, ext, size, mtime_ns) VALUES (?, ?, ?, ?, ?)"
         " ON CONFLICT(path) DO UPDATE SET size=excluded.size, mtime_ns=excluded.mtime_ns",
         (entry.path, entry.name, entry.ext, entry.size, entry.mtime_ns),
     )
-    con.commit()
+    if commit:
+        con.commit()
     return con.execute("SELECT file_id FROM files WHERE path=?", (entry.path,)).fetchone()[0]
 
 
@@ -83,9 +84,10 @@ def active_signature(con, file_id: int) -> str | None:
     return r[0] if r else None
 
 
-def note_discovered(con, entry) -> str:
-    """Kesif sonucu: 'queued' | 'skipped'. Idempotent: bitmis imza tekrar kuyruga girmez."""
-    fid = ensure_file(con, entry)
+def note_discovered(con, entry, *, commit=True) -> str:
+    """Kesif sonucu: 'queued' | 'skipped'. Idempotent: bitmis imza tekrar kuyruga girmez.
+    commit=False ile cagiran toplu commit yapar (kesif dongusu); tekil kullanimda True."""
+    fid = ensure_file(con, entry, commit=commit)
     con.execute("CREATE TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
     con.execute("INSERT OR IGNORE INTO scan_selected VALUES (?)", (fid,))
     sig = q.signature_of(entry.size, entry.mtime_ns)
@@ -93,9 +95,11 @@ def note_discovered(con, entry) -> str:
     if active_signature(con, fid) != sig or status in ("missing", "excluded"):
         con.execute("UPDATE files SET index_status=CASE WHEN EXISTS(SELECT 1 FROM segments s WHERE s.file_id=files.file_id) THEN 'partial' ELSE 'pending' END,error_code='REINDEX_PENDING' WHERE file_id=?", (fid,))
         q.enqueue(con, fid, sig)
-        con.commit()
+        if commit:
+            con.commit()
         return "queued"
-    con.commit()
+    if commit:
+        con.commit()
     return "skipped"
 
 
@@ -127,10 +131,12 @@ def build_manifest(con, root: str) -> tuple:
     for e in scan_mod.walk_ro(absroot):
         if e.ext not in scan_mod.SUPPORTED_EXTS and e.ext not in scan_mod.NAME_ONLY_EXTS:
             continue
-        fid = ensure_file(con, e)
+        fid = ensure_file(con, e, commit=False)
         con.execute("INSERT OR IGNORE INTO scan_manifest VALUES (?,?,?,?)",
                     (run_id, fid, e.size, e.mtime_ns))
         total += 1
+        if total % 64 == 0:
+            con.commit()
     con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?",
                 (int(time.time()), "manifest", run_id))
     con.commit()
@@ -548,7 +554,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                         if exc.is_excluded(entry.path, rules):
                             continue
                         seen.add(entry.path)
-                        if note_discovered(con, entry) == "skipped":
+                        if note_discovered(con, entry, commit=False) == "skipped":
                             stats["skipped"] += 1
                         stats["found"] += 1
                         if stats["found"] % 32 == 0:
