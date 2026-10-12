@@ -136,6 +136,26 @@ def test_progress_distinguishes_discovery_and_work():
     assert events[1]["phase"] == "islem"
 
 
+def test_stop_flag_cancels_scan(tmp_path):
+    from openpyxl import Workbook
+    import time as _time
+    root = tmp_path / "kaynak"
+    root.mkdir()
+    wb = Workbook()
+    wb.active.append(["kayit"])
+    wb.save(root / "a.xlsx")
+    past = _time.time() - 10
+    os.utime(root / "a.xlsx", (past, past))
+    con = database(tmp_path / "kasa.db")
+    try:
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), stop=lambda: True)
+        assert stats["result"] == "cancelled"
+        assert con.execute(
+            "SELECT result FROM scan_runs").fetchone()[0] == "cancelled"
+    finally:
+        con.close()
+
+
 def test_run_scan_resumes_unfinished_run(tmp_path):
     root = tmp_path / "kaynak"
     root.mkdir()
