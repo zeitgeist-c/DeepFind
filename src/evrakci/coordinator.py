@@ -95,6 +95,12 @@ def find_resumable_run(con, root: str):
     return row[0] if row else None
 
 
+def completed_dirs(con, run_id: int) -> set:
+    """Bu run'da kesfi bitmis klasorler."""
+    return {r[0] for r in con.execute(
+        "SELECT dir FROM scan_scopes WHERE run_id=? AND complete=1", (run_id,))}
+
+
 def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
                      context: str = "") -> None:
     """Dosya + revizyon + segment + FTS tek transaction (DB-01: yarim FTS yok)."""
@@ -448,11 +454,22 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                     report("İçerik işleniyor", path, r)
 
         # --- kesif (lazy, dizin bazinda kapsam) ---
+        run_started = con.execute(
+            "SELECT started_at FROM scan_runs WHERE run_id=?", (run_id,)).fetchone()[0] or 0
+        done_dirs = completed_dirs(con, run_id)
         stack = [os.path.abspath(root)]
         while stack:
             if stop and stop():
                 break
             cur = stack.pop()
+            if cur in done_dirs:
+                # Bitmis ve run basladigindan beri degismemis klasore tekrar girilmez;
+                # icine yeni dosya girdiyse mtime artar ve normal gezilir.
+                try:
+                    if os.stat(cur).st_mtime_ns // 1_000_000_000 <= run_started:
+                        continue
+                except OSError:
+                    pass
             report("Klasörler keşfediliyor", cur)
             dir_ok = True
             try:

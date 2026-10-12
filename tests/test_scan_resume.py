@@ -88,6 +88,43 @@ def test_changed_signature_requeued(tmp_path):
         con.close()
 
 
+def test_completed_dirs_skipped_on_resume(tmp_path):
+    from openpyxl import Workbook
+    import time as _time
+    root = tmp_path / "kaynak"
+    root.mkdir()
+    done = root / "bitmis"
+    done.mkdir()
+    todo = root / "yeni"
+    todo.mkdir()
+    for d, name in ((done, "a.xlsx"), (todo, "b.xlsx")):
+        wb = Workbook()
+        wb.active.append(["kayit"])
+        wb.save(d / name)
+    past = _time.time() - 10
+    for p in (done / "a.xlsx", todo / "b.xlsx", done):
+        os.utime(p, (past, past))
+    con = database(tmp_path / "kasa.db")
+    try:
+        absroot = os.path.abspath(str(root))
+        now = int(_time.time())
+        rid = con.execute(
+            "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (absroot, now)).lastrowid
+        con.execute("INSERT INTO scan_scopes(run_id, dir, complete) VALUES (?, ?, 1)",
+                    (rid, os.path.abspath(str(done))))
+        con.commit()
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        assert stats["found"] == 1
+        wb = Workbook()
+        wb.active.append(["yeni"])
+        wb.save(done / "c.xlsx")
+        os.utime(done / "c.xlsx", (past, past))
+        stats2 = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        assert stats2["found"] >= 2
+    finally:
+        con.close()
+
+
 def test_run_scan_resumes_unfinished_run(tmp_path):
     root = tmp_path / "kaynak"
     root.mkdir()
