@@ -176,6 +176,12 @@ def ensure_archive(con):
         CREATE TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS saved_searches(
         name TEXT PRIMARY KEY, query TEXT NOT NULL, year TEXT, ext TEXT, folder TEXT);
+        CREATE TABLE IF NOT EXISTS file_tags(
+        file_id INTEGER NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+        tag TEXT NOT NULL, auto INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(file_id, tag));
+        CREATE TABLE IF NOT EXISTS tag_rules(
+        rule_id INTEGER PRIMARY KEY, tag TEXT NOT NULL, keywords TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'any');
         CREATE TABLE IF NOT EXISTS scan_manifest(
         run_id INTEGER NOT NULL REFERENCES scan_runs(run_id) ON DELETE CASCADE,
         file_id INTEGER NOT NULL, size INTEGER, mtime_ns INTEGER,

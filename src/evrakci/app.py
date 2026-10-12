@@ -74,9 +74,12 @@ class AramaIsci(QThread):
             con = vault.open_vault(self.path, self.password)
             con.execute("PRAGMA query_only=ON")
             con.set_progress_handler(lambda: int(self.stop.is_set()), 1000)
-            q, year, ext, folder = self.request
+            req = self.request
+            q, year, ext, folder = req[0], req[1], req[2], req[3]
+            tag = req[4] if len(req) > 4 else None
             out = rank.search_ranked(con, q, year=year, ext=ext, limit=50,
-                                     folder=folder or None, offset=getattr(self,"offset",0))
+                                     folder=folder or None, offset=getattr(self,"offset",0),
+                                     tag=tag or None)
             if not self.stop.is_set():
                 self.sonuc.emit({"request": self.request, "offset":getattr(self,'offset',0), "out": out})
         except Exception as error:
@@ -641,11 +644,15 @@ class AnaPencere(QMainWindow):
                                   ".txt", ".csv", ".pptx", ".epub", ".eml", ".zip"])
         self.sirket_filtre = QLineEdit()
         self.sirket_filtre.setPlaceholderText("Şirket veya klasör")
-        for x in (self.yil_filtre, self.tur_filtre, self.sirket_filtre):
+        self.etiket_filtre = QLineEdit()
+        self.etiket_filtre.setPlaceholderText("Etiket")
+        self.etiket_filtre.setFixedWidth(120)
+        for x in (self.yil_filtre, self.tur_filtre, self.sirket_filtre, self.etiket_filtre):
             fil.addWidget(x)
         self.yil_filtre.textChanged.connect(lambda _t: self._ara_simdi())
         self.tur_filtre.currentTextChanged.connect(lambda _t: self._ara_simdi())
         self.sirket_filtre.textChanged.connect(lambda _t: self._ara_simdi())
+        self.etiket_filtre.textChanged.connect(lambda _t: self._ara_simdi())
         k.addLayout(fil)
         kayit_satir = QHBoxLayout()
         self.kayitli_liste = QComboBox()
@@ -661,6 +668,16 @@ class AnaPencere(QMainWindow):
         self.csv_btn = QPushButton("CSV indir")
         self.csv_btn.clicked.connect(self._sonuc_csv)
         kayit_satir.addWidget(self.csv_btn)
+        self.etiket_yaz = QLineEdit()
+        self.etiket_yaz.setPlaceholderText("Seçili sonuca etiket")
+        self.etiket_yaz.setFixedWidth(180)
+        kayit_satir.addWidget(self.etiket_yaz)
+        self.etiket_ekle_btn = QPushButton("Etiketle")
+        self.etiket_ekle_btn.clicked.connect(self._etiket_ekle)
+        kayit_satir.addWidget(self.etiket_ekle_btn)
+        self.etiket_sil_btn = QPushButton("Etiketi kaldır")
+        self.etiket_sil_btn.clicked.connect(self._etiket_sil)
+        kayit_satir.addWidget(self.etiket_sil_btn)
         k.addLayout(kayit_satir)
         self.aktif_filtre = QLabel("")
         self.aktif_filtre.setProperty("ikincil", True)
@@ -705,7 +722,8 @@ class AnaPencere(QMainWindow):
         yil = self.yil_filtre.text().strip() or None
         tur = self.tur_filtre.currentText()
         tur = None if tur == "tümü" else tur
-        request = (q, yil, tur, self.sirket_filtre.text().strip().lower())
+        etiket = self.etiket_filtre.text().strip().lower() or None
+        request = (q, yil, tur, self.sirket_filtre.text().strip().lower(), etiket)
         self._pending_search = request
         if self._search_thread is None:
             self._arama_baslat()
@@ -733,10 +751,11 @@ class AnaPencere(QMainWindow):
     def _arama_bitti(self, message):
         if self._locked or self.con is None:
             return
-        q, yil, tur, kokf = message["request"]
+        q, yil, tur, kokf, etiket = message["request"]
         current = (self.arama_kutu.text(), self.yil_filtre.text().strip() or None,
                    None if self.tur_filtre.currentText() == "tümü" else self.tur_filtre.currentText(),
-                   self.sirket_filtre.text().strip().lower())
+                   self.sirket_filtre.text().strip().lower(),
+                   self.etiket_filtre.text().strip().lower() or None)
         if message["request"] != current:
             return
         if message.get('offset',0)!=self._search_offset:
@@ -759,8 +778,13 @@ class AnaPencere(QMainWindow):
             from PySide6.QtGui import QTextDocument
             snippet = QTextDocument()
             snippet.setHtml(r.get("snippet", ""))
+            try:
+                etiketler = rank.file_tags(self.con, r["file_id"])
+            except Exception:
+                etiketler = []
             item = QStandardItem(f"{r['name']}\n{r['path']}\n{r.get('ext', '').lstrip('.').upper()}  •  {r['label']}\n"
-                                 + snippet.toPlainText()[:150])
+                                 + snippet.toPlainText()[:150]
+                                 + (f"\nEtiket: {', '.join(etiketler)}" if etiketler else ""))
             if r.get('index_status')!='ok' or not r.get('content_available',True):
                 lines=item.text().splitlines()
                 lines[2]+=' • '+archive_ui.STATUS.get(r.get('index_status'),r.get('index_status',''))+' • '+(r.get('error_code') or '')+(' • Yalnız ad/yol eşleşmesi' if not r.get('content_available',True) else '')
@@ -777,12 +801,71 @@ class AnaPencere(QMainWindow):
         self.aktif_filtre.setText(" ".join(x for x in
                                            [f"yıl:{yil}" if yil else "",
                                             f"tür:{tur}" if tur else "",
-                                            f"klasör:{kokf}" if kokf else ""] if x))
+                                            f"klasör:{kokf}" if kokf else "",
+                                            f"etiket:{etiket}" if etiket else ""] if x))
         try:
             import json
-            hist_mod.save(self.con, q, json.dumps({"yil": yil or "", "tur": tur or "tümü", "klasor": kokf}, ensure_ascii=False))
+            hist_mod.save(self.con, q, json.dumps({"yil": yil or "", "tur": tur or "tümü", "klasor": kokf, "etiket": etiket or ""}, ensure_ascii=False))
         except Exception:
             pass
+
+    def _secili_dosya(self):
+        idx = self.sonuc_liste.currentIndex()
+        if not idx.isValid() or idx.row() >= len(self.sonuclar):
+            return None
+        return self.sonuclar[idx.row()]
+
+    def _etiket_ekle(self):
+        r = self._secili_dosya()
+        tag = self.etiket_yaz.text().strip().lower()
+        if r is None or not tag or self.con is None:
+            return
+        try:
+            rank.set_tag(self.con, r["file_id"], tag)
+        except ValueError as e:
+            QMessageBox.warning(self, "Etiket", str(e))
+            return
+        self.etiket_yaz.clear()
+        self._ara_simdi()
+
+    def _etiket_sil(self):
+        r = self._secili_dosya()
+        tag = self.etiket_yaz.text().strip().lower()
+        if r is None or not tag or self.con is None:
+            return
+        rank.remove_tag(self.con, r["file_id"], tag)
+        self.etiket_yaz.clear()
+        self._ara_simdi()
+
+    # -- etiket kuralları --
+    def _kural_tazele(self):
+        self.kural_liste.clear()
+        if self.con is None:
+            return
+        for r in rank.tag_rules(self.con):
+            item = QListWidgetItem(f"#{r['tag']} ← {r['keywords']} [{r['mode']}]")
+            item.setData(Qt.UserRole, r["rule_id"])
+            self.kural_liste.addItem(item)
+
+    def _kural_ekle(self):
+        if self.con is None:
+            return
+        try:
+            rank.add_rule(self.con, self.kural_etiket.text(),
+                          self.kural_kelimeler.text(), self.kural_kip.currentText())
+        except ValueError as e:
+            QMessageBox.warning(self, "Kural", str(e))
+            return
+        self.kural_etiket.clear()
+        self.kural_kelimeler.clear()
+        self._kural_tazele()
+
+    def _kural_sil(self):
+        item = self.kural_liste.currentItem()
+        if item is None or self.con is None:
+            return
+        rank.delete_rule(self.con, item.data(Qt.UserRole))
+        self._kural_tazele()
 
     def _sec(self, idx):
         if self.con is None or not idx.isValid() or idx.row() >= len(self.sonuclar): return
@@ -850,7 +933,7 @@ class AnaPencere(QMainWindow):
             return
         try:
             from pathlib import Path
-            Path(yol).write_bytes(rank.results_csv(self.sonuclar).encode("utf-8-sig"))
+            Path(yol).write_bytes(rank.results_csv(self.con, self.sonuclar).encode("utf-8-sig"))
         except OSError as e:
             QMessageBox.warning(self, "CSV", f"Yazılamadı: {e}")
             return
@@ -1494,13 +1577,15 @@ class AnaPencere(QMainWindow):
             values = json.loads(filters)
         except (ValueError, TypeError):
             values = dict(x.split("=", 1) for x in filters.split(";") if "=" in x)
-        controls = (self.arama_kutu, self.yil_filtre, self.tur_filtre, self.sirket_filtre)
+        controls = (self.arama_kutu, self.yil_filtre, self.tur_filtre, self.sirket_filtre,
+                    self.etiket_filtre)
         for control in controls:
             control.blockSignals(True)
         self.arama_kutu.setText(query)
         self.yil_filtre.setText(values.get("yil", ""))
         self.tur_filtre.setCurrentText(values.get("tur") or "tümü")
         self.sirket_filtre.setText(values.get("klasor", ""))
+        self.etiket_filtre.setText(values.get("etiket", ""))
         for control in controls:
             control.blockSignals(False)
         self.nav.setCurrentRow(0)
@@ -1637,6 +1722,25 @@ class AnaPencere(QMainWindow):
         self.canli_izleme = QCheckBox("Değişen klasörleri canlı izle ve otomatik tara")
         self.canli_izleme.setChecked(migrate.get_setting(self.con, "canli_izleme", "1") == "1")
         f.addRow(self.canli_izleme)
+        self.kural_liste = QListWidget()
+        self.kural_liste.setMaximumHeight(110)
+        f.addRow("Etiket kuralları:", self.kural_liste)
+        kural_satir = QHBoxLayout()
+        self.kural_etiket = QLineEdit()
+        self.kural_etiket.setPlaceholderText("etiket")
+        self.kural_etiket.setFixedWidth(110)
+        self.kural_kelimeler = QLineEdit()
+        self.kural_kelimeler.setPlaceholderText("kelime1, kelime2")
+        self.kural_kip = QComboBox()
+        self.kural_kip.addItems(["any", "all"])
+        self.kural_ekle_btn = QPushButton("Ekle")
+        self.kural_ekle_btn.clicked.connect(self._kural_ekle)
+        self.kural_sil_btn = QPushButton("Sil")
+        self.kural_sil_btn.clicked.connect(self._kural_sil)
+        for x in (self.kural_etiket, self.kural_kelimeler, self.kural_kip,
+                  self.kural_ekle_btn, self.kural_sil_btn):
+            kural_satir.addWidget(x)
+        f.addRow("", kural_satir)
         import sys
         self.startup_status = label(
             "Açılış kaydı eski paket yolunu gösteriyor; Kaydet ile güncelleyin."
@@ -2168,6 +2272,11 @@ class AnaPencere(QMainWindow):
         self.sonuclar = []
         self.arama_kutu.clear()
         self.kayitli_liste.clear()
+        self.etiket_filtre.clear()
+        self.etiket_yaz.clear()
+        self.kural_liste.clear()
+        self.kural_etiket.clear()
+        self.kural_kelimeler.clear()
         self.sonuc_model.clear()
         self.gecmis_model.clear()
         self.kok_model.clear()
@@ -2235,6 +2344,7 @@ class AnaPencere(QMainWindow):
         self._kok_tazele()
         self._yedek_tazele()
         self._kayitli_tazele()
+        self._kural_tazele()
         self._scan_history_refresh()
         self._scope_changed()
         self.ai_key_input.setPlaceholderText("API anahtarı kayıtlı" if migrate.get_setting(self.con, "gemini_api_key") else "Gemini API anahtarı")

@@ -49,7 +49,7 @@ def _split_excluded(group):
 def _quote(t):
     return '"' + t.replace('"', '""') + '"'
 
-def _query(con, query, year, ext, folder, limit, offset, fuzzy=None):
+def _query(con, query, year, ext, folder, limit, offset, fuzzy=None, tag=None):
     args=[]
     def group(table, tokens, phrases):
         expressions = [_quote(t) for t in tokens]
@@ -94,6 +94,8 @@ def _query(con, query, year, ext, folder, limit, offset, fuzzy=None):
         filters.append('f.ext=?'); args.append(ext)
     if folder:
         filters.append('instr(lower(f.path),lower(?))>0'); args.append(folder)
+    if tag:
+        filters.append('EXISTS(SELECT 1 FROM file_tags t WHERE t.file_id=f.file_id AND t.tag=?)'); args.append(tag.strip().lower())
     if excl_selects:
         filters.append(f"f.file_id NOT IN ({' UNION '.join(excl_selects)})")
         args.extend(excl_args)
@@ -108,21 +110,21 @@ def _query(con, query, year, ext, folder, limit, offset, fuzzy=None):
       SELECT c.*,s.label,s.page,s.raw_text,s.kind FROM chosen c JOIN segments s ON s.seg_id=c.seg_id'''
     return con.execute(sql,args).fetchall()
 
-def search_ranked(con, query, year=None, ext=None, limit=50, folder=None, offset=0):
+def search_ranked(con, query, year=None, ext=None, limit=50, folder=None, offset=0, tag=None):
     tokens=nz.tokens_folded(query)
     if len(query)>2000 or len(RAWTOK_RE.findall(query))>32:
         raise ValueError('sorgu çok uzun')
     if not tokens:
         return {'results':[], 'suggestions':[], 'class_counts':{}, 'empty':True}
     limit=max(1,min(int(limit),200)); offset=max(0,int(offset))
-    rows=_query(con,query,year,ext,folder,limit+1,offset)
+    rows=_query(con,query,year,ext,folder,limit+1,offset,tag=tag)
     suggestions=[]
     if len(rows)<FUZZY_MIN_RESULTS and not re.findall(r'"([^"]+)"',query):
         alternatives={t:[c for c,_ in vc.suggest(con,t)] for t in tokens}
         suggestions=list(dict.fromkeys(c for values in alternatives.values() for c in values))[:5]
         if any(alternatives.values()):
             known={r[0] for r in rows}
-            rows += [r for r in _query(con,query,year,ext,folder,limit+1,offset,alternatives) if r[0] not in known]
+            rows += [r for r in _query(con,query,year,ext,folder,limit+1,offset,alternatives,tag=tag) if r[0] not in known]
     more=len(rows)>limit
     results=[]; counts={'strict':0,'folded':0,'fuzzy':0}
     for fid,path,name,fext,status,error,base,sid,label,page,raw,kind in rows[:limit]:
@@ -158,15 +160,62 @@ def delete_search(con, name: str) -> None:
     con.commit()
 
 
-def results_csv(results) -> str:
+def results_csv(con, results) -> str:
     """Arama sonuçlarını CSV metni yapar (dosya yazımı çağıranda)."""
     import csv
     import io
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["dosya", "yol", "tur", "sayfa", "yil", "neden"])
+    w.writerow(["dosya", "yol", "tur", "sayfa", "yil", "etiketler", "neden"])
     for r in results:
         w.writerow([r.get("name", ""), r.get("path", ""), r.get("ext", ""),
                     r.get("page") or "", ",".join(r.get("years", [])),
+                    ", ".join(file_tags(con, r.get("file_id"))),
                     " + ".join(r.get("why", []))])
     return buf.getvalue()
+
+
+def file_tags(con, file_id) -> list:
+    try:
+        return [r[0] for r in con.execute(
+            "SELECT tag FROM file_tags WHERE file_id=? ORDER BY tag", (file_id,)).fetchall()]
+    except Exception:
+        return []
+
+
+def set_tag(con, file_id, tag: str, auto: int = 0) -> None:
+    tag = (tag or "").strip().lower()
+    if not tag:
+        raise ValueError("etiket gerekli")
+    con.execute("INSERT INTO file_tags(file_id, tag, auto) VALUES (?,?,?)"
+                " ON CONFLICT(file_id, tag) DO NOTHING", (file_id, tag, auto))
+    con.commit()
+
+
+def remove_tag(con, file_id, tag: str) -> None:
+    con.execute("DELETE FROM file_tags WHERE file_id=? AND tag=?", (file_id, (tag or "").strip().lower()))
+    con.commit()
+
+
+def add_rule(con, tag: str, keywords: str, mode: str = "any") -> int:
+    tag = (tag or "").strip().lower()
+    keywords = (keywords or "").strip()
+    if not tag or not keywords or mode not in ("any", "all"):
+        raise ValueError("etiket, anahtar kelimeler ve kip(any/all) gerekli")
+    cur = con.execute("INSERT INTO tag_rules(tag, keywords, mode) VALUES (?,?,?)",
+                      (tag, keywords, mode))
+    con.commit()
+    return cur.lastrowid
+
+
+def tag_rules(con) -> list:
+    try:
+        return [dict(rule_id=r[0], tag=r[1], keywords=r[2], mode=r[3]) for r in
+                con.execute("SELECT rule_id, tag, keywords, mode FROM tag_rules ORDER BY tag").fetchall()]
+    except Exception:
+        return []
+
+
+def delete_rule(con, rule_id: int) -> None:
+    con.execute("DELETE FROM tag_rules WHERE rule_id=?", (rule_id,))
+    con.commit()

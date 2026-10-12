@@ -113,6 +113,30 @@ def find_resumable_run(con, root: str):
     return row[0] if row else None
 
 
+def apply_tag_rules(con, file_id: int, name: str, text: str = "") -> set:
+    """Kayıtlı kuralları işletir, eklenen etiketleri döner. Elle etiketlere dokunmaz."""
+    from . import rank as rank_mod
+    from . import normalize as nz
+    try:
+        rules = rank_mod.tag_rules(con)
+    except Exception:
+        return set()
+    if not rules:
+        return set()
+    blob = nz.folded((name or "") + "\n" + (text or ""))
+    eklenen = set()
+    for r in rules:
+        keys = [k.strip().lower() for k in nz.folded(r["keywords"]).split(",")]
+        keys = [k for k in keys if k]
+        if not keys:
+            continue
+        vurdu = all(k in blob for k in keys) if r["mode"] == "all" else any(k in blob for k in keys)
+        if vurdu:
+            rank_mod.set_tag(con, file_id, r["tag"], auto=1)
+            eklenen.add(r["tag"])
+    return eklenen
+
+
 def completed_dirs(con, run_id: int) -> set:
     """Bu run'da kesfi bitmis klasorler."""
     return {r[0] for r in con.execute(
@@ -204,6 +228,14 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
     except Exception:
         con.execute("ROLLBACK")
         raise
+    try:
+        name = con.execute("SELECT name FROM files WHERE file_id=?", (file_id,)).fetchone()[0]
+        ornek = "\n".join(r[0] for r in con.execute(
+            "SELECT substr(raw_text, 1, 2000) FROM segments WHERE file_id=?"
+            " AND kind NOT IN ('name_only','context') LIMIT 6", (file_id,)).fetchall())
+        apply_tag_rules(con, file_id, name or "", ornek)
+    except Exception:
+        pass
 
 
 def _context_for(path: str, root: str) -> str:

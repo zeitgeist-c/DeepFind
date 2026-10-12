@@ -245,9 +245,9 @@ def test_kayitli_arama_crud():
 def test_csv_satirlari():
     con = _hafiza()
     try:
-        out = rank.results_csv(rank.search_ranked(con, "fatura")["results"])
+        out = rank.results_csv(con, rank.search_ranked(con, "fatura")["results"])
         satirlar = out.strip().split("\n")
-        assert satirlar[0] == "dosya,yol,tur,sayfa,yil,neden"
+        assert satirlar[0] == "dosya,yol,tur,sayfa,yil,etiketler,neden"
         assert any("fatura.pdf" in s for s in satirlar[1:])
     finally:
         con.close()
