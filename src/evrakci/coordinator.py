@@ -71,6 +71,22 @@ def active_signature(con, file_id: int) -> str | None:
     return r[0] if r else None
 
 
+def note_discovered(con, entry) -> str:
+    """Kesif sonucu: 'queued' | 'skipped'. Idempotent: bitmis imza tekrar kuyruga girmez."""
+    fid = ensure_file(con, entry)
+    con.execute("CREATE TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
+    con.execute("INSERT OR IGNORE INTO scan_selected VALUES (?)", (fid,))
+    sig = q.signature_of(entry.size, entry.mtime_ns)
+    status = con.execute("SELECT index_status FROM files WHERE file_id=?", (fid,)).fetchone()[0]
+    if active_signature(con, fid) != sig or status in ("missing", "excluded"):
+        con.execute("UPDATE files SET index_status=CASE WHEN EXISTS(SELECT 1 FROM segments s WHERE s.file_id=files.file_id) THEN 'partial' ELSE 'pending' END,error_code='REINDEX_PENDING' WHERE file_id=?", (fid,))
+        q.enqueue(con, fid, sig)
+        con.commit()
+        return "queued"
+    con.commit()
+    return "skipped"
+
+
 def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
                      context: str = "") -> None:
     """Dosya + revizyon + segment + FTS tek transaction (DB-01: yarim FTS yok)."""
@@ -346,7 +362,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         migrate.ensure_v8(con)
     migrate.ensure_archive(con)
     with ScanLock(vault_path):
-        con.execute("CREATE TEMP TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
+        con.execute("CREATE TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
         con.execute("DELETE FROM scan_selected")
         q.recover_running(con)
         rules = exc.list_rules(con)
@@ -464,14 +480,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                         if exc.is_excluded(entry.path, rules):
                             continue
                         seen.add(entry.path)
-                        fid = ensure_file(con, entry)
-                        con.execute("INSERT OR IGNORE INTO scan_selected VALUES (?)", (fid,))
-                        sig = q.signature_of(entry.size, entry.mtime_ns)
-                        status = con.execute("SELECT index_status FROM files WHERE file_id=?", (fid,)).fetchone()[0]
-                        if active_signature(con, fid) != sig or status in ("missing", "excluded"):
-                            con.execute("UPDATE files SET index_status=CASE WHEN EXISTS(SELECT 1 FROM segments s WHERE s.file_id=files.file_id) THEN 'partial' ELSE 'pending' END,error_code='REINDEX_PENDING' WHERE file_id=?", (fid,))
-                            q.enqueue(con, fid, sig)
-                        else:
+                        if note_discovered(con, entry) == "skipped":
                             stats["skipped"] += 1
                         stats["found"] += 1
                         if stats["found"] % 32 == 0:
