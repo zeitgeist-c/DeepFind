@@ -102,6 +102,9 @@ def extract_window(path, ext, size, cursor=0, batch=100):
     elif ext=='.docx':
         result=_docx(path,bounded=False)
         if result.status!='ok': return result
+    elif ext in _WINDOW_READERS:
+        result=_WINDOW_READERS[ext](path,bounded=False)
+        if result.status!='ok': return result
     else:
         return extract(path,ext,size)
     from itertools import islice
@@ -165,6 +168,16 @@ def extract(path: str, ext: str, size: int | None) -> ExtractResult:
         return _xls(path)
     if ext == ".docx":
         return _docx(path)
+    if ext in (".txt", ".md", ".log", ".csv", ".tsv"):
+        return _txt(path)
+    if ext == ".pptx":
+        return _pptx(path)
+    if ext == ".epub":
+        return _epub(path)
+    if ext == ".eml":
+        return _eml(path)
+    if ext == ".zip":
+        return _zip_inner(path)
     if ext == ".doc":
         return ExtractResult(status="unsupported_content", error_code="UNSUPPORTED_CONTENT")
     return ExtractResult(status="unsupported_content", error_code="UNSUPPORTED_CONTENT")
@@ -324,3 +337,251 @@ def _docx(path: str, bounded=True) -> ExtractResult:
         s.raw_text = t
     segs = segs[:len(cut)]
     return ExtractResult(segs, status, code)
+
+
+TXT_EXTS = {".txt", ".md", ".log", ".csv", ".tsv"}
+ZIP_INNER_MAX_FILES = 25
+ZIP_INNER_MAX_BYTES = 10 * 1024 * 1024
+ZIP_INNER_TOTAL_BYTES = 50 * 1024 * 1024
+
+
+def _bounded_result(segs: list, bounded: bool) -> ExtractResult:
+    if not bounded:
+        return ExtractResult(segs)
+    texts = [s.raw_text for s in segs]
+    cut, status, code = _budget_text(texts)
+    for s, t in zip(segs, cut):
+        s.raw_text = t
+    return ExtractResult(segs[:len(cut)], status, code)
+
+
+def _decode(data: bytes) -> str:
+    for enc in ("utf-8", "windows-1254"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def _txt(path: str, bounded: bool = True) -> ExtractResult:
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
+    text = _decode(data)
+    segs = [Segment("text", None, "Metin", text)] if text.strip() else []
+    return _bounded_result(segs, bounded)
+
+
+def _pptx(path: str, bounded: bool = True) -> ExtractResult:
+    code = _zip_guard(path)
+    if code:
+        return ExtractResult(status="partial" if code != "CORRUPT_DOCUMENT" else "corrupt",
+                             error_code=code)
+    import re as _re
+    import xml.etree.ElementTree as ET
+    import zipfile
+    try:
+        zf = zipfile.ZipFile(path)
+    except Exception:
+        return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
+    try:
+        names = sorted(
+            (n for n in zf.namelist() if _re.fullmatch(r"ppt/slides/slide\d+\.xml", n)),
+            key=lambda n: int(_re.search(r"\d+", n).group()))
+        segs = []
+        for num, name in enumerate(names, 1):
+            try:
+                root = ET.fromstring(zf.read(name))
+            except Exception:
+                continue
+            parts = [el.text for el in root.iter()
+                     if el.tag.endswith("}t") and (el.text or "").strip()]
+            text = " ".join(" ".join(p.split()) for p in parts)
+            if text:
+                segs.append(Segment("slide", num, f"Slayt {num}", text))
+    finally:
+        zf.close()
+    return _bounded_result(segs, bounded)
+
+
+def _epub(path: str, bounded: bool = True) -> ExtractResult:
+    code = _zip_guard(path)
+    if code:
+        return ExtractResult(status="partial" if code != "CORRUPT_DOCUMENT" else "corrupt",
+                             error_code=code)
+    import xml.etree.ElementTree as ET
+    import zipfile
+    try:
+        zf = zipfile.ZipFile(path)
+    except Exception:
+        return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
+    try:
+        try:
+            container = ET.fromstring(zf.read("META-INF/container.xml"))
+        except Exception:
+            return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
+        rootfile = None
+        for el in container.iter():
+            if el.tag == "rootfile" or el.tag.endswith("}rootfile"):
+                rootfile = el.get("full-path")
+                break
+        if not rootfile:
+            return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
+        base = rootfile.rpartition("/")[0]
+        opf = ET.fromstring(zf.read(rootfile))
+        hrefs = {}
+        for el in opf.iter():
+            if el.tag == "item" or el.tag.endswith("}item"):
+                if el.get("id") and el.get("href"):
+                    hrefs[el.get("id")] = el.get("href")
+        order = []
+        for el in opf.iter():
+            if (el.tag == "itemref" or el.tag.endswith("}itemref")) and el.get("idref") in hrefs:
+                order.append(hrefs[el.get("idref")])
+        segs = []
+        for i, href in enumerate(order, 1):
+            full = (base + "/" + href) if base else href
+            try:
+                xroot = ET.fromstring(zf.read(full))
+            except Exception:
+                continue
+            for parent in xroot.iter():
+                for child in list(parent):
+                    if child.tag == "script" or child.tag.endswith(("}script", "}style")) \
+                            or child.tag == "style":
+                        parent.remove(child)
+            text = " ".join("".join(xroot.itertext()).split())
+            if text:
+                segs.append(Segment("chapter", None, f"Bölüm {i}", text))
+    finally:
+        zf.close()
+    return _bounded_result(segs, bounded)
+
+
+def _eml(path: str, bounded: bool = True) -> ExtractResult:
+    import email
+    from email import policy
+    try:
+        with open(path, "rb") as fh:
+            msg = email.message_from_binary_file(fh, policy=policy.default)
+    except Exception:
+        return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
+    segs = []
+    for label, val in (("Konu", msg["subject"]), ("Gönderen", msg["from"]),
+                       ("Tarih", msg["date"])):
+        if val and str(val).strip():
+            segs.append(Segment("mail", None, label, str(val).strip()))
+    bodies, atts = [], []
+    try:
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.is_multipart():
+                    continue
+                if part.get_content_disposition() == "attachment":
+                    fn = part.get_filename()
+                    if fn:
+                        atts.append(str(fn))
+                    continue
+                if part.get_content_type() == "text/plain":
+                    try:
+                        bodies.append(str(part.get_content()))
+                    except Exception:
+                        pass
+        elif msg.get_content_type() == "text/plain":
+            bodies.append(str(msg.get_content()))
+    except Exception:
+        pass
+    body = "\n".join(b.strip() for b in bodies if b and b.strip())
+    if body:
+        segs.append(Segment("mail", None, "Gövde", body))
+    if atts:
+        segs.append(Segment("mail", None, "Ekler", "\n".join(atts)))
+    return _bounded_result(segs, bounded)
+
+
+def _zip_inner(path: str, bounded: bool = True) -> ExtractResult:
+    code = _zip_guard(path)
+    if code:
+        return ExtractResult(status="partial" if code != "CORRUPT_DOCUMENT" else "corrupt",
+                             error_code=code)
+    import os
+    import tempfile
+    import zipfile
+    from pathlib import Path
+    try:
+        zf = zipfile.ZipFile(path)
+        infos = sorted((i for i in zf.infolist() if not i.is_dir()),
+                       key=lambda i: i.filename)
+    except Exception:
+        return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
+    capped = len(infos) > ZIP_INNER_MAX_FILES
+    infos = infos[:ZIP_INNER_MAX_FILES]
+    segs, total = [], 0
+
+    def _inner(tmp_file: str, inner_ext: str, inner_name: str) -> list:
+        if inner_ext in TXT_EXTS:
+            res = _txt(tmp_file, bounded=False)
+        elif inner_ext == ".pdf":
+            res = _pdf(tmp_file)
+        elif inner_ext == ".docx":
+            res = _docx(tmp_file, bounded=False)
+        elif inner_ext in (".xlsx", ".xls"):
+            res = _extract_sheet(tmp_file, inner_ext)
+        elif inner_ext == ".pptx":
+            res = _pptx(tmp_file, bounded=False)
+        elif inner_ext == ".epub":
+            res = _epub(tmp_file, bounded=False)
+        elif inner_ext == ".eml":
+            res = _eml(tmp_file, bounded=False)
+        else:
+            return [Segment("zip_name", None, inner_name, inner_name)]
+        if res.status not in ("ok", "partial") or not res.segments:
+            return [Segment("zip_name", None, inner_name, inner_name)]
+        return [Segment("zip_" + s.kind, s.page, f"{inner_name} • {s.label}", s.raw_text)
+                for s in res.segments]
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="zip-") as tmp:
+            for n, info in enumerate(infos):
+                name = info.filename
+                if name.startswith("__MACOSX/"):
+                    continue
+                inner_ext = os.path.splitext(name)[1].lower()
+                if info.file_size > ZIP_INNER_MAX_BYTES or total + info.file_size > ZIP_INNER_TOTAL_BYTES:
+                    capped = True
+                    segs.append(Segment("zip_name", None, name, name))
+                    continue
+                try:
+                    data = zf.read(info.filename)
+                except Exception:
+                    continue
+                total += len(data)
+                tmp_file = os.path.join(tmp, f"i{n}{inner_ext or '.bin'}")
+                try:
+                    # Kontrollu temp: is sonu dizinle silinir; kaynaga yazilmaz.
+                    Path(tmp_file).write_bytes(data)
+                except OSError:
+                    continue
+                segs.extend(_inner(tmp_file, inner_ext, name))
+    finally:
+        zf.close()
+    if capped:
+        bounded_segs = _bounded_result(segs, bounded)
+        return ExtractResult(bounded_segs.segments, "partial", "ZIP_LIMIT")
+    return _bounded_result(segs, bounded)
+
+
+def _extract_sheet(path: str, ext: str) -> ExtractResult:
+    """Zip-ici tablo okuma: _xlsx/_xls mantigi, dosya zaten guvenli temp'te."""
+    if ext == ".xlsx":
+        return _xlsx(path)
+    return _xls(path)
+
+
+_WINDOW_READERS = {
+    ".txt": _txt, ".md": _txt, ".log": _txt, ".csv": _txt, ".tsv": _txt,
+    ".pptx": _pptx, ".epub": _epub, ".eml": _eml, ".zip": _zip_inner,
+}
