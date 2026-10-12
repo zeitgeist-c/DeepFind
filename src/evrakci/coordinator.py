@@ -400,8 +400,9 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
     return "done"
 
 
-def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None) -> dict:
-    """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi."""
+def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None, limit=None) -> dict:
+    """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi.
+    limit: bu calistirmada en fazla kac dosya islenir (kalan is pending kalir)."""
     stats = {"found": 0, "done": 0, "changed": 0, "unstable": 0, "failed": 0,
              "missing": 0, "ocr_done": 0, "ocr_deferred": 0, "ocr_failed": 0,
              "hashed": 0, "skipped": 0, "complete": False, "result": "partial"}
@@ -452,9 +453,12 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 emit_progress(progress, dict(stats, stage=stage, path=path, item_result=result, pending=pending))
                 last_report = now
 
-        def process_batch(limit=None):
+        def quota_full():
+            return limit is not None and (stats["done"] + stats["ocr_done"]) >= limit
+
+        def process_batch(cap=None):
             count = 0
-            while limit is None or count < limit:
+            while (cap is None or count < cap) and not quota_full():
                 if stop and stop():
                     stats["result"] = "cancelled"
                     return
@@ -565,6 +569,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         while True:
             if stop and stop():
                 stats["result"] = "cancelled"
+                break
+            if quota_full():
                 break
             job = q.claim(con, ("ocr",), scoped=True)
             if not job:

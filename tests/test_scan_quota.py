@@ -18,3 +18,33 @@ def test_manifest_counts_total_before_work(tmp_path):
         assert con.execute("SELECT count(*) FROM scan_manifest").fetchone()[0] == 2
     finally:
         con.close()
+
+
+def _xlsx(path, rows=3):
+    from openpyxl import Workbook
+    wb = Workbook()
+    for i in range(rows):
+        wb.active.append([f"kayit {i}"])
+    wb.save(path)
+
+
+def test_batch_limit_processes_at_most_n(tmp_path):
+    import time as _time
+    root = tmp_path / "kaynak"
+    root.mkdir()
+    for n in range(3):
+        _xlsx(root / f"f{n}.xlsx")
+    past = _time.time() - 10
+    for p in root.iterdir():
+        os.utime(p, (past, past))
+    con = database(tmp_path / "kasa.db")
+    try:
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), limit=1)
+        assert stats["done"] == 1
+        assert stats["result"] == "partial"
+        assert q.pending_count(con) >= 1
+        stats2 = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        assert stats2["done"] >= 2
+        assert q.pending_count(con) == 0
+    finally:
+        con.close()
