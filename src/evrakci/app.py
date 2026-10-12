@@ -867,6 +867,40 @@ class AnaPencere(QMainWindow):
         rank.delete_rule(self.con, item.data(Qt.UserRole))
         self._kural_tazele()
 
+    def _tuketim_sec(self):
+        path = QFileDialog.getExistingDirectory(self, "Tüketim klasörünü seçin")
+        if path:
+            self.tuketim_klasoru.setText(path)
+
+    def _tuketim_hedef_sec(self):
+        path = QFileDialog.getExistingDirectory(self, "Tüketim hedefini seçin")
+        if path:
+            self.tuketim_hedefi.setText(path)
+
+    def _tuketim_tara(self):
+        if self.con is None or self._locked:
+            return
+        try:
+            kaydir = migrate.get_setting(self.con, "tuketim_klasoru", "").strip()
+            hedef = migrate.get_setting(self.con, "tuketim_hedefi", "").strip()
+        except Exception:
+            return
+        if not kaydir or not hedef or not os.path.isdir(kaydir) or not os.path.isdir(hedef):
+            return
+        from . import consume as consume_mod
+        try:
+            adlar = sorted(os.listdir(kaydir))[:25]
+        except OSError:
+            return
+        for ad in adlar:
+            yol = os.path.join(kaydir, ad)
+            try:
+                if os.path.isfile(yol) and consume_mod.tuket(self.con, yol, hedef) == "moved":
+                    with self._izleme_kilit:
+                        self._izleme_bekleyen.add(os.path.abspath(hedef))
+            except Exception:
+                continue  # DB kilitli vb: sonraki tur dener
+
     def _sec(self, idx):
         if self.con is None or not idx.isValid() or idx.row() >= len(self.sonuclar): return
         self._open_preview(self.sonuclar[idx.row()])
@@ -1532,6 +1566,7 @@ class AnaPencere(QMainWindow):
                 pass
 
     def _izleme_bosalt(self):
+        self._tuketim_tara()
         if self._locked or self.con is None or self.isci_thread is not None:
             return
         with self._izleme_kilit:
@@ -1741,6 +1776,24 @@ class AnaPencere(QMainWindow):
                   self.kural_ekle_btn, self.kural_sil_btn):
             kural_satir.addWidget(x)
         f.addRow("", kural_satir)
+        self.tuketim_klasoru = QLineEdit()
+        self.tuketim_klasoru.setPlaceholderText("Boşsa kapalı")
+        self.tuketim_klasoru.setText(migrate.get_setting(self.con, "tuketim_klasoru", ""))
+        tuketim_satir = QHBoxLayout()
+        tuketim_satir.addWidget(self.tuketim_klasoru, 1)
+        self.tuketim_sec_btn = QPushButton("Seç")
+        self.tuketim_sec_btn.clicked.connect(self._tuketim_sec)
+        tuketim_satir.addWidget(self.tuketim_sec_btn)
+        f.addRow("Tüketim klasörü:", tuketim_satir)
+        self.tuketim_hedefi = QLineEdit()
+        self.tuketim_hedefi.setPlaceholderText("Taşınacak arşiv klasörü")
+        self.tuketim_hedefi.setText(migrate.get_setting(self.con, "tuketim_hedefi", ""))
+        hedef_satir = QHBoxLayout()
+        hedef_satir.addWidget(self.tuketim_hedefi, 1)
+        self.tuketim_hedef_sec_btn = QPushButton("Seç")
+        self.tuketim_hedef_sec_btn.clicked.connect(self._tuketim_hedef_sec)
+        hedef_satir.addWidget(self.tuketim_hedef_sec_btn)
+        f.addRow("Tüketim hedefi:", hedef_satir)
         import sys
         self.startup_status = label(
             "Açılış kaydı eski paket yolunu gösteriyor; Kaydet ile güncelleyin."
@@ -2051,6 +2104,19 @@ class AnaPencere(QMainWindow):
             else:
                 self._izleme_durdur()
         migrate.set_setting(self.con, "tepsiye", "1" if self.tepsiye.isChecked() else "0")
+        kaydir = self.tuketim_klasoru.text().strip()
+        hedef = self.tuketim_hedefi.text().strip()
+        if kaydir and not os.path.isdir(kaydir):
+            QMessageBox.warning(self, "Tüketim", "Tüketim klasörü bulunamadı.")
+            return
+        if hedef and not os.path.isdir(hedef):
+            QMessageBox.warning(self, "Tüketim", "Tüketim hedefi bulunamadı.")
+            return
+        if bool(kaydir) != bool(hedef):
+            QMessageBox.warning(self, "Tüketim", "Klasör ve hedef birlikte verilmeli (boş = kapalı).")
+            return
+        migrate.set_setting(self.con, "tuketim_klasoru", kaydir)
+        migrate.set_setting(self.con, "tuketim_hedefi", hedef)
         ks = self.kilit_sure.currentText()
         migrate.set_setting(self.con, "kilit_suresi", "0" if ks == "kapalı" else ks)
         try:
@@ -2277,6 +2343,8 @@ class AnaPencere(QMainWindow):
         self.kural_liste.clear()
         self.kural_etiket.clear()
         self.kural_kelimeler.clear()
+        self.tuketim_klasoru.clear()
+        self.tuketim_hedefi.clear()
         self.sonuc_model.clear()
         self.gecmis_model.clear()
         self.kok_model.clear()
