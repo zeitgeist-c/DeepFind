@@ -48,20 +48,69 @@ def test_debounce_suresi_dolmadan_bildirmez(tmp_path):
 
 @pytest.mark.skipif(os.name != "nt", reason="Win32 izleme")
 def test_win32_olay_gelir(tmp_path):
-    gelen = []
-    iz = watch.Izleyici(str(tmp_path), lambda dirs: gelen.extend(dirs))
+    iz = watch.Izleyici(str(tmp_path), lambda dirs: None)
     iz.start()
     try:
-        (tmp_path / "yeni.pdf").write_bytes(b"%PDF-1.4 x")
-        deadline = time.monotonic() + 10
-        while not gelen and time.monotonic() < deadline:
-            time.sleep(0.2)
-            iz.bosalt()
-        # Olay kuyruğa girmiş olmalı (debounce bildirimi beklemez).
+        # İlk dosya izleme başlamadan düşebilir; birkaç kez dene.
+        deadline = time.monotonic() + 15
+        n = 0
+        while time.monotonic() < deadline:
+            n += 1
+            (tmp_path / f"yeni{n}.pdf").write_bytes(b"%PDF-1.4 x")
+            time.sleep(1.5)
+            with iz._kilit:
+                if iz._bekleyen:
+                    break
         with iz._kilit:
-            bekleyen = dict(iz._bekleyen)
-        assert gelen or bekleyen, "Win32 olay üretmedi"
+            assert iz._bekleyen, "Win32 olay üretmedi"
     finally:
         iz.durdur()
         iz.join(timeout=10)
         assert not iz.is_alive()
+
+
+def test_izleme_taramayi_tetikler(tmp_path, monkeypatch):
+    """Uçtan uca (arayıssız): olay -> debounce -> kapsamlı tarama -> indeks."""
+    import sqlite3
+    import time as _time
+    from openpyxl import Workbook
+    from evrakci import coordinator as C
+    from evrakci import migrate, schema
+    from evrakci.vocab import ensure_v5
+    monkeypatch.setattr(watch, "DEBOUNCE_SEC", 1)
+    root = tmp_path / "kaynak"
+    root.mkdir()
+    con = sqlite3.connect(str(tmp_path / "kasa.db"))
+    schema.ensure_schema(con)
+    ensure_v5(con)
+    migrate.ensure_current(con)
+    try:
+        db = str(tmp_path / "kasa.db")
+
+        def tara(dirs):
+            c2 = sqlite3.connect(db)
+            try:
+                C.run_scan(c2, db, dirs[0])
+            finally:
+                c2.close()
+
+        iz = watch.Izleyici(str(root), tara)
+        iz.start()
+        try:
+            wb = Workbook()
+            wb.active.append(["izlenen kayıt"])
+            wb.save(root / "a.xlsx")
+            past = _time.time() - 10
+            import os as _os
+            _os.utime(root / "a.xlsx", (past, past))
+            deadline = _time.monotonic() + 30
+            while _time.monotonic() < deadline:
+                time.sleep(1)
+                if con.execute("SELECT count(*) FROM segments").fetchone()[0]:
+                    break
+            assert "izlenen" in con.execute("SELECT raw_text FROM segments").fetchone()[0]
+        finally:
+            iz.durdur()
+            iz.join(timeout=10)
+    finally:
+        con.close()

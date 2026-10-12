@@ -1079,6 +1079,12 @@ class AnaPencere(QMainWindow):
         self.yigin.addWidget(page)
         self.isci = None
         self.isci_thread = None
+        self._izleyiciler = []
+        self._izleme_bekleyen = set()
+        self._izleme_kilit = threading.Lock()
+        self._izleme_saat = QTimer(self)
+        self._izleme_saat.timeout.connect(self._izleme_bosalt)
+        self._izleme_saat.start(5000)
 
     def _kokler(self):
         try:
@@ -1265,6 +1271,7 @@ class AnaPencere(QMainWindow):
             migrate.set_setting(self.con, "son_slot", dt.datetime.now().isoformat(timespec="seconds"))
         self._durum_yaz()
         self._scan_history_refresh()
+        self._izleme_bosalt()
 
     def _tara_hata(self, msg):
         if self._locked:
@@ -1318,6 +1325,55 @@ class AnaPencere(QMainWindow):
         self.scan_timer.stop()
         if thread is not None:
             thread.deleteLater()
+
+    # -- canli izleme --
+    def _izleme_baslat(self):
+        from . import watch as watch_mod
+        self._izleme_durdur()
+        if self.con is None or self._locked:
+            return
+        try:
+            if migrate.get_setting(self.con, "canli_izleme", "1") != "1":
+                return
+        except Exception:
+            return
+        for kok in self._kokler():
+            try:
+                iz = watch_mod.Izleyici(kok, self._izleme_olay)
+                iz.start()
+                self._izleyiciler.append(iz)
+            except Exception:
+                diagnostics.record("watch_start_failed")
+
+    def _izleme_olay(self, dirs):
+        # Izleyici thread'inden gelir: GUI'ye dokunulmaz, yalnız set güncellenir.
+        with self._izleme_kilit:
+            self._izleme_bekleyen.update(d for d in dirs if os.path.isdir(d))
+        diagnostics.record("watch_event")
+
+    def _izleme_durdur(self):
+        izleyiciler, self._izleyiciler = self._izleyiciler, []
+        for iz in izleyiciler:
+            try:
+                iz.durdur()
+            except Exception:
+                pass
+        for iz in izleyiciler:
+            try:
+                iz.join(timeout=3)
+            except Exception:
+                pass
+
+    def _izleme_bosalt(self):
+        if self._locked or self.con is None or self.isci_thread is not None:
+            return
+        with self._izleme_kilit:
+            bekleyen = sorted(d for d in self._izleme_bekleyen if os.path.isdir(d))
+            self._izleme_bekleyen.clear()
+        if bekleyen:
+            self.scan_log.appendPlainText(
+                f"İzleme: {len(bekleyen)} klasörde değişiklik → tarama başlıyor.")
+            self._tara_baslat(roots=bekleyen, automatic=True)
 
     # -- gecmis --
     def _ekran_gecmis(self):
@@ -1494,6 +1550,9 @@ class AnaPencere(QMainWindow):
         startup_command = sched.autostart_get("Evrakci")
         self.otostart.setChecked(startup_command is not None)
         f.addRow(self.otostart)
+        self.canli_izleme = QCheckBox("Değişen klasörleri canlı izle ve otomatik tara")
+        self.canli_izleme.setChecked(migrate.get_setting(self.con, "canli_izleme", "1") == "1")
+        f.addRow(self.canli_izleme)
         import sys
         self.startup_status = label(
             "Açılış kaydı eski paket yolunu gösteriyor; Kaydet ile güncelleyin."
@@ -1796,6 +1855,13 @@ class AnaPencere(QMainWindow):
         migrate.set_setting(self.con, "dakika", str(self.scan_time_edit.time().minute()))
         self.tarama_time.setText(f"{self.scan_time_edit.time().hour():02d}:{self.scan_time_edit.time().minute():02d}")
         migrate.set_setting(self.con, "gecikme", "1" if self.gecikme.isChecked() else "0")
+        onceki_izleme = migrate.get_setting(self.con, "canli_izleme", "1")
+        migrate.set_setting(self.con, "canli_izleme", "1" if self.canli_izleme.isChecked() else "0")
+        if ("1" if self.canli_izleme.isChecked() else "0") != onceki_izleme:
+            if self.canli_izleme.isChecked():
+                self._izleme_baslat()
+            else:
+                self._izleme_durdur()
         migrate.set_setting(self.con, "tepsiye", "1" if self.tepsiye.isChecked() else "0")
         ks = self.kilit_sure.currentText()
         migrate.set_setting(self.con, "kilit_suresi", "0" if ks == "kapalı" else ks)
@@ -2023,6 +2089,9 @@ class AnaPencere(QMainWindow):
         self.yedek_model.clear()
         self.onizleme.temizle()
         self.scan_timer.stop()
+        self._izleme_durdur()
+        with self._izleme_kilit:
+            self._izleme_bekleyen.clear()
         self.scan_dialog.hide()
         self.popup_scope.clear()
         self.popup_status.setText("Kasa kilitli.")
@@ -2087,10 +2156,12 @@ class AnaPencere(QMainWindow):
         self._durum_yaz()
         self._scan_state("idle")
         self._zamanlayici_kontrol()
+        self._izleme_baslat()
 
     def _cikis(self):
         diagnostics.record("exit")
         self._exiting = True
+        self._izleme_durdur()
         self._job_generation+=1
         self._job_pending.clear()
         for worker in self._jobs: worker.stop.set()
@@ -2147,6 +2218,7 @@ class AnaPencere(QMainWindow):
         if hasattr(self, "_tray_timer"):
             self._tray_timer.stop()
         self.scan_timer.stop()
+        self._izleme_durdur()
         self.hareketsizlik.stop()
         self._schedule_timer.stop()
         if hasattr(self, "_lock_poll"):
