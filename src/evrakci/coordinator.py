@@ -113,6 +113,27 @@ def completed_dirs(con, run_id: int) -> set:
         "SELECT dir FROM scan_scopes WHERE run_id=? AND complete=1", (run_id,))}
 
 
+def build_manifest(con, root: str) -> tuple:
+    """Taramadan once toplam listeyi cikarir. Donus: (run_id, toplam).
+    Anlik goruntu satiridir (result='manifest'); resume'a konu olmaz."""
+    absroot = os.path.abspath(root)
+    run_id = con.execute(
+        "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (absroot, int(time.time()))
+    ).lastrowid
+    total = 0
+    for e in scan_mod.walk_ro(absroot):
+        if e.ext not in scan_mod.SUPPORTED_EXTS and e.ext not in scan_mod.NAME_ONLY_EXTS:
+            continue
+        fid = ensure_file(con, e)
+        con.execute("INSERT OR IGNORE INTO scan_manifest VALUES (?,?,?,?)",
+                    (run_id, fid, e.size, e.mtime_ns))
+        total += 1
+    con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?",
+                (int(time.time()), "manifest", run_id))
+    con.commit()
+    return run_id, total
+
+
 def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
                      context: str = "") -> None:
     """Dosya + revizyon + segment + FTS tek transaction (DB-01: yarim FTS yok)."""
