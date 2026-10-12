@@ -96,7 +96,7 @@ def cmd_tara(args) -> int:
         print("HATA: kasa acilmadi (sifre/surum).", flush=True)
         return 3
     try:
-        stats = coordinator.run_scan(con, args.kasa, args.kok)
+        stats = coordinator.run_scan(con, args.kasa, args.kok, limit=getattr(args, "limit", None))
     except coordinator.AlreadyRunning:
         print("HATA: baska bir tarama aktif (tek koordinator).", flush=True)
         return 4
@@ -199,6 +199,8 @@ def main(argv=None) -> int:
     sub.add_parser("init", help="Yeni sifreli kasa kur")
     p_t = sub.add_parser("tara", help="Kok dizini tara ve indeksle")
     p_t.add_argument("kok")
+    p_t.add_argument("--limit", type=int, default=None,
+                     help="Bu calistirmada en fazla kac dosya islenir (kalan sonraki tura kalir)")
     p_a = sub.add_parser("ara", help="Kasada ara")
     p_a.add_argument("sorgu")
     p_a.add_argument("--limit", default="50")
