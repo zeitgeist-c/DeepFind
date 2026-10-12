@@ -63,3 +63,17 @@ def test_daily_quota_blocks_second_run(tmp_path):
         assert sched.quota_left(con, "2026-10-12") == 70
     finally:
         con.close()
+
+
+def test_manifest_exports_md(tmp_path):
+    (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4 a")
+    con = database(tmp_path / "kasa.db")
+    try:
+        from evrakci import manifest_export as me
+        rid, total = C.build_manifest(con, str(tmp_path))
+        out = tmp_path / "manifest.md"
+        assert me.export_md(con, rid, str(out)) == total == 1
+        text = out.read_text(encoding="utf-8")
+        assert "toplam 1" in text and "a.pdf" in text
+    finally:
+        con.close()
