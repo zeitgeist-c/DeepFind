@@ -2,8 +2,8 @@
 import os,time
 from PySide6.QtCore import Qt,QTimer,QUrl
 from PySide6.QtGui import QStandardItem,QDesktopServices
-from PySide6.QtWidgets import (QWidget,QVBoxLayout,QGridLayout,QScrollArea,QPushButton,QLineEdit,
-    QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar,QBoxLayout,QLabel)
+from PySide6.QtWidgets import (QWidget,QVBoxLayout,QScrollArea,QPushButton,QLineEdit,
+    QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar,QBoxLayout,QLabel,QSplitter)
 from .ui import card,label
 from .tasks import DatabaseTask,list_files
 from . import ai,backup,history,diagnostics
@@ -47,18 +47,10 @@ def install(w):
     w._list_cache={}
     search=w.yigin.widget(0); backups=w.yigin.widget(4); settings=w.yigin.widget(5); assistant=w.yigin.widget(6)
     w.yigin.removeWidget(backups); w.yigin.removeWidget(assistant)
-    results=QWidget(); result_layout=QVBoxLayout(results)
-    search.layout().removeWidget(w.sonuc_panel); result_layout.addWidget(w.sonuc_panel,1)
-    search.layout().removeWidget(w.oneri); result_layout.addWidget(w.oneri)
+    # Ara ekranı üç sütun işlik olarak hazır; üstüne arama çubuğu ve ilerleme eklenir.
+    search.layout().insertWidget(0,w.search_bar)
     w.search_progress=QProgressBar(); w.search_progress.setRange(0,0); w.search_progress.setTextVisible(False); w.search_progress.hide()
-    search.layout().insertWidget(0,w.search_bar); search.layout().addWidget(w.search_progress)
-    search.layout().addWidget(label('Dosyalar yeniden okunmaz; kayıtlı içerik aranır.','ikincil'))
-    search.layout().addStretch()
-    w.search_more=QPushButton('Sonraki sonuçlar'); result_layout.addWidget(w.search_more); w.search_more.hide()
-    w.search_more.clicked.connect(w._search_next)
-    w.sonuc_liste.clicked.disconnect(w._sec); w.sonuc_liste.doubleClicked.connect(w._sec)
-    preview_result=QPushButton('Seçili evrakı ön izle'); preview_result.clicked.connect(lambda:w._sec(w.sonuc_liste.currentIndex())); result_layout.addWidget(preview_result)
-    copy_result=QPushButton('Seçili evrakın yolunu kopyala'); copy_result.clicked.connect(w._copy_result_path); result_layout.addWidget(copy_result)
+    search.layout().insertWidget(1,w.search_progress)
     w.gemini_card=QWidget(); gemini=QVBoxLayout(w.gemini_card)
     assistant.layout().removeWidget(w.ai_model); gemini.addWidget(w.ai_model)
     key_layout=assistant.layout().takeAt(1)
@@ -89,14 +81,6 @@ def install(w):
     assistant.layout().insertLayout(3,doc_nav)
     w.ai_doc_timer=QTimer(w); w.ai_doc_timer.setSingleShot(True); w.ai_doc_timer.setInterval(300)
     w.ai_doc_timer.timeout.connect(lambda:w._ai_doc_page(0)); w.ai_doc_query.textChanged.connect(lambda:w.ai_doc_timer.start())
-    w.yigin.removeWidget(search)
-    page=QWidget(); outer=QVBoxLayout(page); outer.setContentsMargins(0,0,0,0)
-    canvas=QWidget(); w.archive_grid=QGridLayout(canvas); w.archive_grid.setContentsMargins(0,0,0,0)
-    w.archive_cards=[]
-    for title,body in [('Arama',search),('Sonuçlar',results)]:
-        frame,layout=card(); layout.addWidget(label(title,'baslik')); layout.addWidget(scroll(body),1)
-        w.archive_cards.append(frame)
-    outer.addWidget(scroll(canvas)); w.yigin.insertWidget(0,page)
     for body in (w.gemini_card,assistant):
         for text in body.findChildren(QLabel): text.setWordWrap(True)
     w.ai_page=QWidget(); ai_layout=QVBoxLayout(w.ai_page)
@@ -113,21 +97,37 @@ def install(w):
     settings_index=w.yigin.indexOf(settings); w.yigin.removeWidget(settings)
     w.settings_page=QWidget(); QVBoxLayout(w.settings_page).addWidget(scroll(settings))
     w.yigin.insertWidget(settings_index,w.settings_page)
-    files=QWidget(); layout=QVBoxLayout(files)
+    files=QWidget(); layout=QVBoxLayout(files); layout.setContentsMargins(0,0,0,0)
     filters=QHBoxLayout(); w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText('Dosya adı veya tam yol')
     w.file_status=QComboBox(); w.file_status.addItem('Tüm durumlar','')
     for value,caption in STATUS.items(): w.file_status.addItem(caption,value)
     filters.addWidget(w.file_filter,1); filters.addWidget(w.file_status); layout.addLayout(filters)
     from PySide6.QtGui import QStandardItemModel
+    split=QSplitter(Qt.Horizontal); split.setChildrenCollapsible(False)
+    sol=QWidget(); sl=QVBoxLayout(sol); sl.setContentsMargins(0,18,0,0)
+    sl.addWidget(label('KAYITLAR','eyebrow'))
     w.file_model=QStandardItemModel(); w.file_list=QListView(); w.file_list.setModel(w.file_model); w.file_list.setWordWrap(True)
-    layout.addWidget(w.file_list,1); w.file_notice=label('Kayıtlar yükleniyor…','ikincil'); layout.addWidget(w.file_notice)
-    controls=QHBoxLayout(); preview=QPushButton('Ön izle'); preview.clicked.connect(w._file_open)
+    w.file_list.clicked.connect(w._dosya_ayrinti)
+    sl.addWidget(w.file_list,1); split.addWidget(sol)
+    dosya,dl=card(); dl.addWidget(label('SEÇİLİ KAYIT','eyebrow'))
+    w.dosya_ad=label('Bir kayıt seçin','subheading'); w.dosya_ad.setWordWrap(True); dl.addWidget(w.dosya_ad)
+    w.dosya_yol=label('','ikincil'); w.dosya_yol.setTextFormat(Qt.PlainText)
+    w.dosya_yol.setTextInteractionFlags(Qt.TextSelectableByMouse); w.dosya_yol.setWordWrap(True); dl.addWidget(w.dosya_yol)
+    w.dosya_bilgi=label('','ikincil'); w.dosya_bilgi.setWordWrap(True); dl.addWidget(w.dosya_bilgi)
+    dl.addStretch(1)
+    w.dosya_onizle=QPushButton('Ön izle'); w.dosya_onizle.setProperty('birincil',True)
+    w.dosya_onizle.clicked.connect(w._file_open); w.dosya_onizle.setEnabled(False); dl.addWidget(w.dosya_onizle)
+    split.addWidget(dosya); split.setStretchFactor(0,1); split.setStretchFactor(1,0); split.setSizes([520,280])
+    w.dosya_split=split
+    layout.addWidget(split,1); w.file_notice=label('Kayıtlar yükleniyor…','ikincil'); layout.addWidget(w.file_notice)
+    controls=QHBoxLayout()
     refresh=QPushButton('Yenile'); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
     errors=QPushButton('Kapsam hatalarını göster'); errors.clicked.connect(w._coverage_report)
     prev=QPushButton('Önceki'); prev.clicked.connect(lambda:w._files_page(-1))
     w.file_next=QPushButton('Sonraki'); w.file_next.clicked.connect(lambda:w._files_page(1))
-    for button in (preview,refresh,errors,prev,w.file_next): controls.addWidget(button)
+    for button in (refresh,errors,prev,w.file_next): controls.addWidget(button)
     layout.addLayout(controls); w.yigin.insertWidget(4,files)
+    w._dosya_ayrinti()
     w.yigin.insertWidget(1,w.ai_page)
     w.file_offset=0; w.file_rows=[]
     w.file_debounce=QTimer(w); w.file_debounce.setSingleShot(True); w.file_debounce.setInterval(300)
@@ -140,21 +140,11 @@ def install(w):
     w.yigin.setCurrentIndex(0)
 
 def layout_cards(w):
-    if not hasattr(w,'archive_grid'): return
+    if not hasattr(w,'ai_row'): return
     width=w.yigin.width()-70; columns=2 if width>=850 else 1
     w.ai_row.setDirection(QBoxLayout.LeftToRight if columns==2 else QBoxLayout.TopToBottom)
     for i,frame in enumerate(w.ai_cards):
         frame.setMinimumHeight((300 if i==0 else 600) if columns==1 else 0)
-    side=max(300,(width-20*(columns-1))//columns)
-    if getattr(w,'_grid_geometry',None)==(columns,side): return
-    w._grid_geometry=(columns,side)
-    while w.archive_grid.count(): w.archive_grid.takeAt(0)
-    for row in range(w.archive_grid.rowCount()):
-        w.archive_grid.setRowMinimumHeight(row,0); w.archive_grid.setRowStretch(row,0)
-    w.archive_grid.setAlignment(Qt.AlignTop|Qt.AlignLeft)
-    for i,frame in enumerate(w.archive_cards):
-        w.archive_grid.addWidget(frame,i//columns,i%columns); frame.setFixedSize(side,side)
-    w.archive_grid.parentWidget().updateGeometry()
 
 def files_refresh(w,reset=False):
     if reset: w.file_offset=0
@@ -169,6 +159,7 @@ def files_refresh(w,reset=False):
         for fid,path,name,ext,state,error,source in w.file_rows:
             item=QStandardItem(f'{name}\n{path}\n{STATUS.get(state,state)} • {error or ""} • Kaynak: {source}')
             item.setEditable(False); item.setData(path,Qt.UserRole+1); w.file_model.appendRow(item)
+        w._dosya_ayrinti()
         w.file_next.setEnabled(len(rows)>100); w.file_notice.setText(f'{offset+1}–{offset+len(w.file_rows)} kayıt' if rows else 'Kayıt bulunamadı.')
     job(w,'files',lambda con:list_files(con,text,status,offset),ready)
 
@@ -202,6 +193,7 @@ def refresh_history(w):
         w.gecmis_model.clear()
         for qid,q,f,p,t in rows:
             item=QStandardItem(q+'\n'+f); item.setEditable(False); item.setData(qid); item.setData((q,f),Qt.UserRole+1); w.gecmis_model.appendRow(item)
+        w._gecmis_ayrinti()
     job(w,'history',history.list_all,ready)
 
 def refresh_docs(w):

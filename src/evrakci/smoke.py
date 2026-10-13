@@ -80,7 +80,8 @@ def run(report_path):
             from .archive_ui import layout_cards
             pen.resize(1500,1000); app.processEvents(); layout_cards(pen); app.processEvents()
             assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == ['Ara','AI ile ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']
-            assert len(pen.archive_cards)==2 and all(card.width()==card.height() for card in pen.archive_cards)
+            assert pen.arama_islik.count()==3 and pen.gecmis_split.count()==2 and pen.dosya_split.count()==2
+            assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
             assert pen.ai_page.isAncestorOf(pen.ai_key_input) and pen.ai_page.isAncestorOf(pen.ai_question)
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
             assert [pen.ai_model.itemData(i) for i in range(pen.ai_model.count())] == [
@@ -98,6 +99,9 @@ def run(report_path):
                 time.sleep(0.01)
                 assert time.monotonic() < deadline
             assert pen.sonuc_model.rowCount() == 1
+            pen.sonuc_liste.setCurrentIndex(pen.sonuc_model.index(0, 0))
+            pen._secim_guncelle()
+            assert pen.secim_ad.text() == "ornek.xlsx" and pen.secim_onizle.isEnabled()
             checkpoint("preview")
             pen._sec(pen.sonuc_model.index(0, 0))
             while pen.onizleme.busy():
@@ -238,7 +242,7 @@ def run(report_path):
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
                                            "ai-model-switch", "ai-model-migration", "durable-scan-history",
-                                           'search-two-cards-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
+                                           'search-workbench-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration'])
     except Exception as error:
         report["stage"] = current_stage

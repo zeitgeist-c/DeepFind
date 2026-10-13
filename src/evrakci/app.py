@@ -526,6 +526,25 @@ class AnaPencere(QMainWindow):
     def _file_open(self,*args):
         archive_ui.file_open(self,*args)
 
+    def _dosya_ayrinti(self, _idx=None):
+        idx = self.file_list.currentIndex()
+        satir = self.file_rows[idx.row()] if idx.isValid() and idx.row() < len(self.file_rows) else None
+        if satir is None:
+            self.dosya_ad.setText("Bir kayıt seçin")
+            self.dosya_yol.clear()
+            self.dosya_bilgi.clear()
+            self.dosya_onizle.setEnabled(False)
+            return
+        _fid, yol, ad, _uz, durum, hata, kaynak = satir
+        self.dosya_ad.setText(ad)
+        self.dosya_yol.setText(yol)
+        parca = [archive_ui.STATUS.get(durum, durum)]
+        if hata:
+            parca.append(hata)
+        parca.append("Kaynak: " + (kaynak or "—"))
+        self.dosya_bilgi.setText("  •  ".join(parca))
+        self.dosya_onizle.setEnabled(True)
+
     def _coverage_report(self):
         if self.con is None: return
         dialog=QDialog(self); dialog.setWindowTitle('Evrakçı • İndeks kapsamı'); dialog.resize(850,600)
@@ -631,14 +650,25 @@ class AnaPencere(QMainWindow):
         if not self._locked and dk > 0 and (dt.datetime.now() - self._son_hareket).total_seconds() > dk * 60:
             self._otomatik_kilitle()
 
-    # -- arama ekrani --
+    # -- arama ekrani: üç sütun işlik (filtreler | sonuçlar | seçili evrak) --
     def _ekran_ara(self):
         w = QWidget()
         k = QVBoxLayout(w)
-        fil = QHBoxLayout()
+        k.setContentsMargins(0, 0, 0, 0)
+        islik = QSplitter(Qt.Horizontal)
+        islik.setChildrenCollapsible(False)
+        filtre, fl = card()
+        kaydir = QScrollArea()
+        kaydir.setWidgetResizable(True)
+        kaydir.setFrameShape(QScrollArea.NoFrame)
+        ic = QWidget()
+        form = QVBoxLayout(ic)
+        form.setContentsMargins(0, 0, 0, 0)
+        fl.addWidget(kaydir, 1)
+        kaydir.setWidget(ic)
+        form.addWidget(label("FİLTRELER", "eyebrow"))
         self.yil_filtre = QLineEdit()
         self.yil_filtre.setPlaceholderText("Yıl (ör. 2024)")
-        self.yil_filtre.setFixedWidth(120)
         self.tur_filtre = QComboBox()
         self.tur_filtre.addItems(["tümü", ".pdf", ".xlsx", ".xls", ".docx", ".doc",
                                   ".txt", ".csv", ".pptx", ".epub", ".eml", ".zip"])
@@ -646,60 +676,126 @@ class AnaPencere(QMainWindow):
         self.sirket_filtre.setPlaceholderText("Şirket veya klasör")
         self.etiket_filtre = QLineEdit()
         self.etiket_filtre.setPlaceholderText("Etiket")
-        self.etiket_filtre.setFixedWidth(120)
         for x in (self.yil_filtre, self.tur_filtre, self.sirket_filtre, self.etiket_filtre):
-            fil.addWidget(x)
+            form.addWidget(x)
         self.yil_filtre.textChanged.connect(lambda _t: self._ara_simdi())
         self.tur_filtre.currentTextChanged.connect(lambda _t: self._ara_simdi())
         self.sirket_filtre.textChanged.connect(lambda _t: self._ara_simdi())
         self.etiket_filtre.textChanged.connect(lambda _t: self._ara_simdi())
-        k.addLayout(fil)
-        kayit_satir = QHBoxLayout()
+        form.addWidget(label("KAYITLI ARAMALAR", "eyebrow"))
         self.kayitli_liste = QComboBox()
         self.kayitli_liste.setPlaceholderText("Kayıtlı arama")
         self.kayitli_liste.activated.connect(self._kayitli_calistir)
-        kayit_satir.addWidget(self.kayitli_liste, 1)
+        form.addWidget(self.kayitli_liste)
+        kayit_satir = QHBoxLayout()
         self.kaydet_btn = QPushButton("Kaydet")
         self.kaydet_btn.clicked.connect(self._arama_kaydet)
         kayit_satir.addWidget(self.kaydet_btn)
         self.kayit_sil_btn = QPushButton("Sil")
         self.kayit_sil_btn.clicked.connect(self._kayitli_sil)
         kayit_satir.addWidget(self.kayit_sil_btn)
-        self.csv_btn = QPushButton("CSV indir")
-        self.csv_btn.clicked.connect(self._sonuc_csv)
-        kayit_satir.addWidget(self.csv_btn)
+        form.addLayout(kayit_satir)
+        form.addWidget(label("ETİKET", "eyebrow"))
         self.etiket_yaz = QLineEdit()
         self.etiket_yaz.setPlaceholderText("Seçili sonuca etiket")
-        self.etiket_yaz.setFixedWidth(180)
-        kayit_satir.addWidget(self.etiket_yaz)
+        form.addWidget(self.etiket_yaz)
         self.etiket_ekle_btn = QPushButton("Etiketle")
         self.etiket_ekle_btn.clicked.connect(self._etiket_ekle)
-        kayit_satir.addWidget(self.etiket_ekle_btn)
+        form.addWidget(self.etiket_ekle_btn)
         self.etiket_sil_btn = QPushButton("Etiketi kaldır")
         self.etiket_sil_btn.clicked.connect(self._etiket_sil)
-        kayit_satir.addWidget(self.etiket_sil_btn)
-        k.addLayout(kayit_satir)
+        form.addWidget(self.etiket_sil_btn)
         self.aktif_filtre = QLabel("")
         self.aktif_filtre.setProperty("ikincil", True)
-        k.addWidget(self.aktif_filtre)
+        self.aktif_filtre.setWordWrap(True)
+        form.addWidget(self.aktif_filtre)
+        form.addStretch(1)
+        islik.addWidget(filtre)
+        orta = QWidget()
+        ok = QVBoxLayout(orta)
+        ok.setContentsMargins(0, 18, 0, 0)
+        bas = QHBoxLayout()
+        bas.addWidget(label("SONUÇLAR", "eyebrow"))
+        bas.addStretch(1)
+        self.csv_btn = QPushButton("CSV indir")
+        self.csv_btn.clicked.connect(self._sonuc_csv)
+        bas.addWidget(self.csv_btn)
+        ok.addLayout(bas)
         self.sonuc_model = QStandardItemModel()
         self.sonuc_liste = QListView()
         self.sonuc_liste.setObjectName("cardList")
         self.sonuc_liste.setItemDelegate(CardDelegate(self.sonuc_liste))
         self.sonuc_liste.setModel(self.sonuc_model)
         self.sonuc_liste.setSpacing(4)
-        self.sonuc_liste.clicked.connect(self._sec)
+        self.sonuc_liste.clicked.connect(self._secim_guncelle)
+        self.sonuc_liste.doubleClicked.connect(self._sec)
         self.sonuc_panel = QStackedWidget()
         self.sonuc_panel.addWidget(self.sonuc_liste)
         self.search_empty = EmptyState("Aradığınız belgeye ulaşın", "Dosya adı veya içerikte geçen birkaç kelime yazın.\nSonuçlar burada listelenir.")
         self.sonuc_panel.addWidget(self.search_empty)
         self.sonuc_panel.setCurrentIndex(1)
-        k.addWidget(self.sonuc_panel, 1)
+        ok.addWidget(self.sonuc_panel, 1)
         self.oneri = QLabel("")
         self.oneri.setProperty("ikincil", True)
         self.oneri.setWordWrap(True)
-        k.addWidget(self.oneri)
+        ok.addWidget(self.oneri)
+        self.search_more = QPushButton("Sonraki sonuçlar")
+        self.search_more.clicked.connect(self._search_next)
+        self.search_more.hide()
+        ok.addWidget(self.search_more)
+        islik.addWidget(orta)
+        ayrinti, al = card()
+        al.addWidget(label("SEÇİLİ EVRAK", "eyebrow"))
+        self.secim_ad = label("Henüz seçim yok", "subheading")
+        self.secim_ad.setWordWrap(True)
+        al.addWidget(self.secim_ad)
+        self.secim_yol = label("", "ikincil")
+        self.secim_yol.setTextFormat(Qt.PlainText)
+        self.secim_yol.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.secim_yol.setWordWrap(True)
+        al.addWidget(self.secim_yol)
+        self.secim_bilgi = label("", "ikincil")
+        self.secim_bilgi.setWordWrap(True)
+        al.addWidget(self.secim_bilgi)
+        al.addStretch(1)
+        self.secim_onizle = QPushButton("Ön izle")
+        self.secim_onizle.setProperty("birincil", True)
+        self.secim_onizle.clicked.connect(lambda: self._sec(self.sonuc_liste.currentIndex()))
+        al.addWidget(self.secim_onizle)
+        self.secim_kopyala = QPushButton("Yol kopyala")
+        self.secim_kopyala.clicked.connect(self._copy_result_path)
+        al.addWidget(self.secim_kopyala)
+        islik.addWidget(ayrinti)
+        islik.setStretchFactor(0, 0)
+        islik.setStretchFactor(1, 1)
+        islik.setStretchFactor(2, 0)
+        islik.setSizes([320, 480, 250])
+        self.arama_islik = islik
+        k.addWidget(islik, 1)
         self.yigin.addWidget(w)
+        self._secim_guncelle()
+
+    def _secim_guncelle(self, _idx=None):
+        secili = self._secili_dosya()
+        if secili is None or self.con is None:
+            self.secim_ad.setText("Henüz seçim yok")
+            self.secim_yol.clear()
+            self.secim_bilgi.clear()
+            self.secim_onizle.setEnabled(False)
+            self.secim_kopyala.setEnabled(False)
+            return
+        try:
+            etiketler = rank.file_tags(self.con, secili["file_id"])
+        except Exception:
+            etiketler = []
+        self.secim_ad.setText(secili.get("name", ""))
+        self.secim_yol.setText(secili.get("path", ""))
+        parca = [secili.get("ext", "").lstrip(".").upper(), secili.get("label", "")]
+        if etiketler:
+            parca.append("Etiket: " + ", ".join(etiketler))
+        self.secim_bilgi.setText("  •  ".join(x for x in parca if x))
+        self.secim_onizle.setEnabled(True)
+        self.secim_kopyala.setEnabled(True)
 
     def _ara_simdi(self, reset=True):
         if reset: self._search_offset=0
@@ -714,6 +810,7 @@ class AnaPencere(QMainWindow):
             self.sonuclar = []
             self.onizleme.temizle()
             self.sonuc_model.clear()
+            self._secim_guncelle()
             self.sonuc_panel.setCurrentIndex(1)
             self.search_empty.title.setText("Aradığınız belgeye ulaşın")
             self.search_empty.text.setText("Dosya adı veya içerikte geçen birkaç kelime yazın.\nSonuçlar burada listelenir.")
@@ -770,6 +867,7 @@ class AnaPencere(QMainWindow):
         res = out["results"]
         self.sonuclar = res
         self.sonuc_model.clear()
+        self._secim_guncelle()
         self.sonuc_panel.setCurrentIndex(0 if res else 1)
         if not res:
             self.search_empty.title.setText("Eşleşen belge bulunamadı")
@@ -1578,40 +1676,100 @@ class AnaPencere(QMainWindow):
             self._tara_baslat(roots=bekleyen, automatic=True)
 
     # -- gecmis --
+    # -- geçmiş: liste + seçili arama ayrıntısı --
     def _ekran_gecmis(self):
         w = QWidget()
         k = QVBoxLayout(w)
+        k.setContentsMargins(0, 0, 0, 0)
+        split = QSplitter(Qt.Horizontal)
+        split.setChildrenCollapsible(False)
+        sol = QWidget()
+        sl = QVBoxLayout(sol)
+        sl.setContentsMargins(0, 18, 0, 0)
+        sl.addWidget(label("ARAMALAR", "eyebrow"))
         self.gecmis_model = QStandardItemModel()
         self.gecmis_liste = QListView()
         self.gecmis_liste.setObjectName("cardList")
         self.gecmis_liste.setItemDelegate(CardDelegate(self.gecmis_liste, "history"))
         self.gecmis_liste.setModel(self.gecmis_model)
+        self.gecmis_liste.clicked.connect(self._gecmis_ayrinti)
         self.gecmis_liste.doubleClicked.connect(self._gecmis_kullan)
         self.gecmis_panel = QStackedWidget()
         self.gecmis_panel.addWidget(self.gecmis_liste)
         self.gecmis_panel.addWidget(EmptyState("Aramalarınız burada kalır", "Önceki aramalarınıza yeniden ulaşabilir\nve aynı filtrelerle devam edebilirsiniz.", "history"))
-        k.addWidget(self.gecmis_panel, 1)
-        satir = QHBoxLayout()
-        sil = QPushButton("Seçiliyi sil")
-        sil.clicked.connect(self._gecmis_sil)
-        temiz = QPushButton("Tümünü temizle")
-        temiz.clicked.connect(self._gecmis_temizle)
-        satir.addWidget(sil)
-        satir.addWidget(temiz)
-        satir.addStretch(1)
-        k.addLayout(satir)
+        sl.addWidget(self.gecmis_panel, 1)
+        split.addWidget(sol)
+        ayrinti, al = card()
+        al.addWidget(label("SEÇİLİ ARAMA", "eyebrow"))
+        self.gecmis_sorgu = label("Bir arama seçin", "subheading")
+        self.gecmis_sorgu.setWordWrap(True)
+        al.addWidget(self.gecmis_sorgu)
+        self.gecmis_filtre = label("", "ikincil")
+        self.gecmis_filtre.setWordWrap(True)
+        al.addWidget(self.gecmis_filtre)
+        al.addStretch(1)
+        self.gecmis_calistir = QPushButton("Bu aramayı çalıştır")
+        self.gecmis_calistir.setProperty("birincil", True)
+        self.gecmis_calistir.clicked.connect(self._gecmis_calistir)
+        al.addWidget(self.gecmis_calistir)
+        self.gecmis_sil_btn = QPushButton("Seçiliyi sil")
+        self.gecmis_sil_btn.clicked.connect(self._gecmis_sil)
+        al.addWidget(self.gecmis_sil_btn)
+        self.gecmis_temizle_btn = QPushButton("Tümünü temizle")
+        self.gecmis_temizle_btn.clicked.connect(self._gecmis_temizle)
+        al.addWidget(self.gecmis_temizle_btn)
+        split.addWidget(ayrinti)
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 0)
+        split.setSizes([520, 280])
+        self.gecmis_split = split
+        k.addWidget(split, 1)
         self.yigin.addWidget(w)
+        self._gecmis_ayrinti()
+
+    def _gecmis_veri(self, item):
+        import json
+        query, filters = item.data(Qt.UserRole + 1)
+        try:
+            values = json.loads(filters)
+        except (ValueError, TypeError):
+            values = dict(x.split("=", 1) for x in filters.split(";") if "=" in x)
+        return query, values
+
+    def _gecmis_ayrinti(self, _idx=None):
+        idx = self.gecmis_liste.currentIndex()
+        item = self.gecmis_model.item(idx.row()) if idx.isValid() and idx.row() < self.gecmis_model.rowCount() else None
+        if item is None:
+            self.gecmis_sorgu.setText("Bir arama seçin")
+            self.gecmis_filtre.clear()
+            self.gecmis_calistir.setEnabled(False)
+            self.gecmis_sil_btn.setEnabled(False)
+            return
+        query, values = self._gecmis_veri(item)
+        self.gecmis_sorgu.setText(query)
+        parca = []
+        if values.get("yil"):
+            parca.append(f"yıl:{values['yil']}")
+        if values.get("tur") and values["tur"] != "tümü":
+            parca.append(f"tür:{values['tur']}")
+        if values.get("klasor"):
+            parca.append(f"klasör:{values['klasor']}")
+        if values.get("etiket"):
+            parca.append(f"etiket:{values['etiket']}")
+        self.gecmis_filtre.setText("  •  ".join(parca) or "Filtresiz arama")
+        self.gecmis_calistir.setEnabled(True)
+        self.gecmis_sil_btn.setEnabled(True)
+
+    def _gecmis_calistir(self):
+        idx = self.gecmis_liste.currentIndex()
+        if idx.isValid():
+            self._gecmis_kullan(idx)
 
     def _gecmis_tazele(self):
         archive_ui.refresh_history(self)
 
     def _gecmis_kullan(self, idx):
-        import json
-        query, filters = self.gecmis_model.item(idx.row()).data(Qt.UserRole + 1)
-        try:
-            values = json.loads(filters)
-        except (ValueError, TypeError):
-            values = dict(x.split("=", 1) for x in filters.split(";") if "=" in x)
+        query, values = self._gecmis_veri(self.gecmis_model.item(idx.row()))
         controls = (self.arama_kutu, self.yil_filtre, self.tur_filtre, self.sirket_filtre,
                     self.etiket_filtre)
         for control in controls:
@@ -2374,6 +2532,19 @@ class AnaPencere(QMainWindow):
         self.haric_kutu.clear()
         self.aktif_filtre.clear()
         self.oneri.clear()
+        self.secim_ad.setText("Henüz seçim yok")
+        self.secim_yol.clear()
+        self.secim_bilgi.clear()
+        self.secim_onizle.setEnabled(False)
+        self.secim_kopyala.setEnabled(False)
+        self.gecmis_sorgu.setText("Bir arama seçin")
+        self.gecmis_filtre.clear()
+        self.gecmis_calistir.setEnabled(False)
+        self.gecmis_sil_btn.setEnabled(False)
+        self.dosya_ad.setText("Bir kayıt seçin")
+        self.dosya_yol.clear()
+        self.dosya_bilgi.clear()
+        self.dosya_onizle.setEnabled(False)
         if self.isci:
             self.isci.durdur()
         if self.con is not None:
