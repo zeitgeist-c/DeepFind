@@ -23,6 +23,14 @@ def card():
     return panel, layout
 
 
+def bolme():
+    """Bölümler arası ince çizgi."""
+    cizgi = QFrame()
+    cizgi.setObjectName("bolme")
+    cizgi.setFrameShape(QFrame.HLine)
+    return cizgi
+
+
 def brand(layout, *, size=38):
     row = QHBoxLayout()
     icon = QLabel()

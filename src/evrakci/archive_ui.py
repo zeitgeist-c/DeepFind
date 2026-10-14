@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt,QTimer,QUrl
 from PySide6.QtGui import QStandardItem,QDesktopServices
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QScrollArea,QPushButton,QLineEdit,
     QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar,QBoxLayout,QLabel,QSplitter)
-from .ui import card,label
+from .ui import bolme, card, label
 from .tasks import DatabaseTask,list_files
 from . import ai,backup,history,diagnostics
 
@@ -51,49 +51,36 @@ def install(w):
     search.layout().insertWidget(0,w.search_bar)
     w.search_progress=QProgressBar(); w.search_progress.setRange(0,0); w.search_progress.setTextVisible(False); w.search_progress.hide()
     search.layout().insertWidget(1,w.search_progress)
-    w.gemini_card=QWidget(); gemini=QVBoxLayout(w.gemini_card)
-    assistant.layout().removeWidget(w.ai_model); gemini.addWidget(w.ai_model)
-    key_layout=assistant.layout().takeAt(1)
-    if key_layout and key_layout.layout():
-        key_layout.layout().removeWidget(w.ai_key_input)
-        gemini.addWidget(w.ai_key_input)
-        gemini.addLayout(key_layout.layout())
-    old_heading=assistant.layout().takeAt(0)
-    if old_heading and old_heading.widget(): old_heading.widget().deleteLater()
-    # Explicitly move key controls if their row index changes in a later release.
-    if w.ai_key_input.parent() is assistant:
-        gemini.addWidget(w.ai_key_input)
-    test=QPushButton('Bağlantıyı test et'); test.clicked.connect(w._ai_test); gemini.addWidget(test)
-    w.ai_connection=label('Anahtar şifreli kasada saklanır.','ikincil'); w.ai_connection.setWordWrap(True); gemini.addWidget(w.ai_connection)
-    gemini.addWidget(label('Word/Excel içine gömülü resimler OCR kapsamına dahil değildir.','ikincil')); gemini.addStretch()
-    suggestions=QPushButton('Gemini ile sorgu önerileri üret (yalnız soru gönderilir)')
-    suggestions.clicked.connect(w._ai_suggest)
-    assistant.layout().insertWidget(0,suggestions)
-    w.ai_retrieval=QLineEdit(); w.ai_retrieval.setPlaceholderText('İsteğe bağlı arama sözcükleri; asıl soru korunur')
-    assistant.layout().insertWidget(1,w.ai_retrieval)
-    w.ai_retrieval.textChanged.connect(w._ai_clear_preview)
-    w.ai_doc_query=QLineEdit(); w.ai_doc_query.setPlaceholderText('Özetlenecek belgede ad veya yol ara')
-    assistant.layout().insertWidget(2,w.ai_doc_query)
-    w.ai_doc_offset=0
-    doc_nav=QHBoxLayout()
-    for caption,direction in [('Önceki belgeler',-1),('Sonraki belgeler',1)]:
-        button=QPushButton(caption); button.clicked.connect(lambda _,d=direction:w._ai_doc_page(d)); doc_nav.addWidget(button)
-    assistant.layout().insertLayout(3,doc_nav)
-    w.ai_doc_timer=QTimer(w); w.ai_doc_timer.setSingleShot(True); w.ai_doc_timer.setInterval(300)
-    w.ai_doc_timer.timeout.connect(lambda:w._ai_doc_page(0)); w.ai_doc_query.textChanged.connect(lambda:w.ai_doc_timer.start())
-    for body in (w.gemini_card,assistant):
-        for text in body.findChildren(QLabel): text.setWordWrap(True)
-    w.ai_page=QWidget(); ai_layout=QVBoxLayout(w.ai_page)
-    ai_canvas=QWidget(); ai_row=QHBoxLayout(ai_canvas); w.ai_row=ai_row; w.ai_cards=[]
-    for title,body in [('AI ayarları',w.gemini_card),('AI ile arama ve özetleme',assistant)]:
-        frame,inner=card(); inner.addWidget(label(title,'baslik')); inner.addWidget(scroll(body),1)
-        ai_row.addWidget(frame,1 if body is w.gemini_card else 2)
-        w.ai_cards.append(frame)
-    ai_layout.addWidget(scroll(ai_canvas),1)
-    w.backup_card,backup_layout=card(); backup_layout.addWidget(label('Yedekler','baslik'))
-    w.backup_card.setMinimumHeight(300)
+    # AI: sol kurulum rail + sağ numaralı adımlar
+    kurulum,kurulum_layout=card(); kurulum.setObjectName("sideRail")
+    kurulum_layout.addWidget(label('KURULUM','eyebrow'))
+    kurulum_layout.addWidget(w.ai_kurulum)
+    adimlar=QWidget(); adim_layout=QVBoxLayout(adimlar); adim_layout.setContentsMargins(0,0,0,0)
+    for num,box,baslik in (('1',w.ai_soru,'SORU'),('2',w.ai_alinti,'ALINTILAR'),('3',w.ai_yanit,'YANIT')):
+        satir=QHBoxLayout()
+        rozet=QLabel(num); rozet.setObjectName("numb"); satir.addWidget(rozet,0,Qt.AlignTop)
+        adim,adim_inner=card(); adim_inner.addWidget(label(baslik,'eyebrow')); adim_inner.addWidget(box)
+        satir.addWidget(adim,1); adim_layout.addLayout(satir)
+    adim_layout.addStretch(1)
+    adim_kaydir = QScrollArea()
+    adim_kaydir.setWidgetResizable(True)
+    adim_kaydir.setFrameShape(QScrollArea.NoFrame)
+    adim_kaydir.setWidget(adimlar)
+    for box in (w.ai_kurulum,w.ai_soru,w.ai_alinti,w.ai_yanit):
+        for text in box.findChildren(QLabel): text.setWordWrap(True)
+    w.ai_page=QWidget(); ai_sayfa=QVBoxLayout(w.ai_page); ai_sayfa.setContentsMargins(0,0,0,0)
+    ai_split=QSplitter(Qt.Horizontal); ai_split.setChildrenCollapsible(False)
+    ai_split.addWidget(kurulum); ai_split.addWidget(adim_kaydir)
+    ai_split.setStretchFactor(0,0); ai_split.setStretchFactor(1,1); ai_split.setSizes([250,730])
+    w.ai_split=ai_split; ai_sayfa.addWidget(ai_split)
+    w.backup_card,backup_layout=card()
+    baslik_satir=QHBoxLayout()
+    baslik_satir.addWidget(label('Yedekler','baslik'))
+    w.yedek_sayi=label('','pill'); w.yedek_sayi.hide(); baslik_satir.addWidget(w.yedek_sayi)
+    baslik_satir.addStretch(1)
+    backup_layout.addLayout(baslik_satir)
     backup_layout.addWidget(backups)
-    settings.layout().insertWidget(1,w.backup_card)
+    w.yedek_bolum.layout().addWidget(w.backup_card)
     settings_index=w.yigin.indexOf(settings); w.yigin.removeWidget(settings)
     w.settings_page=QWidget(); QVBoxLayout(w.settings_page).addWidget(scroll(settings))
     w.yigin.insertWidget(settings_index,w.settings_page)
@@ -101,7 +88,8 @@ def install(w):
     filters=QHBoxLayout(); w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText('Dosya adı veya tam yol')
     w.file_status=QComboBox(); w.file_status.addItem('Tüm durumlar','')
     for value,caption in STATUS.items(): w.file_status.addItem(caption,value)
-    filters.addWidget(w.file_filter,1); filters.addWidget(w.file_status); layout.addLayout(filters)
+    filters.addWidget(w.file_filter,1); filters.addWidget(w.file_status)
+    w.file_notice=label('','pill'); w.file_notice.hide(); filters.addWidget(w.file_notice); layout.addLayout(filters)
     from PySide6.QtGui import QStandardItemModel
     split=QSplitter(Qt.Horizontal); split.setChildrenCollapsible(False)
     sol=QWidget(); sl=QVBoxLayout(sol); sl.setContentsMargins(0,18,0,0)
@@ -114,15 +102,16 @@ def install(w):
     w.dosya_yol=label('','ikincil'); w.dosya_yol.setTextFormat(Qt.PlainText)
     w.dosya_yol.setTextInteractionFlags(Qt.TextSelectableByMouse); w.dosya_yol.setWordWrap(True); dl.addWidget(w.dosya_yol)
     w.dosya_bilgi=label('','ikincil'); w.dosya_bilgi.setWordWrap(True); dl.addWidget(w.dosya_bilgi)
+    dl.addWidget(bolme())
     dl.addStretch(1)
     w.dosya_onizle=QPushButton('Ön izle'); w.dosya_onizle.setProperty('birincil',True)
     w.dosya_onizle.clicked.connect(w._file_open); w.dosya_onizle.setEnabled(False); dl.addWidget(w.dosya_onizle)
     split.addWidget(dosya); split.setStretchFactor(0,1); split.setStretchFactor(1,0); split.setSizes([520,280])
     w.dosya_split=split
-    layout.addWidget(split,1); w.file_notice=label('Kayıtlar yükleniyor…','ikincil'); layout.addWidget(w.file_notice)
+    layout.addWidget(split,1)
     controls=QHBoxLayout()
     refresh=QPushButton('Yenile'); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
-    errors=QPushButton('Kapsam hatalarını göster'); errors.clicked.connect(w._coverage_report)
+    errors=QPushButton('Kapsam'); errors.setToolTip('Kapsam hatalarını göster'); errors.clicked.connect(w._coverage_report)
     prev=QPushButton('Önceki'); prev.clicked.connect(lambda:w._files_page(-1))
     w.file_next=QPushButton('Sonraki'); w.file_next.clicked.connect(lambda:w._files_page(1))
     for button in (refresh,errors,prev,w.file_next): controls.addWidget(button)
@@ -149,18 +138,18 @@ def layout_cards(w):
 def files_refresh(w,reset=False):
     if reset: w.file_offset=0
     text=w.file_filter.text(); status=w.file_status.currentData(); offset=w.file_offset
-    w.file_notice.setText('Kayıtlar yükleniyor…')
+    w.file_notice.setText('Kayıtlar yükleniyor…'); w.file_notice.show()
     def ready(rows):
         cache=(text,status,offset,rows)
         if w._list_cache.get('files')==cache:
-            w.file_notice.setText(f'{offset+1}–{offset+len(w.file_rows)} kayıt' if rows else 'Kayıt bulunamadı.'); return
+            w.file_notice.setText(f'{offset+1}–{offset+len(w.file_rows)} kayıt' if rows else 'Kayıt bulunamadı.'); w.file_notice.show(); return
         w._list_cache['files']=cache
         w.file_rows=rows[:100]; w.file_model.clear()
         for fid,path,name,ext,state,error,source in w.file_rows:
             item=QStandardItem(f'{name}\n{path}\n{STATUS.get(state,state)} • {error or ""} • Kaynak: {source}')
             item.setEditable(False); item.setData(path,Qt.UserRole+1); w.file_model.appendRow(item)
         w._dosya_ayrinti()
-        w.file_next.setEnabled(len(rows)>100); w.file_notice.setText(f'{offset+1}–{offset+len(w.file_rows)} kayıt' if rows else 'Kayıt bulunamadı.')
+        w.file_next.setEnabled(len(rows)>100); w.file_notice.setText(f'{offset+1}–{offset+len(w.file_rows)} kayıt' if rows else 'Kayıt bulunamadı.'); w.file_notice.show()
     job(w,'files',lambda con:list_files(con,text,status,offset),ready)
 
 def files_page(w,direction):
@@ -182,6 +171,8 @@ def refresh_backups(w):
         for b in rows:
             item=QStandardItem(f'{os.path.basename(b["path"])}\n{b["boyut"]//1024} KB • Şifreli kasa')
             item.setEditable(False); item.setData(b['path']); w.yedek_model.appendRow(item)
+        w.yedek_sayi.setText(f'{len(rows)} yedek')
+        w.yedek_sayi.setVisible(bool(rows))
         w.yedek_panel.setCurrentIndex(0 if rows else 1)
     job(w,'backups',lambda _:backup.list_backups(directory),ready)
 
@@ -191,8 +182,20 @@ def refresh_history(w):
             if w._list_cache.get('history')==rows: return
             w._list_cache['history']=rows
         w.gecmis_model.clear()
+        import json as _json
         for qid,q,f,p,t in rows:
-            item=QStandardItem(q+'\n'+f); item.setEditable(False); item.setData(qid); item.setData((q,f),Qt.UserRole+1); w.gecmis_model.appendRow(item)
+            try:
+                v=_json.loads(f)
+            except (ValueError,TypeError):
+                v=dict(x.split("=",1) for x in f.split(";") if "=" in x)
+            parca=[]
+            if v.get("yil"): parca.append(f"yıl:{v['yil']}")
+            if v.get("tur") and v["tur"]!="tümü": parca.append(f"tür:{v['tur']}")
+            if v.get("klasor"): parca.append(f"klasör:{v['klasor']}")
+            if v.get("etiket"): parca.append(f"etiket:{v['etiket']}")
+            ozet="  •  ".join(parca) or "Filtresiz arama"
+            item=QStandardItem(q+'\n'+ozet); item.setEditable(False); item.setData(qid); item.setData((q,f),Qt.UserRole+1); w.gecmis_model.appendRow(item)
+        w.gecmis_sayi.setText(f'{len(rows)} arama')
         w._gecmis_ayrinti()
     job(w,'history',history.list_all,ready)
 

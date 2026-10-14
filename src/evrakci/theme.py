@@ -6,11 +6,13 @@ TOKENS = {
         "zemin": "#F4F6FA", "panel": "#FFFFFF", "metin": "#17243B", "buton_metin": "#FFFFFF",
         "ikincil": "#65748B", "marka": "#137C70", "sinir": "#E1E7F0",
         "secili": "#E9F6F2", "uyari": "#986A19", "hata": "#BC4253", "basari": "#137C70",
+        "ray": "#EEF2F8",
     },
     "koyu": {
         "zemin": "#0D1523", "panel": "#172237", "metin": "#F1F5FC", "buton_metin": "#09251F",
         "ikincil": "#B1BED3", "marka": "#67D9BC", "sinir": "#455570",
         "secili": "#1C3B3B", "uyari": "#E5B969", "hata": "#F18D99", "basari": "#67D9BC",
+        "ray": "#101C30",
     },
 }
 
@@ -112,6 +114,10 @@ QWidget {{ color: {pal['metin']}; font-family: 'Segoe UI'; font-size: 14px; }}
 QMainWindow, QDialog, QWizard, QWidget#kok {{ background: {pal['zemin']}; }}
 QFrame#card, QWidget#pageCard, QWidget#preview, QWizardPage#setupPage {{
  background: {pal['panel']}; border: 1px solid {pal['sinir']}; border-radius: 16px; }}
+QFrame#sideRail {{ background: {pal['ray']}; border: 1px solid {pal['sinir']}; border-radius: 12px; }}
+QLabel#numb {{ background: {pal['marka']}; color: {pal['buton_metin']};
+ border-radius: 11px; font-weight: 700; font-size: 13px; padding: 2px 7px; }}
+QFrame#bolme {{ background: {pal['sinir']}; border: none; min-height: 1px; max-height: 1px; }}
 QStackedWidget {{ background: transparent; }}
 QWidget#scanBody {{ background: {pal['panel']}; border: none; }}
 QFrame#rail {{ background: #112039; border-radius: 16px; }}
@@ -149,6 +155,8 @@ QPushButton:pressed {{ background: {pal['sinir']}; }}
 QPushButton:focus {{ border: 2px solid {pal['marka']}; }}
 QPushButton:default, QPushButton[birincil="true"] {{ background: {pal['marka']};
  color: {pal['buton_metin']}; border: none; }}
+QPushButton[ghost="true"] {{ background: transparent; border: none; color: {pal['marka']}; font-weight: 600; }}
+QPushButton[ghost="true"]:hover {{ background: {pal['secili']}; border: none; }}
 QPushButton:disabled {{ color: {pal['ikincil']}; background: {pal['zemin']}; }}
 QListView::item {{ padding: 12px; border-radius: 8px; }}
 QListView::item:hover {{ background: {pal['zemin']}; }}
