@@ -226,6 +226,44 @@ class TaramaIsci(QObject):
             self._sifre = "x" * 32
 
 
+class KokKaldirIsci(QObject):
+    """Kök kaldırma: boşaltma + sözlük yenileme GUI'yi kilitlemeden ayrı thread'de."""
+    bitti = Signal(int)   # silinen dosya sayısı
+    hata = Signal(str)
+
+    def __init__(self, kasa_yolu, sifre, kok, other_roots):
+        super().__init__()
+        self.kasa_yolu = kasa_yolu
+        self._sifre = sifre
+        self.kok = kok
+        self.other_roots = other_roots
+
+    def kos(self):
+        try:
+            from . import vault as v
+            con = v.open_vault(self.kasa_yolu, self._sifre)
+            try:
+                con.execute("DELETE FROM roots WHERE display_path=?", (self.kok,))
+                remaining = [r[0] for r in con.execute(
+                    "SELECT display_path FROM roots WHERE enabled=1").fetchall()]
+                remaining += [r for r in self.other_roots if r not in remaining]
+                sil = 0
+                for fid, path in con.execute("SELECT file_id,path FROM files").fetchall():
+                    if exclusions.is_excluded(path, [self.kok]) and not exclusions.is_excluded(path, remaining):
+                        con.execute("DELETE FROM files WHERE file_id=?", (fid,))
+                        sil += 1
+                con.commit()
+                rebuild_vocab(con)
+                self.bitti.emit(sil)
+            finally:
+                con.close()
+        except Exception as e:  # noqa: BLE001
+            diagnostics.record("kok_kaldir_error", type(e).__name__)
+            self.hata.emit(f"{type(e).__name__}: {e}")
+        finally:
+            self._sifre = "x" * 32
+
+
 class AnaPencere(QMainWindow):
     def __init__(self, kasa_yolu, sifre, prepared=False):
         super().__init__()
@@ -238,6 +276,8 @@ class AnaPencere(QMainWindow):
         self._exiting = False
         self._search_thread = None
         self._pending_search = None
+        self._kaldir_isci = None
+        self._kaldir_thread = None
         self._jobs=[]
         self._job_keys={}
         self._job_pending={}
@@ -1333,7 +1373,7 @@ class AnaPencere(QMainWindow):
         self.source_status.setText(("Aramaya açık" if index.data(Qt.UserRole + 2) else "Arama kapalı") if path else "")
         self.source_status.setVisible(bool(path))
         if hasattr(self, "source_remove"):
-            self.source_remove.setEnabled(bool(path))
+            self.source_remove.setEnabled(bool(path) and self._kaldir_thread is None)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1385,18 +1425,48 @@ class AnaPencere(QMainWindow):
         if QMessageBox.question(self, "Kaynağı kaldır",
                                 "Bu klasörün yerel arama kayıtları kaldırılacak. Kaynak belgeler korunur. Devam edilsin mi?") != QMessageBox.Yes:
             return
-        self.con.execute("DELETE FROM roots WHERE display_path=?", (yol,))
-        remaining = self._kokler()
-        for fid, path in self.con.execute("SELECT file_id,path FROM files").fetchall():
-            if exclusions.is_excluded(path, [yol]) and not exclusions.is_excluded(path, remaining):
-                self.con.execute("DELETE FROM files WHERE file_id=?", (fid,))
-        self.con.commit()
-        rebuild_vocab(self.con)
+        # GUI'yi kilitlemeden arka planda boşaltır; büyük arşivlerde dakikalar alabilir.
+        other_roots = [r for r in self._kokler() if r != yol]
+        self._kaldir_isci = KokKaldirIsci(self.kasa_yolu, self._sifre, yol, other_roots)
+        self._kaldir_thread = QThread(self)
+        self._kaldir_isci.moveToThread(self._kaldir_thread)
+        self._kaldir_thread.started.connect(self._kaldir_isci.kos)
+        self._kaldir_isci.bitti.connect(self._kok_kaldir_bitti)
+        self._kaldir_isci.hata.connect(self._kok_kaldir_hata)
+        self._kaldir_isci.bitti.connect(self._kaldir_thread.quit)
+        self._kaldir_isci.hata.connect(self._kaldir_thread.quit)
+        self._kaldir_isci.bitti.connect(self._kaldir_isci.deleteLater)
+        self._kaldir_isci.hata.connect(self._kaldir_isci.deleteLater)
+        self._kaldir_thread.finished.connect(self._kaldir_temizle)
+        self.source_remove.setEnabled(False)
+        self.source_remove.setText("Kaldırılıyor…")
+        self.durum.showMessage("Kaynak kaldırılıyor… Kaynak belgeler korunur.")
+        self._kaldir_thread.start()
+
+    def _kok_kaldir_bitti(self, sil):
+        if self._locked:
+            return
         self.onizleme.temizle()
         self.sonuclar = []
         self.sonuc_model.clear()
         self._kok_tazele()
         self._durum_yaz()
+        if sil:
+            self.durum.showMessage(f"{sil} dosyanın kaydı kaldırıldı. Kaynak belgeler korunur.", 8000)
+
+    def _kok_kaldir_hata(self, msg):
+        if self._locked:
+            return
+        QMessageBox.warning(self, "Kaynak kaldırma", f"İşlem tamamlanamadı: {msg}")
+        self._kok_tazele()
+        self._durum_yaz()
+
+    def _kaldir_temizle(self):
+        self._kaldir_isci = None
+        self._kaldir_thread = None
+        if hasattr(self, "source_remove") and self.source_remove.text() == "Kaldırılıyor…":
+            self.source_remove.setText("Kaldır")
+            self.source_remove.setEnabled(self.kok_liste.currentIndex().isValid())
 
     def _haric_ekle(self):
         if not self._exclusive_ready():
@@ -2772,8 +2842,9 @@ class AnaPencere(QMainWindow):
     def _exclusive_ready(self):
         if self.con is None:
             return False
-        if self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy() or self._jobs:
-            QMessageBox.information(self, "İşlem sürüyor", "Devam eden tarama, arama veya önizlemenin bitmesini bekleyin. Taramayı iptal edebilirsiniz.")
+        if (self.isci_thread is not None or self._search_thread is not None
+                or self.onizleme.busy() or self._jobs or self._kaldir_thread is not None):
+            QMessageBox.information(self, "İşlem sürüyor", "Devam eden tarama, arama, kaldırma veya önizlemenin bitmesini bekleyin. Taramayı iptal edebilirsiniz.")
             return False
         return True
 
@@ -3009,6 +3080,10 @@ class AnaPencere(QMainWindow):
     def kilitle(self):
         if self._locked or self.sifresiz:
             return
+        if self._kaldir_thread is not None:
+            QMessageBox.information(self, "İşlem sürüyor",
+                                    "Kaynak kaldırma tamamlanmadan kasa kilitlenemez; birazdan tekrar deneyin.")
+            return
         diagnostics.record("lock")
         self._job_generation+=1
         self._job_pending.clear()
@@ -3213,6 +3288,9 @@ class AnaPencere(QMainWindow):
         if self._search_thread is not None:
             self._search_thread.stop.set()
             self._search_thread.finished.connect(self._cikis)
+            return
+        if self._kaldir_thread is not None:
+            self._kaldir_thread.finished.connect(self._cikis)
             return
         if self.onizleme.busy():
             self.onizleme.temizle()

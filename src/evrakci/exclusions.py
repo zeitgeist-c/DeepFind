@@ -33,6 +33,12 @@ def is_excluded(path: str, rules: list) -> bool:
     pl = os.path.normpath(path).lower()
     for r in rules:
         rl = os.path.normpath(r).lower()
+        # Kök zaten ayraçla bitiyorsa (C:\, klasör kökü) çift ayraç arama:
+        # yalnızca rl + ayraç ile eşleştir.
+        if rl.endswith("\\") or rl.endswith("/"):
+            if pl == rl or pl.startswith(rl):
+                return True
+            continue
         if pl == rl or pl.startswith(rl + "\\") or pl.startswith(rl + "/"):
             return True
     return False

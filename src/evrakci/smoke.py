@@ -204,6 +204,36 @@ def run(report_path):
             assert any(row[1]==ocr_image for row in pen.file_rows)
             from .rank import search_ranked
             assert any(row['path']==ocr_image for row in search_ranked(pen.con,'Ankara belge')['results'])
+            checkpoint('root-remove-worker')
+            # Kök kaldırma: ayrı thread'de çalışır, GUI yanıt verir, temizlik doğru.
+            from evrakci.app import KokKaldirIsci
+            from PySide6.QtCore import QThread
+            # Bağımsız kök (temp altında değil; iç içe kökler zaten üst taramada teke iner)
+            k2 = os.path.join(os.path.dirname(temp), "evrakci-package-smoke-ikinci-" + str(int(time.time()*1000)))
+            os.makedirs(k2)
+            from openpyxl import Workbook
+            p2 = os.path.join(k2, "tasinan.xlsx")
+            wbp = Workbook(); wbp.active.append(["G koku testi 2026"]); wbp.save(p2)
+            pen.con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?,?)", (k2, k2.lower()))
+            pen.con.execute("INSERT INTO files(path,name,ext,size,mtime_ns) VALUES (?,?,?,?,?)",
+                            (p2, os.path.basename(p2), ".xlsx", 100, 100))
+            pen.con.commit()
+            pen._kok_tazele()
+            isci = KokKaldirIsci(db, password, k2, [temp])
+            th = QThread()
+            isci.moveToThread(th)
+            th.started.connect(isci.kos)
+            biten = []
+            isci.bitti.connect(lambda n: biten.append(n))
+            isci.bitti.connect(th.quit)
+            isci.hata.connect(lambda m: biten.append(("hata", m)))
+            th.start()
+            deadline = time.monotonic() + 30
+            while th.isRunning() and time.monotonic() < deadline:
+                app.processEvents(); time.sleep(0.01)
+            th.wait(2000)
+            assert biten == [1], biten
+            assert pen.con.execute("SELECT count(*) FROM files WHERE path LIKE ?", (k2 + "%",)).fetchone()[0] == 0
             pen._nav_toggle()
             assert pen.nav.horizontalScrollBar().maximum() == 0
             pen._nav_toggle()
@@ -243,7 +273,7 @@ def run(report_path):
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
                                            "ai-model-switch", "ai-model-migration", "durable-scan-history",
                                            'search-workbench-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
-                                           'background-startup-migration'])
+                                           'background-startup-migration', 'root-remove-worker'])
     except Exception as error:
         report["stage"] = current_stage
         report["error"] = repr(error)

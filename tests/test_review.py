@@ -49,6 +49,60 @@ def test_scanning_second_root_preserves_first_and_reappearance(tmp_path, monkeyp
     con.close()
 
 
+def test_drive_root_exclusion_matches_all_files_under_it(tmp_path):
+    """Sürücü kökü kuralı altındaki tüm dosyalarla eşleşmeli.
+
+    Kök sürücü kökü olduğunda ayraçla biter; eski mantık çift
+    backslash arıyor ve hiçbir dosyayı dışlayamıyordu; kök kaldırma
+    indeks boşaltılamıyordu.
+    """
+    from evrakci import exclusions
+    # normpath sürücü kökünü ayraçlı tutar — gerçek canlı durum
+    root = os.path.normpath("C:\\")
+    assert root == "C:\\" or root == "C:/"
+    assert exclusions.is_excluded(os.path.join(root, "kaynak", "belge.pdf"), [root])
+    assert exclusions.is_excluded(os.path.join(root, "DumpStack.log"), [root])
+    assert exclusions.is_excluded(root, [root])
+    assert not exclusions.is_excluded("D:\\x\\y.pdf", [root])
+    # Klasör kökü davranışı bozulmadı
+    dizin = os.path.normpath("C:\\Users\\user")
+    assert exclusions.is_excluded("C:\\Users\\user\\belge.pdf", [dizin])
+    assert not exclusions.is_excluded("C:\\Users\\user2\\b.pdf", [dizin])
+
+
+def test_drive_root_removal_empties_index(tmp_path):
+    """Sürücü kökü kaldırılınca altındaki dosya kayıtları temizlenir.
+
+    App._kok_kaldir'ın veri mantığı: kaldırılan kökün altındaki kayıtlar
+    silinir; diğer köklerin kayıtları korunur.
+    """
+    from evrakci import exclusions
+    con, db = make_vault(tmp_path)
+    con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?, ?)",
+                ("C:\\", os.path.normpath("C:\\").lower()))
+    con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?, ?)",
+                ("D:\\", os.path.normpath("D:\\").lower()))
+    for path in ("C:\\a\\belge.pdf", "C:\\b\\belge2.pdf", "D:\\x\\belge3.pdf",
+                 "E:\\y\\belge4.pdf"):
+        con.execute("INSERT INTO files(path, name, ext) VALUES (?, ?, ?)",
+                    (path, os.path.basename(path), ".pdf"))
+    con.commit()
+
+    kaldirilan = "C:\\"
+    con.execute("DELETE FROM roots WHERE display_path=?", (kaldirilan,))
+    remaining = [r[0] for r in con.execute(
+        "SELECT display_path FROM roots WHERE enabled=1").fetchall()]
+    for fid, path in con.execute("SELECT file_id,path FROM files").fetchall():
+        if exclusions.is_excluded(path, [kaldirilan]) and not exclusions.is_excluded(path, remaining):
+            con.execute("DELETE FROM files WHERE file_id=?", (fid,))
+    con.commit()
+
+    kalan = [p for (p,) in con.execute("SELECT path FROM files").fetchall()]
+    assert kalan == ["D:\\x\\belge3.pdf", "E:\\y\\belge4.pdf"] or \
+           set(kalan) == {"D:\\x\\belge3.pdf", "E:\\y\\belge4.pdf"}
+    con.close()
+
+
 def test_old_backup_restores_with_current_password(tmp_path):
     con, db = make_vault(tmp_path)
     dest = str(tmp_path / "backups")

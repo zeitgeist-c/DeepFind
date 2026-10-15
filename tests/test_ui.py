@@ -302,6 +302,80 @@ def test_tarama_isci_eszamanli_kosar(tmp_path):
     assert sonuc and sonuc[0].get("done", 0) >= 1, sonuc
 
 
+def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
+    """Kök kaldırma işçisi sürücü kökünü boşaltır, diğer kökleri korur."""
+    from evrakci.app import KokKaldirIsci
+    from evrakci import exclusions
+    db = str(tmp_path / "k.db")
+    con = vault.open_vault(db, PW)
+    schema.ensure_schema(con)
+    ensure_v5(con)
+    ensure_v7(con)
+    con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?,?)", ("C:\\", os.path.normpath("C:\\").lower()))
+    con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?,?)", ("D:\\", os.path.normpath("D:\\").lower()))
+    for p in ("C:\\a\\b.pdf", "C:\\b\\c.pdf", "D:\\x\\d.pdf"):
+        con.execute("INSERT INTO files(path, name, ext) VALUES (?,?,?)", (p, os.path.basename(p), ".pdf"))
+    con.commit()
+    con.close()
+
+    isci = KokKaldirIsci(db, PW, "C:\\", ["D:\\"])
+    sonuc, hata = [], []
+    isci.bitti.connect(sonuc.append)
+    isci.hata.connect(hata.append)
+    isci.kos()
+    assert not hata, hata
+    assert sonuc == [2]  # C:\ altındaki 2 dosya silindi
+
+    con = vault.open_vault(db, PW)
+    kalan = [p for (p,) in con.execute("SELECT path FROM files").fetchall()]
+    assert kalan == ["D:\\x\\d.pdf"], kalan
+    koklar = [r[0] for r in con.execute("SELECT display_path FROM roots").fetchall()]
+    assert "C:\\" not in koklar and "D:\\" in koklar
+    con.close()
+
+
+def test_kok_kaldir_worker_gui_kilitlemez(tmp_path):
+    """Kök kaldırma QThread üzerinde çalışırken ana thread olay çevrimine yanıt verir."""
+    from evrakci.app import KokKaldirIsci
+    from PySide6.QtCore import QThread
+    db = str(tmp_path / "k.db")
+    con = vault.open_vault(db, PW)
+    schema.ensure_schema(con)
+    ensure_v5(con)
+    ensure_v7(con)
+    con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?,?)",
+                ("Q:\\", "q:\\"))
+    con.execute("INSERT INTO files(path, name, ext) VALUES (?,?,?)",
+                ("Q:\\a\\b.pdf", "b.pdf", ".pdf"))
+    con.commit()
+    con.close()
+
+    isci = KokKaldirIsci(db, PW, "Q:\\", ["R:\\"])
+    th = QThread()
+    isci.moveToThread(th)
+    th.started.connect(isci.kos)
+    biten = []
+    isci.bitti.connect(lambda n: biten.append(n))
+    isci.bitti.connect(th.quit)
+    hata = []
+    isci.hata.connect(hata.append)
+    th.start()
+    # GUI çevrimi çalışıyor: thread bitene kadar processEvents işleniyor.
+    deadline = time.monotonic() + 15
+    while th.isRunning() and time.monotonic() < deadline:
+        _app().processEvents()
+        time.sleep(0.01)
+    th.wait(2000)
+    assert not hata, hata
+    assert biten == [1], biten
+    assert not th.isRunning()
+
+    con = vault.open_vault(db, PW)
+    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == 0
+    assert con.execute("SELECT count(*) FROM roots WHERE display_path='Q:\\'").fetchone()[0] == 0
+    con.close()
+
+
 def test_kurulum_tema_ve_toplu_klasor_islemleri(tmp_path):
     from evrakci.wizard import Sihirbaz
     from PySide6.QtCore import QCoreApplication, QEvent
