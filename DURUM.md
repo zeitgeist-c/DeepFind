@@ -1,5 +1,17 @@
 # Evrakçı — DURUM
 
+## 0.5.0 arayüz yenilemesi — 15.10.2026
+
+Kullanıcının arayüzü hiç beğenmemesi üzerine tüm arayüz sıfırdan yeniden tasarlandı. Önce mevcut 16 ekran görüntüsü alınıp piksel ölçümüyle sorunlar kanıtlandı, tasarım maketi onaylandı, birebir uygulandı.
+
+Tek yüzey + kıl payı ayırıcı (kart içinde kart yok), ray iki temada da tema-uyumlu, kod içindeki sabit renkler `theme.pal()` jetonlarına taşındı. Yeni buton takımı, sayfa başlığı şeridi, ölçü şeridi, düz satır delegesi ve pencere içi onay şeridi. Özellik kaybı yok; 7 sekme, arama, etiket, CSV, AI, tarama, geçmiş, yedekler, ayarlar, sihirbaz ve kilitleme aynen çalışıyor.
+
+Doğrulama: **163 test**, son ZIP içindeki gerçek EXE ile **23 paket kontrolü**, iki temada 7/7 sekmenin zemin rengi ölçüldü, 1100–1600 px taşma kontrolü. Ayrıntı: `DENETIM-0.5.0.md` ve `TESLIM-0.5.0.md`.
+
+## 0.4.2 sekme içi tasarım dili — 14.10.2026
+
+Sekme içleri üç sütun işlik düzenine alındı; sol sekmeler ve genel kabuk o sürümde değişmedi. Ayrıntı: `DENETIM-0.4.2.md`.
+
 ## 0.1.1 denetim notu — 27.09.2026
 
 Kullanıcının bağımsız denetim ve tasarım yenileme isteğiyle mevcut uygulama yeniden incelendi. Önceki A7/A8 GEÇTİ ifadeleri gerçek NAS, temiz Windows, DPI ve hacim kapılarının geçtiği anlamına gelmez. Bu kapılar halen açıktır. Ayrıntılı bölüm karşılaştırması, düzeltmeler ve kalanlar `DENETIM-0.1.1.md` dosyasındadır.
