@@ -116,8 +116,8 @@ def cmd_tara(args) -> int:
 def cmd_haric(args) -> int:
     _vault, _schema, _s3, _e4, _i5, _s6, rank, history, _v9, _c10, exclusions, _m4 = _load()
     con = _open_db(args)
-    rule = exclusions.add(con, args.kural)
-    n = exclusions.purge_rule(con, rule)
+    with _c10.ScanLock(args.kasa):
+        rule, n = exclusions.add_and_purge(con, args.kural)
     con.close()
     print(f"Haric: {rule} — {n} dosyanin icerigi temizlendi.", flush=True)
     return 0

@@ -15,13 +15,14 @@ def _like_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def add(con, rule: str) -> str:
+def add(con, rule: str, *, commit=True) -> str:
     rule = normalize_rule(rule)
     con.execute(
         "INSERT INTO exclusions(rule, created_at) VALUES (?, ?) ON CONFLICT(rule) DO NOTHING",
         (rule, int(time.time())),
     )
-    con.commit()
+    if commit:
+        con.commit()
     return rule
 
 
@@ -44,30 +45,53 @@ def is_excluded(path: str, rules: list) -> bool:
     return False
 
 
-def purge_rule(con, rule: str) -> int:
+def purge_rule(con, rule: str, *, commit=True) -> int:
     """Kural kapsamındaki dosyaların aktif içeriğini + bekleyen işlerini sil. Silinen dosya sayısı."""
     rule = normalize_rule(rule)
-    esc = _like_escape(rule)
-    rows = con.execute(
-        "SELECT file_id, path FROM files WHERE lower(path)=lower(?)"
-        " OR lower(path) LIKE lower(?) ESCAPE '\\'",
-        (rule, esc + "\\\\%"),
-    ).fetchall()
-    # unix ayraclı varyant da dene
-    rows += con.execute(
-        "SELECT file_id, path FROM files WHERE lower(path) LIKE lower(?) ESCAPE '\\'",
-        (_like_escape(rule) + "/%",),
-    ).fetchall()
-    seen = set()
-    for fid, _p in rows:
-        if fid in seen:
-            continue
-        seen.add(fid)
-        con.execute("DELETE FROM segments WHERE file_id=?", (fid,))
-        con.execute("DELETE FROM jobs WHERE file_id=?", (fid,))
-        con.execute(
-            "UPDATE files SET index_status='excluded' WHERE file_id=?", (fid,)
-        )
-    con.commit()
-    q.recover_running(con)
-    return len(seen)
+    # SQL LIKE narrows candidates. Strip trailing separators before appending
+    # both separator variants; otherwise C:\ becomes a double-separator pattern.
+    base = rule.rstrip("\\/")
+    prefixes = (base + "\\", base + "/")
+    if not base:
+        prefixes = ("\\", "/")
+    conditions = ["lower(path)=lower(?)"]
+    params = [rule]
+    for prefix in prefixes:
+        conditions.append("lower(path) LIKE lower(?) ESCAPE '\\'")
+        params.append(_like_escape(prefix) + "%")
+    # SQLite lower() is ASCII-only. Use Python's Unicode-aware path comparison
+    # when rule contains non-ASCII characters, so differently-cased paths aren't missed.
+    if rule.isascii():
+        sql = "SELECT file_id, path FROM files WHERE " + " OR ".join(conditions)
+        cursor = con.execute(sql, params)
+    else:
+        cursor = con.execute("SELECT file_id, path FROM files")
+    ids = []
+    while batch := cursor.fetchmany(1000):
+        for fid, path in batch:
+            if is_excluded(path, [rule]):
+                ids.append(fid)
+    if ids:
+        from .vocab import remove_files_from_vocab
+        remove_files_from_vocab(con, ids, include_names=False)
+        for fid in ids:
+            con.execute("DELETE FROM segments WHERE file_id=?", (fid,))
+            con.execute("DELETE FROM jobs WHERE file_id=?", (fid,))
+            con.execute("UPDATE files SET index_status='excluded' WHERE file_id=?", (fid,))
+    if commit:
+        con.commit()
+    q.recover_running(con, commit=commit)
+    return len(ids)
+
+
+def add_and_purge(con, rule: str) -> tuple[str, int]:
+    """Persist exclusion rule and purge indexed content atomically."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        normalized = add(con, rule, commit=False)
+        count = purge_rule(con, normalized, commit=False)
+        con.commit()
+        return normalized, count
+    except Exception:
+        con.rollback()
+        raise

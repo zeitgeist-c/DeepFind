@@ -70,6 +70,45 @@ def test_drive_root_exclusion_matches_all_files_under_it(tmp_path):
     assert not exclusions.is_excluded("C:\\Users\\user2\\b.pdf", [dizin])
 
 
+def test_purge_rule_handles_drive_root_and_literal_wildcards(tmp_path):
+    """Hariç temizliği sürücü kökünde çalışır, SQL wildcard'ını literal alır."""
+    from evrakci import exclusions
+    con, db = make_vault(tmp_path)
+    sep = os.sep
+    drive = os.path.normpath("C:" + sep)
+    outside = os.path.normpath("D:" + sep + "diger.pdf")
+    wildcard_dir = os.path.join(outside[:2] + sep, "arsiv_100%")
+    wildcard_file = os.path.join(wildcard_dir, "gizli.pdf")
+    wildcard_sibling = os.path.join(outside[:2] + sep, "arsivX100x", "kalacak.pdf")
+    paths = [os.path.join(drive, "bir.pdf"),
+             os.path.join(drive, "klasor", "iki.pdf"),
+             outside, wildcard_file, wildcard_sibling]
+    ids = {}
+    for i, path in enumerate(paths):
+        con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",
+                    (path, os.path.basename(path), ".pdf"))
+        fid = con.execute("SELECT file_id FROM files WHERE path=?", (path,)).fetchone()[0]
+        ids[path] = fid
+        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,?,?,?,?)",
+                    (fid, "text", 1, "Sayfa 1", "gizli denetim metni"))
+        con.execute("INSERT INTO jobs(file_id,signature) VALUES (?,?)", (fid, f"sig-{i}"))
+    con.commit()
+
+    exclusions.add(con, drive)
+    assert exclusions.purge_rule(con, drive) == 2
+    assert con.execute("SELECT count(*) FROM segments WHERE file_id=?", (ids[outside],)).fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM jobs WHERE file_id=?", (ids[outside],)).fetchone()[0] == 1
+    assert con.execute("SELECT index_status FROM files WHERE file_id=?", (ids[outside],)).fetchone()[0] != "excluded"
+    for path in paths[:2]:
+        assert con.execute("SELECT count(*) FROM jobs WHERE file_id=?", (ids[path],)).fetchone()[0] == 0
+
+    exclusions.add(con, wildcard_dir)
+    assert exclusions.purge_rule(con, wildcard_dir) == 1
+    assert con.execute("SELECT index_status FROM files WHERE file_id=?", (ids[wildcard_file],)).fetchone()[0] == "excluded"
+    assert con.execute("SELECT index_status FROM files WHERE file_id=?", (ids[wildcard_sibling],)).fetchone()[0] != "excluded"
+    con.close()
+
+
 def test_drive_root_removal_empties_index(tmp_path):
     """Sürücü kökü kaldırılınca altındaki dosya kayıtları temizlenir.
 

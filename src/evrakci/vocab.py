@@ -88,13 +88,16 @@ def ensure_v5(con) -> None:
     con.commit()
 
 
-def rebuild_vocab(con, min_len: int = 2) -> int:
+def rebuild_vocab(con, min_len: int = 2, *, transactional: bool = False) -> int:
     from collections import Counter
+    if transactional and not con.in_transaction:
+        raise RuntimeError("transactional vocabulary rebuild requires an active transaction")
     # Stage in the encrypted database. A crash leaves the prior vocabulary
     # intact; batches keep Python memory bounded for large archives.
     con.execute("CREATE TABLE IF NOT EXISTS vocabulary_build(term TEXT PRIMARY KEY, freq INTEGER NOT NULL)")
     con.execute("DELETE FROM vocabulary_build")
-    con.commit()
+    if not transactional:
+        con.commit()
     for sql in ("SELECT name FROM files", "SELECT folded_text FROM segments"):
         cursor = con.execute(sql)
         while batch := cursor.fetchmany(200):
@@ -106,19 +109,57 @@ def rebuild_vocab(con, min_len: int = 2) -> int:
                 "ON CONFLICT(term) DO UPDATE SET freq=freq+excluded.freq",
                 counts.items(),
             )
-            con.commit()
+            if not transactional:
+                con.commit()
     count = con.execute("SELECT count(*) FROM vocabulary_build").fetchone()[0]
-    con.execute("BEGIN IMMEDIATE")
+    if not transactional:
+        con.execute("BEGIN IMMEDIATE")
     try:
         con.execute("DELETE FROM vocabulary")
         con.execute("INSERT INTO vocabulary(term, freq) SELECT term, freq FROM vocabulary_build")
         con.execute("DELETE FROM vocabulary_build")
         con.execute("INSERT INTO schema_meta(k,v) VALUES ('vocabulary_generation','1') ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1")
-        con.execute("COMMIT")
+        if not transactional:
+            con.execute("COMMIT")
     except Exception:
-        con.execute("ROLLBACK")
+        if not transactional:
+            con.execute("ROLLBACK")
         raise
     return count
+
+
+def remove_files_from_vocab(con, file_ids, *, include_names: bool = True, min_len: int = 2) -> int:
+    """Remove indexed term frequencies for files being deleted or content-excluded.
+
+    Caller owns transaction; this helper never commits.
+    """
+    from collections import Counter
+    ids = list(dict.fromkeys(file_ids))
+    if not ids:
+        return 0
+    con.execute("CREATE TEMP TABLE IF NOT EXISTS evrakci_vocab_remove(file_id INTEGER PRIMARY KEY)")
+    con.execute("DELETE FROM temp.evrakci_vocab_remove")
+    for start in range(0, len(ids), 500):
+        con.executemany("INSERT INTO temp.evrakci_vocab_remove(file_id) VALUES (?)",
+                        ((fid,) for fid in ids[start:start + 500]))
+    counts: Counter = Counter()
+    queries = []
+    if include_names:
+        queries.append("SELECT f.name FROM files f JOIN temp.evrakci_vocab_remove r USING(file_id)")
+    queries.append("SELECT s.folded_text FROM segments s JOIN temp.evrakci_vocab_remove r USING(file_id)")
+    for sql in queries:
+        cursor = con.execute(sql)
+        while batch := cursor.fetchmany(200):
+            for (value,) in batch:
+                counts.update(t for t in nz.tokens_folded(value or "") if len(t) >= min_len)
+    con.executemany("UPDATE vocabulary SET freq=freq-? WHERE term=?",
+                    ((freq, term) for term, freq in counts.items()))
+    con.execute("DELETE FROM vocabulary WHERE freq<=0")
+    con.execute(
+        "INSERT INTO schema_meta(k,v) VALUES ('vocabulary_generation','1') "
+        "ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1"
+    )
+    return len(ids)
 
 
 def suggest(con, token: str, limit: int = 3) -> list:

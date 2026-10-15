@@ -313,12 +313,20 @@ def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     ensure_v7(con)
     con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?,?)", ("C:\\", os.path.normpath("C:\\").lower()))
     con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?,?)", ("D:\\", os.path.normpath("D:\\").lower()))
-    for p in ("C:\\a\\b.pdf", "C:\\b\\c.pdf", "D:\\x\\d.pdf"):
+    docs = (("C:\\a\\b.pdf", "SilinenBelge", 1),
+            ("C:\\b\\c.pdf", "SilinenBelge", 1),
+            ("D:\\x\\d.pdf", "DisDosya", 1))
+    for p, text, freq in docs:
         con.execute("INSERT INTO files(path, name, ext) VALUES (?,?,?)", (p, os.path.basename(p), ".pdf"))
+        fid = con.execute("SELECT file_id FROM files WHERE path=?", (p,)).fetchone()[0]
+        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) VALUES (?,?,?,?,?,?)",
+                    (fid,"text",1,"Sayfa 1",text,text.lower()))
+        con.execute("INSERT INTO vocabulary(term,freq) VALUES (?,?) ON CONFLICT(term) DO UPDATE SET freq=freq+excluded.freq",
+                    (text.lower(),freq))
     con.commit()
     con.close()
 
-    isci = KokKaldirIsci(db, PW, "C:\\", ["D:\\"])
+    isci = KokKaldirIsci(db, PW, "C:\\")
     sonuc, hata = [], []
     isci.bitti.connect(sonuc.append)
     isci.hata.connect(hata.append)
@@ -331,13 +339,21 @@ def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     assert kalan == ["D:\\x\\d.pdf"], kalan
     koklar = [r[0] for r in con.execute("SELECT display_path FROM roots").fetchall()]
     assert "C:\\" not in koklar and "D:\\" in koklar
+    assert con.execute("SELECT freq FROM vocabulary WHERE term='disdosya'").fetchone() == (1,)
+    assert con.execute("SELECT term FROM vocabulary WHERE term='silinenbelge'").fetchone() is None
     con.close()
 
 
-def test_kok_kaldir_worker_gui_kilitlemez(tmp_path):
+def test_kok_kaldir_worker_gui_kilitlemez(tmp_path, monkeypatch):
     """Kök kaldırma QThread üzerinde çalışırken ana thread olay çevrimine yanıt verir."""
     from evrakci.app import KokKaldirIsci
-    from PySide6.QtCore import QThread
+    from evrakci import vocab
+    from PySide6.QtCore import QThread, QTimer
+    original_rebuild = vocab.rebuild_vocab
+    def slow_rebuild(*args, **kwargs):
+        time.sleep(0.2)
+        return original_rebuild(*args, **kwargs)
+    monkeypatch.setattr(vocab, "rebuild_vocab", slow_rebuild)
     db = str(tmp_path / "k.db")
     con = vault.open_vault(db, PW)
     schema.ensure_schema(con)
@@ -350,17 +366,21 @@ def test_kok_kaldir_worker_gui_kilitlemez(tmp_path):
     con.commit()
     con.close()
 
-    isci = KokKaldirIsci(db, PW, "Q:\\", ["R:\\"])
+    isci = KokKaldirIsci(db, PW, "Q:\\")
     th = QThread()
     isci.moveToThread(th)
     th.started.connect(isci.kos)
     biten = []
     isci.bitti.connect(lambda n: biten.append(n))
     isci.bitti.connect(th.quit)
+    isci.bitti.connect(isci.deleteLater)
     hata = []
     isci.hata.connect(hata.append)
     th.start()
-    # GUI çevrimi çalışıyor: thread bitene kadar processEvents işleniyor.
+    _app()
+    gui_pulse = []
+    QTimer.singleShot(50, lambda: gui_pulse.append(True))
+    # Worker sözlük yenilerken GUI timer'ı çalışmalı.
     deadline = time.monotonic() + 15
     while th.isRunning() and time.monotonic() < deadline:
         _app().processEvents()
@@ -368,11 +388,162 @@ def test_kok_kaldir_worker_gui_kilitlemez(tmp_path):
     th.wait(2000)
     assert not hata, hata
     assert biten == [1], biten
+    assert gui_pulse, "GUI olay çevrimi kaldırma sırasında yanıt vermedi"
     assert not th.isRunning()
 
     con = vault.open_vault(db, PW)
     assert con.execute("SELECT count(*) FROM files").fetchone()[0] == 0
     assert con.execute("SELECT count(*) FROM roots WHERE display_path='Q:\\'").fetchone()[0] == 0
+    con.close()
+
+
+def test_kok_kaldir_geri_alir_hata_olursa(tmp_path, monkeypatch):
+    """Sözlük hatasında kök ve dosya kayıtları aynı transaction ile korunur."""
+    from evrakci.app import KokKaldirIsci
+    from evrakci import vocab
+    db = str(tmp_path / "k.db")
+    con = vault.open_vault(db, PW)
+    schema.ensure_schema(con)
+    ensure_v5(con)
+    ensure_v7(con)
+    con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", ("C:\\", "c:\\"))
+    con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",
+                ("C:\\gizli\\a.pdf", "a.pdf", ".pdf"))
+    con.commit()
+    before = con.execute("SELECT count(*) FROM files").fetchone()[0]
+    con.close()
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("synthetic vocabulary failure")
+    monkeypatch.setattr(vocab, "rebuild_vocab", fail)
+    worker = KokKaldirIsci(db, PW, "C:\\")
+    errors, done = [], []
+    worker.hata.connect(errors.append)
+    worker.bitti.connect(done.append)
+    worker.kos()
+    assert errors == ["RuntimeError"] and not done
+
+    con = vault.open_vault(db, PW)
+    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == before
+    assert con.execute("SELECT count(*) FROM roots WHERE display_path='C:\\'").fetchone()[0] == 1
+    con.close()
+
+
+def test_haric_ui_islemi_arka_planda_ve_geri_acilir(pencere, monkeypatch):
+    """Dışla işlemi UI'ı bloklamaz; tamamlanınca form yeniden etkinleşir."""
+    from evrakci import exclusions
+    original = exclusions.purge_rule
+    def slow_purge(*args, **kwargs):
+        time.sleep(0.2)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(exclusions, "purge_rule", slow_purge)
+    deadline = time.monotonic() + 20
+    while (pencere._jobs or pencere._search_thread is not None or pencere.onizleme.busy()
+           or pencere._debounce.isActive() or pencere.file_debounce.isActive()
+           or pencere.ai_doc_timer.isActive()):
+        _app().processEvents(); time.sleep(.01)
+        assert time.monotonic() < deadline
+    assert pencere._exclusive_ready()
+    rule = os.path.join(os.path.dirname(pencere.kasa_yolu), "haric-probe")
+    os.makedirs(rule)
+    pencere.haric_kutu.setText(rule)
+    pencere._haric_ekle()
+    assert pencere._haric_thread is not None
+    assert not pencere.centralWidget().isEnabled()
+    pulse = []
+    from PySide6.QtCore import QTimer
+    QTimer.singleShot(40, lambda: pulse.append(True))
+    deadline = time.monotonic() + 10
+    while pencere._haric_thread is not None:
+        _app().processEvents(); time.sleep(.01)
+        assert time.monotonic() < deadline
+    assert pulse
+    assert pencere.centralWidget().isEnabled()
+    assert pencere.haric_uygula.isEnabled()
+    assert pencere.haric_kutu.text() == ""
+    assert rule in exclusions.list_rules(pencere.con)
+
+
+def test_haric_isci_atomik_surucu_koku_temizligi(tmp_path):
+    """Hariç worker sürücü kökünü temizler; file-name terimleri indeksli kalır."""
+    from evrakci.app import HaricIsci
+    db = str(tmp_path / "k.db")
+    con = vault.open_vault(db, PW)
+    schema.ensure_schema(con)
+    ensure_v5(con)
+    ensure_v7(con)
+    con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", ("C:\\", "c:\\"))
+    con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", ("D:\\", "d:\\"))
+    for path, name, body in (("C:\\a\\namekeep.pdf", "NameKeep", "BodyRemove"),
+                             ("C:\\b\\otherkeep.pdf", "OtherKeep", "BodyRemove"),
+                             ("D:\\kept.pdf", "KeepName", "BodyRemove")):
+        con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)", (path, name, ".pdf"))
+        fid = con.execute("SELECT file_id FROM files WHERE path=?", (path,)).fetchone()[0]
+        folded = body.lower()
+        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) VALUES (?,?,?,?,?,?)",
+                    (fid,"text",1,"Sayfa 1",body,folded))
+        for term in (name.lower(), folded):
+            con.execute("INSERT INTO vocabulary(term,freq) VALUES (?,1) "
+                        "ON CONFLICT(term) DO UPDATE SET freq=freq+1", (term,))
+    con.commit(); con.close()
+
+    worker = HaricIsci(db, PW, "C:\\")
+    done, errors = [], []
+    worker.bitti.connect(lambda rule, count: done.append((rule, count)))
+    worker.hata.connect(errors.append)
+    worker.kos()
+    assert not errors and done == [("C:\\", 2)]
+    con = vault.open_vault(db, PW)
+    assert con.execute("SELECT count(*) FROM segments").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM files WHERE index_status='excluded'").fetchone()[0] == 2
+    assert con.execute("SELECT freq FROM vocabulary WHERE term='namekeep'").fetchone() == (1,)
+    assert con.execute("SELECT freq FROM vocabulary WHERE term='keepname'").fetchone() == (1,)
+    assert con.execute("SELECT freq FROM vocabulary WHERE term='bodyremove'").fetchone() == (1,)
+    con.close()
+
+
+def test_haric_isci_hata_geri_alir_kural_ve_icerik(tmp_path, monkeypatch):
+    """Hariç temizleme başarısızsa kural ve içerik birlikte geri alınır."""
+    from evrakci.app import HaricIsci
+    from evrakci import exclusions
+    db = str(tmp_path / "k.db")
+    con = vault.open_vault(db, PW)
+    schema.ensure_schema(con); ensure_v5(con); ensure_v7(con)
+    con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)", ("C:\\a.pdf","a.pdf",".pdf"))
+    con.commit(); con.close()
+    monkeypatch.setattr(exclusions, "purge_rule", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("synthetic")))
+    worker = HaricIsci(db, PW, "C:\\")
+    done, errors = [], []
+    worker.bitti.connect(lambda *_: done.append(True)); worker.hata.connect(errors.append)
+    worker.kos()
+    assert errors == ["RuntimeError"] and not done
+    con = vault.open_vault(db, PW)
+    assert con.execute("SELECT count(*) FROM exclusions").fetchone()[0] == 0
+    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == 1
+    con.close()
+
+
+def test_haric_ve_kok_mutasyonlari_scan_kilidini_sayar(tmp_path):
+    """Arka plan mutasyonu canlı tarama kilidi varken veriye dokunmaz."""
+    from evrakci import coordinator, exclusions
+    from evrakci.app import HaricIsci, KokKaldirIsci
+    db = str(tmp_path / "k.db")
+    con = vault.open_vault(db, PW)
+    schema.ensure_schema(con); ensure_v5(con); ensure_v7(con)
+    con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", ("C:\\", "c:\\"))
+    con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)", ("C:\\a.pdf","a.pdf",".pdf"))
+    con.commit(); con.close()
+    with coordinator.ScanLock(db):
+        for worker in (KokKaldirIsci(db, PW, "C:\\"), HaricIsci(db, PW, "C:\\")):
+            errors, done = [], []
+            worker.hata.connect(errors.append)
+            worker.bitti.connect(lambda *args: done.append(args))
+            worker.kos()
+            assert errors == ["AlreadyRunning"] and not done
+    con = vault.open_vault(db, PW)
+    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM roots").fetchone()[0] == 1
+    assert exclusions.list_rules(con) == []
     con.close()
 
 

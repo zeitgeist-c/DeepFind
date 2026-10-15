@@ -208,8 +208,9 @@ def run(report_path):
             # Kök kaldırma: ayrı thread'de çalışır, GUI yanıt verir, temizlik doğru.
             from evrakci.app import KokKaldirIsci
             from PySide6.QtCore import QThread
-            # Bağımsız kök (temp altında değil; iç içe kökler zaten üst taramada teke iner)
-            k2 = os.path.join(os.path.dirname(temp), "evrakci-package-smoke-ikinci-" + str(int(time.time()*1000)))
+            # Ana test kökünü çıkar; k2 temp içinde kalsın ve TemporaryDirectory temizlesin.
+            pen.con.execute("DELETE FROM roots WHERE display_path=?", (temp,))
+            k2 = str(Path(temp) / "ikinci-kok")
             os.makedirs(k2)
             from openpyxl import Workbook
             p2 = os.path.join(k2, "tasinan.xlsx")
@@ -219,7 +220,7 @@ def run(report_path):
                             (p2, os.path.basename(p2), ".xlsx", 100, 100))
             pen.con.commit()
             pen._kok_tazele()
-            isci = KokKaldirIsci(db, password, k2, [temp])
+            isci = KokKaldirIsci(db, password, k2)
             th = QThread()
             isci.moveToThread(th)
             th.started.connect(isci.kos)
@@ -234,6 +235,31 @@ def run(report_path):
             th.wait(2000)
             assert biten == [1], biten
             assert pen.con.execute("SELECT count(*) FROM files WHERE path LIKE ?", (k2 + "%",)).fetchone()[0] == 0
+            checkpoint('exclusion-worker')
+            from evrakci.app import HaricIsci
+            k3 = str(Path(temp) / "disla-koku")
+            p3 = os.path.join(k3, "gizli.pdf")
+            pen.con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",
+                            (p3, "NameSurvives", ".pdf"))
+            fid = pen.con.execute("SELECT file_id FROM files WHERE path=?", (p3,)).fetchone()[0]
+            pen.con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) "
+                            "VALUES (?,?,?,?,?,?)", (fid,"text",1,"Sayfa 1","BodyRemoved","bodyremoved"))
+            pen.con.execute("INSERT INTO vocabulary(term,freq) VALUES ('namesurvives',1),('bodyremoved',1)")
+            pen.con.commit()
+            worker = HaricIsci(db, password, k3)
+            th2 = QThread(); worker.moveToThread(th2); th2.started.connect(worker.kos)
+            excluded = []; worker.bitti.connect(lambda rule, count: excluded.append((rule,count)))
+            worker.bitti.connect(th2.quit); worker.bitti.connect(worker.deleteLater)
+            worker.hata.connect(lambda error: excluded.append(("error",error)))
+            th2.start(); deadline = time.monotonic()+30
+            while th2.isRunning() and time.monotonic()<deadline:
+                app.processEvents(); time.sleep(.01)
+            th2.wait(2000)
+            assert excluded == [(k3,1)], excluded
+            assert pen.con.execute("SELECT index_status FROM files WHERE file_id=?",(fid,)).fetchone()[0]=='excluded'
+            assert pen.con.execute("SELECT count(*) FROM segments WHERE file_id=?",(fid,)).fetchone()[0]==0
+            assert pen.con.execute("SELECT term FROM vocabulary WHERE term='namesurvives'").fetchone()
+            assert pen.con.execute("SELECT term FROM vocabulary WHERE term='bodyremoved'").fetchone() is None
             pen._nav_toggle()
             assert pen.nav.horizontalScrollBar().maximum() == 0
             pen._nav_toggle()
@@ -273,7 +299,7 @@ def run(report_path):
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
                                            "ai-model-switch", "ai-model-migration", "durable-scan-history",
                                            'search-workbench-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
-                                           'background-startup-migration', 'root-remove-worker'])
+                                           'background-startup-migration', 'root-remove-worker', 'exclusion-worker'])
     except Exception as error:
         report["stage"] = current_stage
         report["error"] = repr(error)

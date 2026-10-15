@@ -72,10 +72,11 @@ def fail(con, job_id: int, error_code: str) -> str:
     return "retry"
 
 
-def recover_running(con) -> int:
+def recover_running(con, *, commit=True) -> int:
     """Açılışta yarım işleri pending yap (güç kesintisi)."""
     cur = con.execute("UPDATE jobs SET status='pending', lease_until=0 WHERE status='running'")
-    con.commit()
+    if commit:
+        con.commit()
     return cur.rowcount
 
 

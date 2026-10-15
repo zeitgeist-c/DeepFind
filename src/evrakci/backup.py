@@ -233,8 +233,7 @@ def restore_replace(vault_path: str, password: str, backup_path: str,
             src.backup(dst)
             dst.commit()
             for rule in korunan:
-                exc.add(dst, rule)
-                exc.purge_rule(dst, rule)
+                exc.add_and_purge(dst, rule)
             dst.commit()
             if bpw != password:
                 dst.execute(f"PRAGMA rekey={_pragma_sifre(password)}")

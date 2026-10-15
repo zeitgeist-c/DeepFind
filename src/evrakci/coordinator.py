@@ -47,15 +47,19 @@ class ScanLock:
             msvcrt.locking(self.fh.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
             self.fh.close()
+            self.fh = None
             raise AlreadyRunning("baska bir tarama aktif")
         return self
 
     def __exit__(self, *a):
+        if self.fh is None:
+            return
         import msvcrt
         try:
             msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
         finally:
             self.fh.close()
+            self.fh = None
 
 
 def _stat_sig(path: str):

@@ -231,36 +231,111 @@ class KokKaldirIsci(QObject):
     bitti = Signal(int)   # silinen dosya sayısı
     hata = Signal(str)
 
-    def __init__(self, kasa_yolu, sifre, kok, other_roots):
+    def __init__(self, kasa_yolu, sifre, kok):
         super().__init__()
         self.kasa_yolu = kasa_yolu
         self._sifre = sifre
         self.kok = kok
-        self.other_roots = other_roots
 
     def kos(self):
+        con = None
+        scan_lock = None
         try:
             from . import vault as v
+            from .vocab import rebuild_vocab
+            scan_lock = coordinator.ScanLock(self.kasa_yolu)
+            scan_lock.__enter__()
             con = v.open_vault(self.kasa_yolu, self._sifre)
-            try:
-                con.execute("DELETE FROM roots WHERE display_path=?", (self.kok,))
-                remaining = [r[0] for r in con.execute(
-                    "SELECT display_path FROM roots WHERE enabled=1").fetchall()]
-                remaining += [r for r in self.other_roots if r not in remaining]
-                sil = 0
-                for fid, path in con.execute("SELECT file_id,path FROM files").fetchall():
-                    if exclusions.is_excluded(path, [self.kok]) and not exclusions.is_excluded(path, remaining):
-                        con.execute("DELETE FROM files WHERE file_id=?", (fid,))
-                        sil += 1
-                con.commit()
-                rebuild_vocab(con)
-                self.bitti.emit(sil)
-            finally:
-                con.close()
+            con.execute("BEGIN IMMEDIATE")
+            con.execute("DELETE FROM roots WHERE display_path=?", (self.kok,))
+            remaining = [r[0] for r in con.execute(
+                "SELECT display_path FROM roots WHERE enabled=1").fetchall()]
+            con.execute("CREATE TEMP TABLE IF NOT EXISTS evrakci_remove_files(file_id INTEGER PRIMARY KEY)")
+            con.execute("DELETE FROM temp.evrakci_remove_files")
+            cursor = con.execute("SELECT file_id,path FROM files")
+            while batch := cursor.fetchmany(1000):
+                remove_ids = [fid for fid, path in batch
+                              if exclusions.is_excluded(path, [self.kok])
+                              and not exclusions.is_excluded(path, remaining)]
+                con.executemany("INSERT INTO temp.evrakci_remove_files(file_id) VALUES (?)",
+                                ((fid,) for fid in remove_ids))
+            sil = con.execute("SELECT count(*) FROM temp.evrakci_remove_files").fetchone()[0]
+            if sil:
+                tables = {row[0] for row in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name IN "
+                    "('scan_selected','scan_manifest')")}
+                if "scan_selected" in tables:
+                    con.execute("DELETE FROM scan_selected WHERE file_id IN "
+                                "(SELECT file_id FROM temp.evrakci_remove_files)")
+                if "scan_manifest" in tables:
+                    con.execute("DELETE FROM scan_manifest WHERE file_id IN "
+                                "(SELECT file_id FROM temp.evrakci_remove_files)")
+                con.execute("DELETE FROM files WHERE file_id IN "
+                            "(SELECT file_id FROM temp.evrakci_remove_files)")
+                rebuild_vocab(con, transactional=True)
+            con.commit()
+            self.bitti.emit(sil)
         except Exception as e:  # noqa: BLE001
             diagnostics.record("kok_kaldir_error", type(e).__name__)
-            self.hata.emit(f"{type(e).__name__}: {e}")
+            if con is not None:
+                try:
+                    con.execute("ROLLBACK")
+                except Exception:
+                    pass
+            self.hata.emit(type(e).__name__)
         finally:
+            if con is not None:
+                try:
+                    con.close()
+                except Exception as error:  # noqa: BLE001
+                    diagnostics.record("kok_kaldir_close_error", type(error).__name__)
+            if scan_lock is not None and scan_lock.fh is not None:
+                try:
+                    scan_lock.__exit__(None, None, None)
+                except Exception as error:  # noqa: BLE001
+                    diagnostics.record("kok_kaldir_unlock_error", type(error).__name__)
+            self._sifre = "x" * 32
+
+
+class HaricIsci(QObject):
+    """Hariç kuralını ekle ve içerik temizliğini atomik, arka planda uygula."""
+    bitti = Signal(str, int)
+    hata = Signal(str)
+
+    def __init__(self, kasa_yolu, sifre, rule):
+        super().__init__()
+        self.kasa_yolu = kasa_yolu
+        self._sifre = sifre
+        self.rule = rule
+
+    def kos(self):
+        con = None
+        scan_lock = None
+        try:
+            scan_lock = coordinator.ScanLock(self.kasa_yolu)
+            scan_lock.__enter__()
+            con = vault.open_vault(self.kasa_yolu, self._sifre)
+            rule, count = exclusions.add_and_purge(con, self.rule)
+            self.bitti.emit(rule, count)
+        except Exception as error:  # noqa: BLE001
+            diagnostics.record("haric_apply_error", type(error).__name__)
+            if con is not None:
+                try:
+                    con.execute("ROLLBACK")
+                except Exception:
+                    pass
+            self.hata.emit(type(error).__name__)
+        finally:
+            if con is not None:
+                try:
+                    con.close()
+                except Exception as error:  # noqa: BLE001
+                    diagnostics.record("haric_apply_close_error", type(error).__name__)
+            if scan_lock is not None and scan_lock.fh is not None:
+                try:
+                    scan_lock.__exit__(None, None, None)
+                except Exception as error:  # noqa: BLE001
+                    diagnostics.record("haric_apply_unlock_error", type(error).__name__)
             self._sifre = "x" * 32
 
 
@@ -278,6 +353,10 @@ class AnaPencere(QMainWindow):
         self._pending_search = None
         self._kaldir_isci = None
         self._kaldir_thread = None
+        self._kaldir_lock_pending = False
+        self._kaldir_yol = None
+        self._haric_isci = None
+        self._haric_thread = None
         self._jobs=[]
         self._job_keys={}
         self._job_pending={}
@@ -1150,7 +1229,8 @@ class AnaPencere(QMainWindow):
             self.tuketim_hedefi.setText(path)
 
     def _tuketim_tara(self):
-        if self.con is None or self._locked:
+        if (self.con is None or self._locked or self._kaldir_thread is not None
+                or self._haric_thread is not None):
             return
         try:
             kaydir = migrate.get_setting(self.con, "tuketim_klasoru", "").strip()
@@ -1314,6 +1394,7 @@ class AnaPencere(QMainWindow):
         disla = QPushButton("Dışla")
         disla.setProperty("kucuk", True)
         disla.clicked.connect(self._haric_ekle)
+        self.haric_uygula = disla
         hsatir.addWidget(self.haric_kutu, 1)
         hsatir.addWidget(disla)
         form.addLayout(hsatir)
@@ -1373,7 +1454,7 @@ class AnaPencere(QMainWindow):
         self.source_status.setText(("Aramaya açık" if index.data(Qt.UserRole + 2) else "Arama kapalı") if path else "")
         self.source_status.setVisible(bool(path))
         if hasattr(self, "source_remove"):
-            self.source_remove.setEnabled(bool(path) and self._kaldir_thread is None)
+            self.source_remove.setEnabled(bool(path) and self._kaldir_thread is None and self._haric_thread is None)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1426,8 +1507,10 @@ class AnaPencere(QMainWindow):
                                 "Bu klasörün yerel arama kayıtları kaldırılacak. Kaynak belgeler korunur. Devam edilsin mi?") != QMessageBox.Yes:
             return
         # GUI'yi kilitlemeden arka planda boşaltır; büyük arşivlerde dakikalar alabilir.
-        other_roots = [r for r in self._kokler() if r != yol]
-        self._kaldir_isci = KokKaldirIsci(self.kasa_yolu, self._sifre, yol, other_roots)
+        self._debounce.stop()
+        self._pending_search = None
+        self._kaldir_yol = yol
+        self._kaldir_isci = KokKaldirIsci(self.kasa_yolu, self._sifre, yol)
         self._kaldir_thread = QThread(self)
         self._kaldir_isci.moveToThread(self._kaldir_thread)
         self._kaldir_thread.started.connect(self._kaldir_isci.kos)
@@ -1441,6 +1524,7 @@ class AnaPencere(QMainWindow):
         self.source_remove.setEnabled(False)
         self.source_remove.setText("Kaldırılıyor…")
         self.durum.showMessage("Kaynak kaldırılıyor… Kaynak belgeler korunur.")
+        self.centralWidget().setEnabled(False)
         self._kaldir_thread.start()
 
     def _kok_kaldir_bitti(self, sil):
@@ -1449,24 +1533,38 @@ class AnaPencere(QMainWindow):
         self.onizleme.temizle()
         self.sonuclar = []
         self.sonuc_model.clear()
+        self._list_cache.clear()
+        # Stop old watchers and restart only those for roots still registered.
+        self._izleme_baslat()
+        with self._izleme_kilit:
+            self._izleme_bekleyen = {
+                path for path in self._izleme_bekleyen
+                if not exclusions.is_excluded(path, [self._kaldir_yol or ""])
+            }
         self._kok_tazele()
         self._durum_yaz()
+        self._ai_refresh_docs()
         if sil:
             self.durum.showMessage(f"{sil} dosyanın kaydı kaldırıldı. Kaynak belgeler korunur.", 8000)
 
     def _kok_kaldir_hata(self, msg):
         if self._locked:
             return
-        QMessageBox.warning(self, "Kaynak kaldırma", f"İşlem tamamlanamadı: {msg}")
+        self.durum.showMessage(f"Kaynak kaldırılamadı; kayıtlar korunuyor ({msg}).", 12000)
         self._kok_tazele()
         self._durum_yaz()
 
     def _kaldir_temizle(self):
         self._kaldir_isci = None
         self._kaldir_thread = None
+        if self.centralWidget() is not None:
+            self.centralWidget().setEnabled(True)
         if hasattr(self, "source_remove") and self.source_remove.text() == "Kaldırılıyor…":
             self.source_remove.setText("Kaldır")
             self.source_remove.setEnabled(self.kok_liste.currentIndex().isValid())
+        if self._kaldir_lock_pending and not self._exiting:
+            self._kaldir_lock_pending = False
+            QTimer.singleShot(0, self.kilitle)
 
     def _haric_ekle(self):
         if not self._exclusive_ready():
@@ -1474,13 +1572,51 @@ class AnaPencere(QMainWindow):
         kural = self.haric_kutu.text().strip()
         if not kural:
             return
-        n = exclusions.add(self.con, kural)
-        c = exclusions.purge_rule(self.con, n)
-        QMessageBox.information(self, "Hariç", f"Kural kaydedildi; {c} dosyanın içeriği temizlendi.")
+        self._debounce.stop()
+        self._pending_search = None
+        self._haric_isci = HaricIsci(self.kasa_yolu, self._sifre, kural)
+        self._haric_thread = QThread(self)
+        self._haric_isci.moveToThread(self._haric_thread)
+        self._haric_thread.started.connect(self._haric_isci.kos)
+        self._haric_isci.bitti.connect(self._haric_bitti)
+        self._haric_isci.hata.connect(self._haric_hata)
+        self._haric_isci.bitti.connect(self._haric_thread.quit)
+        self._haric_isci.hata.connect(self._haric_thread.quit)
+        self._haric_isci.bitti.connect(self._haric_isci.deleteLater)
+        self._haric_isci.hata.connect(self._haric_isci.deleteLater)
+        self._haric_thread.finished.connect(self._haric_temizle)
+        self.haric_uygula.setEnabled(False)
+        self.haric_uygula.setText("Uygulanıyor…")
+        self.durum.showMessage("Hariç kuralı uygulanıyor; arayüz kısa süreyle devre dışı.")
+        self.centralWidget().setEnabled(False)
+        self._haric_thread.start()
+
+    def _haric_bitti(self, rule, count):
+        if self._locked:
+            return
         self.haric_kutu.clear()
-        self.sonuc_model.clear()
         self.sonuclar = []
+        self.sonuc_model.clear()
         self.onizleme.temizle()
+        self._list_cache.clear()
+        self._ai_refresh_docs()
+        self.durum.showMessage(f"Hariç kuralı kaydedildi; {count} dosyanın içeriği temizlendi.", 8000)
+
+    def _haric_hata(self, error_type):
+        if self._locked:
+            return
+        self.durum.showMessage(f"Hariç kuralı uygulanamadı; değişiklikler geri alındı ({error_type}).", 12000)
+
+    def _haric_temizle(self):
+        self._haric_isci = None
+        self._haric_thread = None
+        if self.centralWidget() is not None:
+            self.centralWidget().setEnabled(True)
+        self.haric_uygula.setText("Dışla")
+        self.haric_uygula.setEnabled(True)
+        if self._kaldir_lock_pending and not self._exiting:
+            self._kaldir_lock_pending = False
+            QTimer.singleShot(0, self.kilitle)
 
     # -- tarama --
     def _ekran_tarama(self):
@@ -1672,7 +1808,7 @@ class AnaPencere(QMainWindow):
             self.scope_path.setText(path)
 
     def _tara_baslat(self, checked=False, *, automatic=False, roots=None):
-        if self._locked or self.con is None:
+        if self._locked or self.con is None or self._kaldir_thread is not None or self._haric_thread is not None:
             return
         if self.isci_thread is not None:
             if not automatic:
@@ -1915,9 +2051,10 @@ class AnaPencere(QMainWindow):
                 pass
 
     def _izleme_bosalt(self):
-        self._tuketim_tara()
-        if self._locked or self.con is None or self.isci_thread is not None:
+        if (self._locked or self.con is None or self.isci_thread is not None
+                or self._kaldir_thread is not None or self._haric_thread is not None):
             return
+        self._tuketim_tara()
         with self._izleme_kilit:
             bekleyen = sorted(d for d in self._izleme_bekleyen if os.path.isdir(d))
             self._izleme_bekleyen.clear()
@@ -2843,8 +2980,11 @@ class AnaPencere(QMainWindow):
         if self.con is None:
             return False
         if (self.isci_thread is not None or self._search_thread is not None
-                or self.onizleme.busy() or self._jobs or self._kaldir_thread is not None):
-            QMessageBox.information(self, "İşlem sürüyor", "Devam eden tarama, arama, kaldırma veya önizlemenin bitmesini bekleyin. Taramayı iptal edebilirsiniz.")
+                or self._debounce.isActive() or self._pending_search is not None
+                or self.file_debounce.isActive() or self.ai_doc_timer.isActive()
+                or self.onizleme.busy() or self._jobs or self._kaldir_thread is not None
+                or self._haric_thread is not None):
+            QMessageBox.information(self, "İşlem sürüyor", "Devam eden tarama, arama, hariç/kök kaldırma veya önizlemenin bitmesini bekleyin. Taramayı iptal edebilirsiniz.")
             return False
         return True
 
@@ -3058,7 +3198,8 @@ class AnaPencere(QMainWindow):
         self.tepsi.setIcon(self._tray_frames[self._tray_frame])
 
     def _zamanlayici_kontrol(self, ilk=False):
-        if self._locked or self.con is None or self.isci_thread is not None:
+        if (self._locked or self.con is None or self.isci_thread is not None
+                or self._kaldir_thread is not None or self._haric_thread is not None):
             return
         if not self._kokler():
             return
@@ -3080,9 +3221,9 @@ class AnaPencere(QMainWindow):
     def kilitle(self):
         if self._locked or self.sifresiz:
             return
-        if self._kaldir_thread is not None:
-            QMessageBox.information(self, "İşlem sürüyor",
-                                    "Kaynak kaldırma tamamlanmadan kasa kilitlenemez; birazdan tekrar deneyin.")
+        if self._kaldir_thread is not None or self._haric_thread is not None:
+            self._kaldir_lock_pending = True
+            self.durum.showMessage("Arka plan işlemi bitince kasa kilitlenecek.")
             return
         diagnostics.record("lock")
         self._job_generation+=1
@@ -3292,6 +3433,9 @@ class AnaPencere(QMainWindow):
         if self._kaldir_thread is not None:
             self._kaldir_thread.finished.connect(self._cikis)
             return
+        if self._haric_thread is not None:
+            self._haric_thread.finished.connect(self._cikis)
+            return
         if self.onizleme.busy():
             self.onizleme.temizle()
             QTimer.singleShot(100, self._cikis)
@@ -3315,7 +3459,8 @@ class AnaPencere(QMainWindow):
             self.scan_dialog.hide()
             self.hide()
             return
-        if self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy() or self._jobs:
+        if (self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy()
+                or self._jobs or self._kaldir_thread is not None or self._haric_thread is not None):
             ev.ignore()
             self._cikis()
             return
