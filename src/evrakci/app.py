@@ -231,6 +231,7 @@ class AnaPencere(QMainWindow):
         super().__init__()
         self.kasa_yolu = kasa_yolu
         self._sifre = sifre
+        self.sifresiz = sifre == vault.SIFRESIZ_ANAHTAR
         self.con = None
         self.sonuclar = []
         self._locked = False
@@ -288,16 +289,27 @@ class AnaPencere(QMainWindow):
             self._kurtarma_ilk_kurulum()
         except Exception as error:  # noqa: BLE001
             diagnostics.record("recovery_setup_failed", type(error).__name__)
+        QTimer.singleShot(1500, self._kurtarma_bildirim_goster)
 
     def _kurtarma_ilk_kurulum(self):
         """Kurtarma anahtarı yoksa üret; sonucu tek seferlik bildirime hazırla."""
-        if self.con is None or self._locked or not self._sifre:
+        if self.con is None or self._locked or not self._sifre or self.sifresiz:
             return
         durum = recovery.status(self.kasa_yolu)
         if durum.get("var") and recovery.load_key(self.kasa_yolu):
             return
         anahtar = recovery.refresh(self.kasa_yolu, self._sifre)
         self._kurtarma_yeni_bildirim = anahtar
+
+    def _kurtarma_bildirim_goster(self):
+        """Yeni üretilen kurtarma anahtarını engellemeden duyur (bir kez)."""
+        anahtar = getattr(self, "_kurtarma_yeni_bildirim", "")
+        self._kurtarma_yeni_bildirim = ""
+        if not anahtar:
+            return
+        self._toast_goster("Kurtarma anahtarı hazır: Ayarlar → Kurtarma anahtarı.")
+        self.durum.showMessage(
+            "Şifrenizi unutursanız kurtarma anahtarınızla kasayı açabilirsiniz.", 10000)
 
     # -- kurulum --
     def _kasa_ac(self):
@@ -346,6 +358,8 @@ class AnaPencere(QMainWindow):
         self.rail_actions = []
         for text, kind, callback in (("Kasayı kilitle", "lock", self.kilitle),
                                      ("Çıkış", "exit", self._cikis)):
+            if self.sifresiz and kind == "lock":
+                continue  # Şifresiz kasada kilit ekranı yok.
             button = QPushButton(text)
             button.setIcon(theme.symbol_icon(kind))
             button.setIconSize(QSize(17, 17))
@@ -2019,6 +2033,15 @@ class AnaPencere(QMainWindow):
     def _kurtarma_tazele(self):
         if not hasattr(self, "kurtarma_durum"):
             return
+        if self.sifresiz:
+            self.kurtarma_durum.setText(
+                "Şifre kullanmıyorsunuz; kurtarma anahtarı gerekmez. Şifre eklediğinizde "
+                "anahtar kendiliğinden oluşturulur.")
+            for b in (self.kurtarma_olustur, self.kurtarma_goster,
+                      self.kurtarma_yazdir, self.kurtarma_kaldir):
+                b.setEnabled(False)
+            return
+        self.kurtarma_olustur.setEnabled(True)
         durum = recovery.status(self.kasa_yolu)
         if not durum.get("var"):
             self.kurtarma_durum.setText("Henüz kurtarma anahtarı yok.")
@@ -2202,6 +2225,13 @@ class AnaPencere(QMainWindow):
             self._yedek_tazele()
         archive_ui.job(self,'backup_create',lambda con:backup_mod.create_backup(con,path,password,directory,manual=True,forbid_under=roots),ready,writable=True)
 
+    def _yedek_acilir(self, yol, sifre):
+        """Yedek verilen şifreyle açılıp doğrulanabiliyor mu (sessiz deneme)."""
+        try:
+            return backup_mod.verify_backup(yol, sifre)["ok"]
+        except Exception:
+            return False
+
     def _geri_yukle(self):
         if not self._exclusive_ready():
             return
@@ -2209,12 +2239,20 @@ class AnaPencere(QMainWindow):
         if not idx.isValid():
             return
         yol = self.yedek_model.item(idx.row()).data()
-        password_dialog = ParolaDialog(self, verify=lambda pw: None)
-        password_dialog.setWindowTitle("Yedek şifresini doğrulayın")
-        if password_dialog.exec() != QDialog.Accepted:
-            return
-        backup_password = password_dialog.old.text()
-        password_dialog.old.clear()
+        if self.sifresiz:
+            # Şifresiz kasada yedekler de iç anahtarla korunur; şifre sorulmaz.
+            backup_password = vault.SIFRESIZ_ANAHTAR
+        else:
+            password_dialog = ParolaDialog(self, verify=lambda pw: None)
+            password_dialog.setWindowTitle("Yedek şifresini doğrulayın")
+            if password_dialog.exec() != QDialog.Accepted:
+                return
+            backup_password = password_dialog.old.text()
+            password_dialog.old.clear()
+            # Şifresiz dönemde alınmış yedekler iç anahtarla açılır (kullanıcı bilmez).
+            if not self._yedek_acilir(yol, backup_password or self._sifre) \
+                    and self._yedek_acilir(yol, vault.SIFRESIZ_ANAHTAR):
+                backup_password = vault.SIFRESIZ_ANAHTAR
         if QMessageBox.question(
                 self, "Geri yükle",
                 "Mevcut kasa rollback'e alınacak ve seçili yedek açılacak.\nDevam edilsin mi?") \
@@ -2341,14 +2379,17 @@ class AnaPencere(QMainWindow):
         cur = migrate.get_setting(self.con, "kilit_suresi", "15")
         self.kilit_sure.setCurrentText(cur if cur in ("5", "15", "30") else "kapalı")
         k.addWidget(ayar_satiri("Hareketsizlikte kilitle", "“Beni hatırla” açıkken otomatik kilit kapanır.", self.kilit_sure))
-        sif = QPushButton("Parolayı değiştir")
-        sif.clicked.connect(self._parola_degistir)
-        forget = QPushButton("Hatırlanan girişi kaldır")
-        forget.clicked.connect(self._forget_login)
-        k.addWidget(ayar_satiri("Şifre", "Şifre değişirken mevcut şifreniz doğrulanır.", self._denetim_satiri(sif, forget)))
+        self.sifre_btn = QPushButton("Şifre ekle" if self.sifresiz else "Parolayı değiştir")
+        self.sifre_btn.clicked.connect(self._sifre_islemi)
+        self.forget_btn = QPushButton("Hatırlanan girişi kaldır")
+        self.forget_btn.clicked.connect(self._forget_login)
+        self.forget_btn.setVisible(not self.sifresiz)
+        k.addWidget(ayar_satiri("Şifre", "Şifresiz kasaya şifre ekleyin; mevcut şifreyi değiştirirken doğrulama istenir.",
+                                self._denetim_satiri(self.sifre_btn, self.forget_btn)))
         self._kurtarma_bolumu(k)
         self._yedek_bolumu(k)
-        self.surum_bilgi = QLabel(f"Evrakçı {__version__} · Yerel ve şifreli çalışır")
+        alt = "Yerel ve şifreli çalışır" if not self.sifresiz else "Yerel çalışır; şifre eklenebilir"
+        self.surum_bilgi = QLabel(f"Evrakçı {__version__} · {alt}")
         self.surum_bilgi.setProperty("ikincil", True)
         k.addWidget(self.surum_bilgi)
         k.addStretch(1)
@@ -2736,6 +2777,59 @@ class AnaPencere(QMainWindow):
             return False
         return True
 
+    def _sifre_islemi(self):
+        """Şifresiz kasada şifre ekler; şifreli kasada parolayı değiştirir."""
+        if self.sifresiz:
+            self._sifre_ekle()
+        else:
+            self._parola_degistir()
+
+    def _sifre_ekle(self):
+        """Şifresiz kasaya şifre ekle; kurtarma anahtarı o an hazırlanır."""
+        if not self._exclusive_ready():
+            return
+        d = ParolaDialog(self, mode="ekle")
+        sonuc = d.exec()
+        yeni = d.new.text()
+        d.new.clear()
+        d.confirm.clear()
+        if sonuc != QDialog.Accepted:
+            return
+        self.con.close()
+        self.con = None
+        hata = None
+        try:
+            backup_mod.change_password(self.kasa_yolu, vault.SIFRESIZ_ANAHTAR, yeni, self._yedek_dizin())
+            self._sifre = yeni
+            self.sifresiz = False
+            remember.forget(self.kasa_yolu)
+        except Exception as ex:  # noqa: BLE001
+            hata = ex
+        try:
+            self._kasa_ac()
+        except Exception as ex:  # noqa: BLE001
+            QMessageBox.critical(self, "Şifre", f"Kasa yeniden açılamadı: {ex}")
+            return
+        if hata is not None:
+            QMessageBox.critical(self, "Şifre", f"Şifre eklenemedi: {hata}")
+            return
+        try:
+            migrate.set_setting(self.con, "kasa_sifresiz", "0")
+        except Exception:
+            pass
+        try:
+            recovery.ensure_exists(self.kasa_yolu, self._sifre)
+        except Exception as error:  # noqa: BLE001
+            diagnostics.record("recovery_setup_failed", type(error).__name__)
+        self.sifre_btn.setText("Parolayı değiştir")
+        self.forget_btn.setVisible(True)
+        self.surum_bilgi.setText(f"Evrakçı {__version__} · Yerel ve şifreli çalışır")
+        self._kurtarma_tazele()
+        QMessageBox.information(
+            self, "Şifre",
+            "Şifre eklendi. Sonraki açılışta kasa bu şifreyle açılır. Kurtarma anahtarı "
+            "oluşturuldu; Ayarlar bölümündeki “Kurtarma anahtarı” satırından görüntüleyebilirsiniz.")
+
     def _parola_degistir(self):
         if not self._exclusive_ready():
             return
@@ -2826,6 +2920,8 @@ class AnaPencere(QMainWindow):
         self._tray_menu = m
         for ad, fn in (("Aç", self._bring_forward), ("Şimdi tara", self._tara_baslat),
                        ("Kasayı kilitle", self.kilitle), ("Çıkış", self._cikis)):
+            if self.sifresiz and ad == "Kasayı kilitle":
+                continue  # Şifresiz kasada kilit yok.
             a = QAction(ad, self)
             a.triggered.connect(fn)
             m.addAction(a)
@@ -2911,7 +3007,7 @@ class AnaPencere(QMainWindow):
             self.durum.showMessage("Planlı tarama henüz yapılmadı. Başlatmak için “Şimdi tara”ya basın.")
 
     def kilitle(self):
-        if self._locked:
+        if self._locked or self.sifresiz:
             return
         diagnostics.record("lock")
         self._job_generation+=1
@@ -3080,6 +3176,7 @@ class AnaPencere(QMainWindow):
         self._kok_tazele()
         self._yedek_tazele()
         self._kurtarma_tazele()
+        self._kurtarma_bildirim_goster()
         self._kayitli_tazele()
         self._kural_tazele()
         self._scan_history_refresh()
@@ -3263,6 +3360,10 @@ def main(kasa_yolu=None, sifre=None):
         diagnostics.record("setup_accepted")
         sifre = setup.s1.text()
         os.makedirs(os.path.dirname(os.path.abspath(args.kasa)), exist_ok=True)
+        if not sifre:
+            # Şifre boş bırakıldı: kasa iç anahtarla açılır, açılışta şifre sorulmaz.
+            sifre = vault.SIFRESIZ_ANAHTAR
+            diagnostics.record("setup_passwordless")
     if setup is not None:
         from .ocr_setup_ui import prepare_ocr
         diagnostics.record("ocr_prepare")
@@ -3386,7 +3487,11 @@ def main(kasa_yolu=None, sifre=None):
             except Exception:
                 remember.forget(args.kasa)
                 sifre = None
-    if sifre is None:
+    if sifre is None and vault.sifresiz_mi(args.kasa):
+        # Şifresiz kasa: iç anahtar açıyorsa kullanıcıya sorulmadan açılır.
+        sifre = vault.SIFRESIZ_ANAHTAR
+        diagnostics.record("passwordless_open")
+    while sifre is None:
         diagnostics.record("login_dialog")
         def verify(password):
             con = vault.open_vault(args.kasa, password)
@@ -3403,7 +3508,7 @@ def main(kasa_yolu=None, sifre=None):
                     "varsa eski yedeklerinizden geri dönebilir veya kaynak belgelerinizi "
                     "yeniden taratabilirsiniz.")
                 diagnostics.record("login_recovery_missing")
-                return 1
+                continue
             def kurtar(paket):
                 _etiket, anahtar, yeni_sifre = paket
                 recovery.recover(args.kasa, anahtar, yeni_sifre,
@@ -3412,8 +3517,9 @@ def main(kasa_yolu=None, sifre=None):
             kurtarma = ParolaDialog(mode="kurtarma", verify=kurtar, kasa_yolu=args.kasa)
             app._login = kurtarma
             if kurtarma.exec() != QDialog.Accepted:
+                # "Şifremi biliyorum" veya kapatma: giriş ekranına dön.
                 diagnostics.record("login_recovery_cancelled")
-                return 1
+                continue
             remember.forget(args.kasa)
             sifre = kurtarma.new.text()
             kurtarma.old.clear()

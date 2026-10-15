@@ -97,7 +97,7 @@ class Sihirbaz(QWizard):
         for title, text in [
             ("Adıyla ya da içeriğiyle bulun", "Bir dosya adı, birkaç kelime veya bir yıl yazmanız yeterli."),
             ("Klasörler sizden, düzen Evrakçı’dan", "Bilgisayarınızdaki ve ağdaki belge klasörlerini seçin."),
-            ("Size özel bir çalışma alanı", "Şifreniz, arama bilgilerinizi bu bilgisayarda korur.")]:
+            ("Size özel bir çalışma alanı", "İsterseniz şifre belirleyin; arama bilgileriniz bu bilgisayarda korunur.")]:
             panel, content = card()
             content.addWidget(label(title, "subheading"))
             content.addWidget(label(text, "ikincil"))
@@ -105,7 +105,7 @@ class Sihirbaz(QWizard):
         g.kutu.addStretch()
         self.addPage(g)
 
-        s = _Sayfa("Şifrenizi belirleyin", "En az 12 karakter kullanın ve aynı şifreyi iki kez girin.")
+        s = _Sayfa("Şifrenizi belirleyin", "Şifre isteğe bağlıdır. Belirlerseniz en az 12 karakter olmalı ve iki kez girilmeli.")
         password_panel, f = card()
         self.s1 = QLineEdit()
         self.s1.setEchoMode(QLineEdit.Password)
@@ -123,13 +123,18 @@ class Sihirbaz(QWizard):
         f.addWidget(self.s2)
         s.kutu.addWidget(password_panel)
         s.kutu.addWidget(self.sifre_hata)
+        self.sifresiz_kutu = QCheckBox("Şifre kullanmayacağım — uygulama açılışta şifre sormaz")
+        self.sifresiz_kutu.toggled.connect(self._sifresiz_degistir)
+        s.kutu.addWidget(self.sifresiz_kutu)
         show = QCheckBox("Şifreyi göster")
         show.toggled.connect(lambda on: [field.setEchoMode(QLineEdit.Normal if on else QLineEdit.Password)
                                          for field in (self.s1, self.s2)])
         s.kutu.addWidget(show)
-        note = QLabel("Bu şifreyi uygulamayı açarken kullanacaksınız. Daha sonra Ayarlar bölümünden "
-                      "değiştirebilirsiniz. Şifrenizi unutursanız arama bilgilerini yeniden oluşturmanız gerekir; "
-                      "asıl belgeleriniz bundan etkilenmez.")
+        note = QLabel("Bu şifreyi uygulamayı açarken kullanacaksınız; sonradan Ayarlar bölümünden "
+                      "ekleyebilir veya değiştirebilirsiniz. Şifre belirlemezseniz uygulama her "
+                      "açılışta şifre sormaz; koruma Windows hesabınıza bağlı kalır. Şifrenizi "
+                      "unutursanız kurtarma anahtarıyla kasayı açabilirsiniz; asıl belgeleriniz "
+                      "her durumda korunur.")
         note.setWordWrap(True)
         note.setProperty("ikincil", True)
         s.kutu.addWidget(note)
@@ -294,6 +299,15 @@ class Sihirbaz(QWizard):
         self._tazele()
         self._mesaj("Arama listesi temizlendi. Asıl klasörler korunuyor.")
 
+    def _sifresiz_degistir(self, on):
+        """'Şifre kullanmayacağım' işaretlenince alanlar kapanır ve temizlenir."""
+        for field in (self.s1, self.s2):
+            field.setEnabled(not on)
+            if on:
+                field.clear()
+        if on:
+            self.sifre_hata.setText("")
+
     def _kaldir(self):
         rows = sorted({i.row() for i in self.kok_liste.selectionModel().selectedRows()}, reverse=True)
         for row in rows:
@@ -313,9 +327,15 @@ class Sihirbaz(QWizard):
         if self.secim["kokler"]:
             ilk = self.secim["kokler"][0]
             self.ornek.setText(f"Örnek: {ilk} → kural “{self.secim['sirket_kurali']}”")
+            if self.sifresiz_kutu.isChecked() or not (self.s1.text() or self.s2.text()):
+                sifre_satiri = ("Şifre: Yok (açılışta sorulmaz)\n"
+                                "Arama bilgileriniz bu bilgisayarda korunur.")
+            else:
+                sifre_satiri = ("Şifre: Belirlendi\n"
+                                "Arama bilgileriniz şifreli saklanır.")
             self.ozet.setText(f"Kök: {len(self.secim['kokler'])} adet\n"
                               f"Tema: {self.tema.currentText()}\n"
-                              "Belgelerinizin arama bilgileri şifreli saklanır.")
+                              f"{sifre_satiri}")
 
     def _sayfa(self, _i):
         self._tazele()
@@ -328,8 +348,14 @@ class Sihirbaz(QWizard):
     def validateCurrentPage(self):
         if self.currentPage() is self.page(1):
             a, b = self.s1.text(), self.s2.text()
+            if self.sifresiz_kutu.isChecked() or not (a or b):
+                # Şifre isteğe bağlı: boş bırakılırsa kasa şifresiz kurulur.
+                self.sifre_hata.setText("")
+                self.secim["sifre"] = ""
+                return super().validateCurrentPage()
             if len(a) < 12:
-                self.sifre_hata.setText("Şifre en az 12 karakter olmalı.")
+                self.sifre_hata.setText("Şifre en az 12 karakter olmalı. Şifre kullanmayacaksanız "
+                                        "“Şifre kullanmayacağım” seçeneğini işaretleyin.")
                 return False
             if a != b:
                 self.sifre_hata.setText("Şifreler eşleşmiyor.")

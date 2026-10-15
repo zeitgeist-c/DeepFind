@@ -23,6 +23,8 @@ class Bootstrap(QObject):
             con.commit()
             migrate.set_setting(con, "tema", self.selection['tema'])
             migrate.set_setting(con, "kurulum_tamam", "1")
+            migrate.set_setting(con, "kasa_sifresiz",
+                                "1" if self.password == vault.SIFRESIZ_ANAHTAR else "0")
             self.done.emit()
         except Exception as error:
             self.error.emit(f"Kurulum tamamlanamadı: {error}")

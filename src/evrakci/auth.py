@@ -23,12 +23,15 @@ class ParolaDialog(QDialog):
         self.verify = verify
         self.kasa_yolu = kasa_yolu
         self.mode = mode or ("degistir" if change else "giris")
-        self.change = self.mode == "degistir"
+        self.change = self.mode in ("degistir", "ekle")
         pencere, eyebrow, hero, aciklama = {
             "giris": ("Evrakçı • Kasa kilitli", "Güvenli giriş", "Arşivinize\ngüvenle dönün.",
                       "Belgelerinize ulaşmak için yerel kasanızın kilidini açın."),
             "degistir": ("Evrakçı • Şifre değiştir", "Kasa güvenliği", "Yeni bir şifre belirleyin",
                          "Mevcut şifrenizi doğrulayın ve yeni şifrenizi iki kez girin."),
+            "ekle": ("Evrakçı • Şifre ekle", "Kasa güvenliği", "Uygulama şifresi ekleyin",
+                     "Sonraki açılışlarda kasa bu şifreyle açılır. Şifre en az 12 karakter olmalı "
+                     "ve iki kez girilmeli."),
             "kurtarma": ("Evrakçı • Kurtarma anahtarı", "Kurtarma", "Anahtarla kasayı açın",
                          "Kasa şifrenizi unuttuysanız kurtarma anahtarınızı yapıştırın; "
                          "ardından yeni bir şifre belirleyeceksiniz."),
@@ -107,6 +110,10 @@ class ParolaDialog(QDialog):
         elif self.mode == "degistir":
             not_metni = ("Şifreniz unutulursa kurtarma anahtarınızla kasayı açabilirsiniz. "
                          "Şifre değişince kurtarma anahtarı kendiliğinden yenilenir.")
+        elif self.mode == "ekle":
+            not_metni = ("Şifre eklendikten sonra sonraki açılışlarda bu şifre sorulur. "
+                         "Kurtarma anahtarı kendiliğinden oluşturulur; Ayarlar bölümünden "
+                         "görüntüleyebilirsiniz.")
         else:
             not_metni = ("Şifrenizi unuttuysanız kurtarma anahtarınızla kasayı açabilirsiniz. "
                          "Kaynak belgeleriniz her durumda korunur.")
@@ -128,6 +135,16 @@ class ParolaDialog(QDialog):
                 field.setAccessibleName(caption)
                 layout.addWidget(field)
             self.submit.setText("Kurtarma anahtarıyla aç")
+            return
+        if self.mode == "ekle":
+            # Şifresiz kasaya şifre ekleme: mevcut şifre alanı yok.
+            for field, caption in ((self.new, "Yeni şifre • en az 12 karakter"),
+                                   (self.confirm, "Yeni şifreyi tekrar girin")):
+                field.setEchoMode(QLineEdit.Password)
+                field.setPlaceholderText(caption)
+                field.setAccessibleName(caption)
+                layout.addWidget(field)
+            self.submit.setText("Şifre ekle")
             return
         self.old.setPlaceholderText("Mevcut şifre" if self.change else "Kasa şifresi")
         self.old.setAccessibleName(self.old.placeholderText())
@@ -183,6 +200,21 @@ class ParolaDialog(QDialog):
                     self.error.setText(str(error) or "Kurtarma tamamlanamadı.")
                     self.old.selectAll()
                     self.old.setFocus()
+                    return
+            self.accept()
+            return
+        if self.mode == "ekle":
+            if len(self.new.text()) < 12:
+                self.error.setText("Yeni şifre en az 12 karakter olmalı.")
+                return
+            if self.new.text() != self.confirm.text():
+                self.error.setText("Yeni şifreler eşleşmiyor.")
+                return
+            if self.verify:
+                try:
+                    self.verify(self.new.text())
+                except Exception as error:
+                    self.error.setText(str(error) or "Şifre eklenemedi.")
                     return
             self.accept()
             return

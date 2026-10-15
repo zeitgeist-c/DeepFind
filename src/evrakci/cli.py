@@ -23,7 +23,13 @@ def _open_db(args):
     """Kasa ac + sema zincirini uygula (v3 -> v7, idempotent)."""
     vault, schema, _s, _e, _i, _se, _r, _h, _v, _c, _x, _m = _load()
     from evrakci.migrate import ensure_current
-    pw = args.sifre or getpass.getpass("Kasa sifresi: ")
+    pw = args.sifre
+    if not pw:
+        # Sifresiz kasa: ic anahtar acar, sormadan devam edilir.
+        if os.path.exists(args.kasa) and vault.sifresiz_mi(args.kasa):
+            pw = vault.SIFRESIZ_ANAHTAR
+        else:
+            pw = getpass.getpass("Kasa sifresi: ")
     con = vault.open_vault(args.kasa, pw)
     ensure_current(con)
     return con

@@ -5,6 +5,11 @@ import sqlcipher3
 
 BUSY_TIMEOUT_MS = 5000
 
+# Sifresiz kasa ic anahtari: kullanici sifre belirlemezse kasa bununla acilir.
+# Kullaniciya gosterilmez/sorulmaz; koruma Windows hesabi ve disk sifrelemesine
+# dayanir. SQLCipher bos anahtar kabul etmedigi icin sabit bir ic anahtar gerekir.
+SIFRESIZ_ANAHTAR = "EVRAKCI-SIFRESIZ-KASA-v1"
+
 
 def _escape_key(password: str) -> str:
     return password.replace("'", "''")
@@ -27,6 +32,26 @@ def open_vault(path: str, password: str) -> sqlcipher3.Connection:
     except Exception:
         con.close()
         raise
+
+
+def sifresiz_mi(path: str) -> bool:
+    """Kasa sifresiz modda mi: ic anahtar aciyor ve kasa isareti '1' mi.
+
+    Isaret `settings.kasa_sifresiz`; kurulumda sifre bos birakildiysa 1 olur.
+    Boylece kullanicinin sifresi tesadufen ic anahtarla ayni olsa bile
+    sifresiz sayilmaz (isaret yoksa sifreli kasa varsayilir).
+    """
+    try:
+        con = open_vault(path, SIFRESIZ_ANAHTAR)
+    except Exception:
+        return False
+    try:
+        row = con.execute("SELECT v FROM settings WHERE k='kasa_sifresiz'").fetchone()
+        return bool(row) and row[0] == "1"
+    except Exception:
+        return False
+    finally:
+        con.close()
 
 
 def lock(con, vault_dir: str) -> bool:
