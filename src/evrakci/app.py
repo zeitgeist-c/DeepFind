@@ -24,11 +24,11 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
-from . import ai, migrate, rank, sched, theme, vault, remember, diagnostics
+from . import ai, migrate, rank, sched, theme, vault, remember, diagnostics, recovery
 from .preview import Onizleme
 from .version import __version__
 from .vocab import rebuild_vocab
-from .auth import ParolaDialog
+from .auth import ParolaDialog, MOD_KURTARMA
 from .ui import (ayar_satiri, ayrac_d, bolum, bolme, brand, card, label, sayac,
                  sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate)
 from . import archive_ui
@@ -282,6 +282,22 @@ class AnaPencere(QMainWindow):
         theme.apply(QApplication.instance(), self.tema_sec.currentData())
         self._sayfa_kartlari()
         self._tema_yenile()
+        # İlk açılışta kurtarma anahtarı yoksa sessizce üret (kullanıcı şifresini
+        # unutursa indeks kurtarılabilsin). Kullanıcıya Ayarlar'da gösterilir.
+        try:
+            self._kurtarma_ilk_kurulum()
+        except Exception as error:  # noqa: BLE001
+            diagnostics.record("recovery_setup_failed", type(error).__name__)
+
+    def _kurtarma_ilk_kurulum(self):
+        """Kurtarma anahtarı yoksa üret; sonucu tek seferlik bildirime hazırla."""
+        if self.con is None or self._locked or not self._sifre:
+            return
+        durum = recovery.status(self.kasa_yolu)
+        if durum.get("var") and recovery.load_key(self.kasa_yolu):
+            return
+        anahtar = recovery.refresh(self.kasa_yolu, self._sifre)
+        self._kurtarma_yeni_bildirim = anahtar
 
     # -- kurulum --
     def _kasa_ac(self):
@@ -1969,6 +1985,170 @@ class AnaPencere(QMainWindow):
             hist_mod.clear(self.con)
             self._gecmis_tazele()
 
+    # -- kurtarma anahtarı: Ayarlar icinde bolum --
+    def _kurtarma_bolumu(self, k):
+        """Kurtarma anahtarı durumu, oluşturma, yenileme, kaldırma ve belge."""
+        k.addWidget(bolum("Kurtarma anahtarı"))
+        self.kurtarma_durum = label("", "ikincil")
+        self.kurtarma_durum.setWordWrap(True)
+        self.kurtarma_olustur = QPushButton("Anahtar oluştur")
+        self.kurtarma_olustur.setProperty("kucuk", True)
+        self.kurtarma_olustur.clicked.connect(self._kurtarma_olustur_tiklandi)
+        self.kurtarma_goster = QPushButton("Anahtarı göster")
+        self.kurtarma_goster.setProperty("kucuk", True)
+        self.kurtarma_goster.clicked.connect(self._kurtarma_goster)
+        self.kurtarma_yazdir = QPushButton("Yazdır / kaydet")
+        self.kurtarma_yazdir.setProperty("kucuk", True)
+        self.kurtarma_yazdir.clicked.connect(self._kurtarma_yazdir)
+        self.kurtarma_kaldir = QPushButton("Kaldır")
+        self.kurtarma_kaldir.setProperty("kucuk", True)
+        self.kurtarma_kaldir.setProperty("tehlike", True)
+        self.kurtarma_kaldir.clicked.connect(self._kurtarma_kaldir)
+        self.kurtarma_denetim = QWidget()
+        kd = QHBoxLayout(self.kurtarma_denetim)
+        kd.setContentsMargins(0, 0, 0, 0)
+        kd.setSpacing(8)
+        for b in (self.kurtarma_olustur, self.kurtarma_goster, self.kurtarma_yazdir,
+                  self.kurtarma_kaldir):
+            kd.addWidget(b)
+        k.addWidget(ayar_satiri(
+            "Şifre unutulursa kurtarma",
+            "Anahtar kasa klasöründe saklanır; belgeyle birlikte güvenli bir yerde tutun.",
+            self.kurtarma_denetim))
+
+    def _kurtarma_tazele(self):
+        if not hasattr(self, "kurtarma_durum"):
+            return
+        durum = recovery.status(self.kasa_yolu)
+        if not durum.get("var"):
+            self.kurtarma_durum.setText("Henüz kurtarma anahtarı yok.")
+            self.kurtarma_goster.setEnabled(False)
+            self.kurtarma_yazdir.setEnabled(False)
+            self.kurtarma_kaldir.setEnabled(False)
+            self.kurtarma_olustur.setText("Anahtar oluştur")
+            return
+        parcalar = []
+        anahtar = recovery.load_key(self.kasa_yolu)
+        parcalar.append("Kurtarma anahtarı hazır." if anahtar else
+                        "Anahtar dosyası bulunamadı; yeniden oluşturun.")
+        if durum.get("kasa_eslesmiyor"):
+            parcalar.append("Kasa değişmiş görünüyor; anahtarı yenilemeniz önerilir.")
+        self.kurtarma_durum.setText(" ".join(parcalar))
+        self.kurtarma_goster.setEnabled(bool(anahtar))
+        self.kurtarma_yazdir.setEnabled(bool(anahtar))
+        self.kurtarma_kaldir.setEnabled(True)
+        self.kurtarma_olustur.setText("Anahtarı yenile")
+
+    def _kurtarma_olustur_tiklandi(self):
+        if self.con is None or self._locked:
+            return
+        var = recovery.status(self.kasa_yolu).get("var")
+        if var:
+            cevap = QMessageBox.question(
+                self, "Kurtarma anahtarı",
+                "Yeni bir kurtarma anahtarı üretilecek ve eskisi geçersiz olacak.\n"
+                "Devam edilsin mi?")
+            if cevap != QMessageBox.Yes:
+                return
+        try:
+            anahtar = recovery.refresh(self.kasa_yolu, self._sifre)
+        except Exception as error:  # noqa: BLE001
+            QMessageBox.warning(self, "Kurtarma", f"Anahtar oluşturulamadı: {error}")
+            return
+        self._kurtarma_tazele()
+        self._kurtarma_goster(anahtar)
+
+    def _kurtarma_goster(self, anahtar=None):
+        if self.con is None or self._locked:
+            return
+        if not anahtar:
+            anahtar = recovery.load_key(self.kasa_yolu)
+        if not anahtar:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Evrakçı • Kurtarma anahtarı")
+        dialog.setMinimumWidth(560)
+        yerlesim = QVBoxLayout(dialog)
+        yerlesim.setContentsMargins(20, 20, 20, 20)
+        yerlesim.setSpacing(12)
+        yerlesim.addWidget(label("Kurtarma anahtarınız", "baslik"))
+        uyari = label("Bu anahtarı şimdi kaydedin. Anahtar şifrenizi açabilir; "
+                      "şifrenizi unuttuğunuzda indeksinizi kurtarır.", "uyari")
+        yerlesim.addWidget(uyari)
+        gosterim = QLineEdit(anahtar)
+        gosterim.setReadOnly(True)
+        gosterim.setAlignment(Qt.AlignCenter)
+        gosterim.setStyleSheet("font-family: Consolas, monospace; font-size: 14px; letter-spacing: 1px;")
+        gosterim.setCursorPosition(0)
+        yerlesim.addWidget(gosterim)
+        satir = QHBoxLayout()
+        satir.setSpacing(8)
+        kopyala = QPushButton("Kopyala")
+        kopyala.clicked.connect(lambda: QApplication.clipboard().setText(anahtar))
+        satir.addWidget(kopyala)
+        yazdir = QPushButton("Yazdır / kaydet")
+        yazdir.clicked.connect(lambda: self._kurtarma_yazdir(anahtar))
+        satir.addWidget(yazdir)
+        satir.addStretch(1)
+        kapat = QPushButton("Kapat")
+        kapat.setProperty("birincil", True)
+        kapat.clicked.connect(dialog.accept)
+        satir.addWidget(kapat)
+        yerlesim.addLayout(satir)
+        dosya = recovery.key_path(self.kasa_yolu)
+        yol_notu = QLabel(f"Anahtar ayrıca şu dosyada durur:\n{dosya}")
+        yol_notu.setProperty("ikincil", True)
+        yol_notu.setWordWrap(True)
+        yol_notu.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        yerlesim.addWidget(yol_notu)
+        dialog.exec()
+
+    def _kurtarma_yazdir(self, anahtar=None):
+        if self.con is None or self._locked:
+            return
+        if not anahtar:
+            anahtar = recovery.load_key(self.kasa_yolu)
+        if not anahtar:
+            return
+        from PySide6.QtGui import QTextDocument
+        from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+        belge = QTextDocument()
+        belge.setPlainText(recovery.document_text(self.kasa_yolu, anahtar, bicimli=True))
+        yazici = QPrinter(QPrinter.HighResolution)
+        secim = QPrintDialog(yazici, self)
+        secim.setWindowTitle("Kurtarma belgesini yazdır")
+        var = None
+        if secim.exec() == QDialog.Accepted:
+            belge.print_(yazici)
+        else:
+            # Yazdırma iptal edildiyse dosyaya kaydetmeyi öner.
+            var = QFileDialog.getSaveFileName(
+                self, "Kurtarma belgesini kaydet",
+                os.path.join(os.path.dirname(self.kasa_yolu), "evrakci-kurtarma-belgesi.txt"),
+                "Metin (*.txt)")[0]
+            if var:
+                try:
+                    from pathlib import Path
+                    Path(var).write_text(
+                        recovery.document_text(self.kasa_yolu, anahtar, bicimli=True),
+                        encoding="utf-8")
+                    self._toast_goster("Kurtarma belgesi kaydedildi.")
+                except OSError as error:
+                    QMessageBox.warning(self, "Kurtarma", f"Kaydedilemedi: {error}")
+
+    def _kurtarma_kaldir(self):
+        if self.con is None or self._locked:
+            return
+        cevap = QMessageBox.question(
+            self, "Kurtarma anahtarını kaldır",
+            "Kurtarma anahtarı silinecek. Şifrenizi unutursanız indeksinizi kurtaramazsınız.\n"
+            "Devam edilsin mi?")
+        if cevap != QMessageBox.Yes:
+            return
+        recovery.remove(self.kasa_yolu)
+        self._kurtarma_tazele()
+        self._toast_goster("Kurtarma anahtarı kaldırıldı.")
+
     # -- yedekler: Ayarlar icinde bolum; ayri sekme degil --
     def _yedek_bolumu(self, k):
         """Yedek listesi ve işlemleri; Ayarlar sayfasının sonuna eklenir."""
@@ -2166,6 +2346,7 @@ class AnaPencere(QMainWindow):
         forget = QPushButton("Hatırlanan girişi kaldır")
         forget.clicked.connect(self._forget_login)
         k.addWidget(ayar_satiri("Şifre", "Şifre değişirken mevcut şifreniz doğrulanır.", self._denetim_satiri(sif, forget)))
+        self._kurtarma_bolumu(k)
         self._yedek_bolumu(k)
         self.surum_bilgi = QLabel(f"Evrakçı {__version__} · Yerel ve şifreli çalışır")
         self.surum_bilgi.setProperty("ikincil", True)
@@ -2603,6 +2784,7 @@ class AnaPencere(QMainWindow):
             self._kok_tazele()
         elif name == 'Ayarlar':
             self._yedek_tazele()
+            self._kurtarma_tazele()
         elif name == 'AI ile ara':
             self._ai_refresh_docs()
         QTimer.singleShot(0, lambda: diagnostics.record('tab_ready_ms', str(round((time.perf_counter() - started) * 1000))))
@@ -2813,13 +2995,64 @@ class AnaPencere(QMainWindow):
             self.con.close()
             self.con = None
         self._sifre = ""
-        self._unlock_dialog = ParolaDialog(self, verify=self._unlock, allow_remember=False)
-        self._unlock_dialog.accepted.connect(self._unlocked)
-        self._unlock_dialog.rejected.connect(self._cikis)
+        self._kilit_ekrani()
         self._lock_poll = QTimer(self)
         self._lock_poll.timeout.connect(self._kilit_hazir)
         self._lock_poll.start(100)
         self._kilit_hazir()
+
+    def _kilit_ekrani(self):
+        """Kilit ekranını kur: şifre veya (istenirse) kurtarma anahtarıyla açma."""
+        self._unlock_dialog = ParolaDialog(self, verify=self._unlock, allow_remember=False,
+                                           kasa_yolu=self.kasa_yolu)
+        self._unlock_dialog.accepted.connect(self._unlocked)
+        self._unlock_dialog.rejected.connect(self._cikis)
+        self._kurtarma_kopru()
+
+    def _kurtarma_kopru(self):
+        """'Şifremi unuttum' basılırsa kurtarma ekranına geç (kilit diyaloğunu yeniden kur)."""
+        pencere = self._unlock_dialog
+        def gecis():
+            if pencere.result() != MOD_KURTARMA:
+                return
+            if not os.path.isfile(recovery.container_path(self.kasa_yolu)):
+                QMessageBox.information(
+                    self, "Kurtarma",
+                    "Bu kasada kurtarma anahtarı yok. Şifrenizi unuttuysanız kasa açılamaz; "
+                    "varsa eski yedeklerinizden geri dönebilir veya kaynak belgelerinizi "
+                    "yeniden taratabilirsiniz.")
+                if not self._locked:
+                    return
+                pencere.show()
+                return
+            yeni = ParolaDialog(self, mode="kurtarma", verify=self._kurtarma_yap,
+                                kasa_yolu=self.kasa_yolu)
+            self._unlock_dialog = yeni
+            yeni.finished.connect(self._kurtarma_bitti)
+            yeni.show()
+        pencere.finished.connect(gecis)
+
+    def _kurtarma_bitti(self, kod):
+        """Kurtarma penceresi kapandı: açıldıysa devam, olmadıysa kilit ekranına dön."""
+        if self._locked and self.con is None:
+            self._kilit_ekrani()
+            self._kilit_hazir()
+
+    def _kurtarma_yap(self, paket):
+        """('kurtarma', anahtar, yeni_sifre) -> kasayı kurtar ve bağlantıyı aç."""
+        _etiket, anahtar, yeni_sifre = paket
+        sonuc = recovery.recover(self.kasa_yolu, anahtar, yeni_sifre,
+                                 backup_dir=self._yedek_dizin())
+        self._sifre = yeni_sifre
+        remember.forget(self.kasa_yolu)
+        try:
+            self.con = vault.open_vault(self.kasa_yolu, yeni_sifre)
+        except Exception as error:
+            self._sifre = ""
+            raise RuntimeError(f"Kurtarma sonrası kasa açılamadı: {error}") from error
+        self._kurtarma_sonucu = sonuc
+        # Kurtarma penceresi kapanınca _unlocked çalışsın
+        QTimer.singleShot(0, self._unlocked)
 
     def _kilit_hazir(self):
         if self.isci_thread is None and self._search_thread is None and not self.onizleme.busy() and not self._jobs:
@@ -2842,8 +3075,11 @@ class AnaPencere(QMainWindow):
         self.centralWidget().setEnabled(True)
         self._unlock_dialog.old.clear()
         self._son_hareket = dt.datetime.now()
+        kurtarma_sonucu = getattr(self, "_kurtarma_sonucu", None)
+        self._kurtarma_sonucu = None
         self._kok_tazele()
         self._yedek_tazele()
+        self._kurtarma_tazele()
         self._kayitli_tazele()
         self._kural_tazele()
         self._scan_history_refresh()
@@ -2854,6 +3090,12 @@ class AnaPencere(QMainWindow):
         self._scan_state("idle")
         self._zamanlayici_kontrol()
         self._izleme_baslat()
+        if kurtarma_sonucu:
+            yeni = kurtarma_sonucu.get("yeni_anahtar", "")
+            self._toast_goster("Kasa yeni şifreyle açıldı; kurtarma anahtarı yenilendi.")
+            self.durum.showMessage("Kurtarma tamamlandı. Kaynak belgeleriniz değişmedi.")
+            if yeni:
+                self._kurtarma_goster(yeni)
 
     def _cikis(self):
         diagnostics.record("exit")
@@ -3149,19 +3391,47 @@ def main(kasa_yolu=None, sifre=None):
         def verify(password):
             con = vault.open_vault(args.kasa, password)
             con.close()
-        login = ParolaDialog(verify=verify)
+        login = ParolaDialog(verify=verify, kasa_yolu=args.kasa)
         app._login = login
-        if login.exec() != QDialog.Accepted:
+        sonuc = login.exec()
+        if sonuc == MOD_KURTARMA:
+            # "Şifremi unuttum": kurtarma anahtarıyla aç, yeni şifre belirle.
+            if not os.path.isfile(recovery.container_path(args.kasa)):
+                QMessageBox.information(
+                    None, "Kurtarma",
+                    "Bu kasada kurtarma anahtarı yok. Şifrenizi unuttuysanız kasa açılamaz; "
+                    "varsa eski yedeklerinizden geri dönebilir veya kaynak belgelerinizi "
+                    "yeniden taratabilirsiniz.")
+                diagnostics.record("login_recovery_missing")
+                return 1
+            def kurtar(paket):
+                _etiket, anahtar, yeni_sifre = paket
+                recovery.recover(args.kasa, anahtar, yeni_sifre,
+                                 backup_dir=os.path.abspath(os.path.join(
+                                     os.path.dirname(args.kasa), '..', 'Backups')))
+            kurtarma = ParolaDialog(mode="kurtarma", verify=kurtar, kasa_yolu=args.kasa)
+            app._login = kurtarma
+            if kurtarma.exec() != QDialog.Accepted:
+                diagnostics.record("login_recovery_cancelled")
+                return 1
+            remember.forget(args.kasa)
+            sifre = kurtarma.new.text()
+            kurtarma.old.clear()
+            kurtarma.new.clear()
+            kurtarma.confirm.clear()
+            diagnostics.record("login_recovered")
+        elif sonuc != QDialog.Accepted:
             diagnostics.record("login_cancelled")
             return 1
-        diagnostics.record("login_accepted")
-        sifre = login.old.text()
-        if login.remember.isChecked():
-            try:
-                remember.save(args.kasa, sifre)
-            except OSError as error:
-                QMessageBox.warning(login, "Beni hatırla", str(error))
-        login.old.clear()
+        else:
+            diagnostics.record("login_accepted")
+            sifre = login.old.text()
+            if login.remember.isChecked():
+                try:
+                    remember.save(args.kasa, sifre)
+                except OSError as error:
+                    QMessageBox.warning(login, "Beni hatırla", str(error))
+            login.old.clear()
     from .ocr_setup_ui import prepare_ocr
     diagnostics.record("ocr_prepare")
     if not prepare_ocr():

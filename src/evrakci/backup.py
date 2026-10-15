@@ -284,4 +284,11 @@ def change_password(vault_path: str, old_pw: str, new_pw: str,
         bad.close()
         raise RuntimeError("eski şifre staging kasasını açıyor; değişim yapılmadı")
     os.replace(tmp, vault_path)
+    # Şifre değişti: kurtarma anahtarı varsa yeni şifreye göre tazele.
+    try:
+        from . import recovery
+        if os.path.isfile(recovery.container_path(vault_path)):
+            recovery.refresh(vault_path, new_pw)
+    except Exception:
+        pass
     return {"yedek": yedek, "counts": checked["counts"]}
