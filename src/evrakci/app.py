@@ -29,10 +29,20 @@ from .preview import Onizleme
 from .version import __version__
 from .vocab import rebuild_vocab
 from .auth import ParolaDialog
-from .ui import brand, bolme, card, label, EmptyState, CardDelegate
+from .ui import (ayar_satiri, ayrac_d, bolum, bolme, brand, card, label, sayac,
+                 sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate)
 from . import archive_ui
 
 EKRANLAR = ["Ara", "AI ile ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
+SAYFA_ACIKLAMA = {
+    "Ara": "Dosya adı, içerik ve klasör bağlamıyla arayın.",
+    "AI ile ara": "Alıntılarla arşivinize soru sorun; göndermeden önce inceleyin.",
+    "Kaynaklar": "Taranacak klasörleri ve kapsam dışında kalan yolları yönetin.",
+    "Tarama": "Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.",
+    "Geçmiş": "Önceki aramalarınıza tek tıkla dönün.",
+    "Taranmış Evraklar": "Kayıtlı dosyaları, tam yollarını ve içerik durumlarını inceleyin.",
+    "Ayarlar": "Çalışma tercihleri, kasa güvenliği ve yedekler.",
+}
 
 
 class RailDelegate(QStyledItemDelegate):
@@ -270,6 +280,8 @@ class AnaPencere(QMainWindow):
         self._schedule_timer.timeout.connect(self._zamanlayici_kontrol)
         self._schedule_timer.start(60_000)
         theme.apply(QApplication.instance(), self.tema_sec.currentData())
+        self._sayfa_kartlari()
+        self._tema_yenile()
 
     # -- kurulum --
     def _kasa_ac(self):
@@ -281,169 +293,176 @@ class AnaPencere(QMainWindow):
         kok.setObjectName("kok")
         self.setCentralWidget(kok)
         dis = QHBoxLayout(kok)
-        dis.setContentsMargins(16, 16, 20, 12)
-        dis.setSpacing(22)
+        dis.setContentsMargins(0, 0, 0, 0)
+        dis.setSpacing(0)
         rail = QFrame()
         rail.setObjectName("rail")
-        self._rail_width = 264
+        self._rail_width = 250
         rail.setFixedWidth(self._rail_width)
         side = QVBoxLayout(rail)
-        side.setContentsMargins(18, 24, 18, 20)
-        side.setSpacing(24)
+        side.setContentsMargins(12, 16, 12, 14)
+        side.setSpacing(2)
         self.rail = rail
         self._collapsed = False
         self.rail_brand = QWidget()
         brand_layout = QVBoxLayout(self.rail_brand)
-        brand_layout.setContentsMargins(0, 0, 0, 0)
-        header = QHBoxLayout()
-        logo = QLabel()
-        logo.setPixmap(theme.app_icon().pixmap(38, 38))
-        header.addWidget(logo, 0, Qt.AlignVCenter)
-        heading = QLabel("Evrakçı")
-        heading.setStyleSheet("font-size:24px; font-weight:700")
-        header.addWidget(heading, 0, Qt.AlignVCenter)
-        version = QLabel(__version__)
-        version.setStyleSheet("font-size:13px; font-weight:600")
-        header.addWidget(version, 0, Qt.AlignVCenter)
-        header.addStretch()
-        brand_layout.addLayout(header)
+        brand_layout.setContentsMargins(4, 0, 4, 14)
+        brand_layout.setSpacing(0)
+        brand(brand_layout, size=30)
         side.addWidget(self.rail_brand)
-        self.rail_toggle = QPushButton("Menüyü daralt")
-        self.rail_toggle.setIcon(theme.symbol_icon("left"))
-        self.rail_toggle.clicked.connect(self._nav_toggle)
-
         self.nav = QListWidget()
         self.nav.setObjectName("navigation")
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.nav.setTextElideMode(Qt.ElideRight)
         self.nav.addItems(EKRANLAR)
         from PySide6.QtCore import QSize
-        self.nav.setIconSize(QSize(19, 19))
+        self.nav.setIconSize(QSize(18, 18))
         self.nav.setItemDelegate(RailDelegate(self, self.nav))
-        for i, kind in enumerate(("search", "folder", "scan", "history", "folder", "settings")):
-            self.nav.item(i).setIcon(theme.symbol_icon(kind))
+        self._nav_ikonlari()
         self.nav.currentRowChanged.connect(self._ekran)
         side.addWidget(self.nav, 1)
+        side.addWidget(bolme())
+        self.rail_toggle = QPushButton("Menüyü daralt")
+        self.rail_toggle.setIcon(theme.symbol_icon("left"))
+        self.rail_toggle.setIconSize(QSize(17, 17))
+        self.rail_toggle.clicked.connect(self._nav_toggle)
         side.addWidget(self.rail_toggle)
-        actions = QHBoxLayout()
-        actions.setSpacing(6)
-        side.addLayout(actions)
         self.rail_actions = []
         for text, kind, callback in (("Kasayı kilitle", "lock", self.kilitle),
                                      ("Çıkış", "exit", self._cikis)):
             button = QPushButton(text)
             button.setIcon(theme.symbol_icon(kind))
+            button.setIconSize(QSize(17, 17))
             button.setToolTip(text)
             button.clicked.connect(callback)
             button.setAccessibleName(text)
             button.setMinimumWidth(0)
-            actions.addWidget(button)
+            side.addWidget(button)
             self.rail_actions.append((button, text))
-        self._rail_width = max(self._rail_width, sum(b.sizeHint().width() for b, _ in self.rail_actions) + 42)
-        rail.setFixedWidth(self._rail_width)
         dis.addWidget(rail)
         workspace = QVBoxLayout()
-        workspace.setSpacing(18)
-        top = QHBoxLayout()
-        top.addWidget(label("ÇALIŞMA ALANI", "eyebrow"))
-        top.addStretch()
-        top.addWidget(label("●  Kasa açık", "pill"))
-        self.tara_btn = QPushButton("Şimdi tara")
-        self.tara_btn.setIcon(theme.symbol_icon("scan", "#137C70"))
-        self.tara_btn.clicked.connect(self._tara_baslat)
-        top.addWidget(self.tara_btn)
-        self.tema_sec = QComboBox()
-        for caption, value in [("Sistem teması", "sistem"), ("Açık", "acik"), ("Koyu", "koyu")]:
-            self.tema_sec.addItem(caption, value)
-        self.tema_sec.setCurrentIndex(max(0, self.tema_sec.findData(migrate.get_setting(self.con, "tema", "sistem"))))
-        self.tema_sec.currentIndexChanged.connect(lambda _: self._tema_degistir(self.tema_sec.currentData()))
-        top.addWidget(self.tema_sec)
-        workspace.addLayout(top)
-
-        self.search_bar = QFrame()
-        ust = QHBoxLayout(self.search_bar)
-        ust.setContentsMargins(0, 0, 0, 0)
-        self.arama_kutu = QLineEdit()
-        self.arama_kutu.setObjectName("search")
-        self.arama_kutu.setAccessibleName("Belge arama")
-        self.arama_kutu.setPlaceholderText("Arşivinizde arayın…   Örneğin: Ankara vergi 2024")
-        self.arama_kutu.addAction(theme.symbol_icon("search", "#65748B"), QLineEdit.LeadingPosition)
-        self.arama_kutu.setClearButtonEnabled(True)
-        self.arama_kutu.returnPressed.connect(self._ara_simdi)
-        ust.addWidget(self.arama_kutu, 1)
-        search = QPushButton("Ara")
-        search.setProperty("birincil", True)
-        search.clicked.connect(self._ara_simdi)
-        ust.addWidget(search)
-        workspace.addWidget(self.search_bar)
-
-        self._debounce = QTimer(self)
-        self._debounce.setSingleShot(True)
-        self._debounce.setInterval(300)
-        self._debounce.timeout.connect(self._ara_simdi)
-        self.arama_kutu.textChanged.connect(lambda _t: self._debounce.start())
-
-        govde = QSplitter(Qt.Horizontal)
+        workspace.setSpacing(0)
+        workspace.setContentsMargins(0, 0, 0, 0)
 
         self.yigin = QStackedWidget()
         self._ekran_ara()
         self._ekran_kaynaklar()
         self._ekran_tarama()
         self._ekran_gecmis()
-        self._ekran_yedekler()
         self._ekran_ayarlar()
         self._ekran_ai()
-        workspace.removeWidget(self.search_bar)
         archive_ui.install(self)
-        descriptions = ["Ad, içerik ve klasör bağlamıyla belgelerinizi bulun.",
-                        "AI ayarlarını yönetin; alıntılarla soru sorun ve belgeleri özetleyin.",
-                        "Taranacak klasörleri ve kapsam dışında kalan yolları yönetin.",
-                        "Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.",
-                        "Önceki aramalarınıza tek tıkla dönün.",
-                        "Kayıtlı dosyaları, tam yollarını ve içerik durumlarını inceleyin.",
-                        "Çalışma tercihleri, kasa güvenliği ve yedekler."]
-        for i, name in enumerate(EKRANLAR):
-            layout = self.yigin.widget(i).layout()
-            self.yigin.widget(i).setObjectName("pageCard")
-            layout.setContentsMargins(24, 24, 24, 22)
-            layout.setSpacing(16)
-            heading = QLabel(name if i else "Belgelerinizi bulun")
-            heading.setProperty("baslik", True)
-            description = QLabel(descriptions[i])
-            description.setProperty("ikincil", True)
-            description.setWordWrap(True)
-            if isinstance(layout, QFormLayout):
-                layout.insertRow(0, description)
-                layout.insertRow(0, heading)
-            else:
-                layout.insertWidget(0, description)
-                layout.insertWidget(0, heading)
+        self._sayfa_kartlari()
+        self.workspace = workspace
+        govde = QSplitter(Qt.Horizontal)
         govde.addWidget(self.yigin)
+        govde.setChildrenCollapsible(False)
+        workspace.addWidget(govde, 1)
+        self._toolbar()
+        dis.addLayout(workspace, 1)
+        self._toast = Toast(kok)
 
-        self.preview_dialog=QDialog(self)
+        self.preview_dialog = QDialog(self)
         self.preview_dialog.setWindowTitle('Evrakçı • Belge ön izlemesi')
-        self.preview_dialog.resize(950,740)
-        preview_layout=QVBoxLayout(self.preview_dialog)
-        self.preview_path=QLabel(); self.preview_path.setWordWrap(True); self.preview_path.setTextFormat(Qt.PlainText)
-        self.preview_path.setTextInteractionFlags(Qt.TextSelectableByMouse); preview_layout.addWidget(self.preview_path)
-        tools=QHBoxLayout()
-        for caption,callback in [('Yolu kopyala',self._copy_path),('Klasörü aç',self._open_folder),('Dosyayı aç',self._open_file)]:
-            button=QPushButton(caption); button.clicked.connect(callback); tools.addWidget(button)
+        self.preview_dialog.resize(950, 740)
+        preview_layout = QVBoxLayout(self.preview_dialog)
+        preview_layout.setContentsMargins(16, 16, 16, 16)
+        preview_layout.setSpacing(12)
+        self.preview_path = QLabel()
+        self.preview_path.setWordWrap(True)
+        self.preview_path.setTextFormat(Qt.PlainText)
+        self.preview_path.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.preview_path.setProperty("ikincil", True)
+        preview_layout.addWidget(self.preview_path)
+        tools = QHBoxLayout()
+        for caption, callback in [('Yolu kopyala', self._copy_path), ('Klasörü aç', self._open_folder),
+                                  ('Dosyayı aç', self._open_file)]:
+            button = QPushButton(caption)
+            button.clicked.connect(callback)
+            tools.addWidget(button)
+        tools.addStretch(1)
         preview_layout.addLayout(tools)
         self.onizleme = Onizleme(self.preview_dialog)
         self.onizleme.setMinimumWidth(320)
-        preview_layout.addWidget(self.onizleme)
-        self.preview_dialog.finished.connect(lambda _:self.onizleme.temizle())
-        govde.setChildrenCollapsible(False)
-        govde.setSizes([550, 420])
-        workspace.addWidget(govde, 1)
-        dis.addLayout(workspace, 1)
-        QTimer.singleShot(0,lambda:archive_ui.layout_cards(self))
+        preview_layout.addWidget(self.onizleme, 1)
+        self.preview_dialog.finished.connect(lambda _: self.onizleme.temizle())
+        self.yigin.setCurrentIndex(0)
         self.nav.setCurrentRow(0)
 
         self.durum = QStatusBar()
         self.setStatusBar(self.durum)
         self._durum_yaz()
+        self._tema_yenile()
+
+    def _toolbar(self):
+        """Başlık şeridi: sayfa başlığı + durum rozeti + ortak işlemler."""
+        self.head_bar = sayfa_basi("Ara", "Dosya adı, içerik ve klasör bağlamıyla arayın.")
+        self.workspace.insertWidget(0, self.head_bar)
+        self.tarama_pill = label("Kasa açık", "pill")
+        self.head_bar.denetim.addWidget(self.tarama_pill)
+        self.tara_btn = QPushButton("Şimdi tara")
+        self.tara_btn.setProperty("kucuk", True)
+        self.tara_btn.clicked.connect(self._tara_baslat)
+        self.head_bar.denetim.addWidget(self.tara_btn)
+        self.tema_sec = QComboBox()
+        self.tema_sec.setProperty("kucuk", True)
+        for caption, value in [("Sistem teması", "sistem"), ("Açık", "acik"), ("Koyu", "koyu")]:
+            self.tema_sec.addItem(caption, value)
+        self.tema_sec.setCurrentIndex(max(0, self.tema_sec.findData(migrate.get_setting(self.con, "tema", "sistem"))))
+        self.tema_sec.currentIndexChanged.connect(lambda _: self._tema_degistir(self.tema_sec.currentData()))
+        self.head_bar.denetim.addWidget(self.tema_sec)
+
+    def _nav_ikonlari(self):
+        from PySide6.QtCore import QSize
+        self.nav.setIconSize(QSize(18, 18))
+        for i, kind in enumerate(("search", "ai", "folder", "scan", "history", "document", "settings")):
+            self.nav.item(i).setIcon(theme.symbol_icon(kind))
+
+    def _tema_yenile(self):
+        """Tema değişince kod içinde üretilen simgeleri tazeler."""
+        from PySide6.QtCore import QSize
+        self._nav_ikonlari()
+        self.rail_toggle.setIcon(theme.symbol_icon("right" if self._collapsed else "left"))
+        for button, title in self.rail_actions:
+            kind = "lock" if title == "Kasayı kilitle" else "exit"
+            button.setIcon(theme.symbol_icon(kind))
+        if hasattr(self, "onizleme"):
+            self.onizleme.yenile()
+        if hasattr(self, "csv_btn"):
+            self.csv_btn.setIcon(theme.symbol_icon("backup"))
+
+    def _sayfa_basligi(self, index, baslik, aciklama):
+        """Sekme başlığını üst şeride yazar; bölüm içi işlem çubuğu sayfada kalır."""
+        if index == self.yigin.currentIndex():
+            self.head_bar.baslik.setText(baslik)
+            self.head_bar.aciklama.setText(aciklama)
+            self.head_bar.aciklama.setVisible(bool(aciklama))
+
+    def _toast_goster(self, mesaj):
+        if getattr(self, "_toast", None) is not None:
+            self._toast.goster(mesaj)
+
+    def _sayfa_kartlari(self):
+        """Her sekmenin kök yerleşimini tek yüzeye oturtur (kart içinde kart yok).
+
+        Hem kurulum sırasında hem de `archive_ui.install` sonrasında çağrılır;
+        bu yüzden yığındaki her sayfayı gezer.
+        """
+        for i in range(self.yigin.count()):
+            widget = self.yigin.widget(i)
+            if widget is None:
+                continue
+            layout = widget.layout()
+            if layout is None:
+                continue
+            if widget.objectName() not in ("scanBody", "sayfa"):
+                widget.setObjectName("sayfa")
+                widget.setAttribute(Qt.WA_StyledBackground, True)
+            if widget.property("kenar"):
+                continue
+            widget.setProperty("kenar", True)
+            layout.setContentsMargins(22, 18, 22, 20)
+            layout.setSpacing(14)
 
     def _nav_toggle(self):
         self._collapsed = not self._collapsed
@@ -636,8 +655,11 @@ class AnaPencere(QMainWindow):
 
     def eventFilter(self, _o, ev):
         from PySide6.QtCore import QEvent
-        if _o is getattr(self, "source_split", None) and ev.type() == QEvent.Resize:
-            QTimer.singleShot(0, self._source_layout)
+        if ev.type() == QEvent.Resize and _o is getattr(self, "source_split", None):
+            try:
+                QTimer.singleShot(0, self._source_layout)
+            except RuntimeError:
+                pass
         if ev.type() in (QEvent.MouseMove, QEvent.KeyPress, QEvent.MouseButtonPress):
             self._son_hareket = dt.datetime.now()
         return super().eventFilter(_o, ev)
@@ -650,24 +672,66 @@ class AnaPencere(QMainWindow):
         if not self._locked and dk > 0 and (dt.datetime.now() - self._son_hareket).total_seconds() > dk * 60:
             self._otomatik_kilitle()
 
-    # -- arama ekrani: üç sütun işlik (filtreler | sonuçlar | seçili evrak) --
+    # -- arama ekrani: tek yuzey uzerinde uc bolme (filtreler | sonuclar | secili evrak) --
     def _ekran_ara(self):
         w = QWidget()
         k = QVBoxLayout(w)
-        k.setContentsMargins(0, 0, 0, 0)
+        k.setContentsMargins(22, 18, 22, 20)
+        k.setSpacing(14)
+
+        self.search_bar = QWidget()
+        ust = QHBoxLayout(self.search_bar)
+        ust.setContentsMargins(0, 0, 0, 0)
+        ust.setSpacing(10)
+        self.arama_kutu = QLineEdit()
+        self.arama_kutu.setObjectName("search")
+        self.arama_kutu.setAccessibleName("Belge arama")
+        self.arama_kutu.setPlaceholderText("Arşivinizde arayın…   Örneğin: Ankara vergi 2024")
+        self.arama_kutu.setClearButtonEnabled(True)
+        self.arama_kutu.returnPressed.connect(self._ara_simdi)
+        ust.addWidget(self.arama_kutu, 1)
+        search = QPushButton("Ara")
+        search.setProperty("birincil", True)
+        search.clicked.connect(self._ara_simdi)
+        ust.addWidget(search)
+        k.addWidget(self.search_bar)
+        self.search_progress = QProgressBar()
+        self.search_progress.setRange(0, 0)
+        self.search_progress.setTextVisible(False)
+        self.search_progress.hide()
+        k.addWidget(self.search_progress)
+
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(300)
+        self._debounce.timeout.connect(self._ara_simdi)
+        self.arama_kutu.textChanged.connect(lambda _t: self._debounce.start())
+
+        yuzey = QFrame()
+        yuzey.setObjectName("card")
+        yuzey_layout = QHBoxLayout(yuzey)
+        yuzey_layout.setContentsMargins(0, 0, 0, 0)
+        yuzey_layout.setSpacing(0)
         islik = QSplitter(Qt.Horizontal)
         islik.setChildrenCollapsible(False)
-        filtre, fl = card()
+
+        # -- filtre sutunu --
+        filtre = QWidget()
         filtre.setObjectName("sideRail")
+        filtre.setAttribute(Qt.WA_StyledBackground, True)
+        fl = QVBoxLayout(filtre)
+        fl.setContentsMargins(16, 16, 16, 16)
+        fl.setSpacing(10)
         kaydir = QScrollArea()
         kaydir.setWidgetResizable(True)
         kaydir.setFrameShape(QScrollArea.NoFrame)
         ic = QWidget()
         form = QVBoxLayout(ic)
         form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(10)
         fl.addWidget(kaydir, 1)
         kaydir.setWidget(ic)
-        form.addWidget(label("FİLTRELER", "eyebrow"))
+        form.addWidget(bolum("Filtreler"))
         self.yil_filtre = QLineEdit()
         self.yil_filtre.setPlaceholderText("Yıl (ör. 2024)")
         self.tur_filtre = QComboBox()
@@ -677,51 +741,72 @@ class AnaPencere(QMainWindow):
         self.sirket_filtre.setPlaceholderText("Şirket veya klasör")
         self.etiket_filtre = QLineEdit()
         self.etiket_filtre.setPlaceholderText("Etiket")
-        for x in (self.yil_filtre, self.tur_filtre, self.sirket_filtre, self.etiket_filtre):
-            form.addWidget(x)
+        for baslik, x in (("Yıl", self.yil_filtre), ("Tür", self.tur_filtre),
+                          ("Şirket veya klasör", self.sirket_filtre), ("Etiket", self.etiket_filtre)):
+            alan = QVBoxLayout()
+            alan.setSpacing(4)
+            alan.addWidget(label(baslik, "ikincil"))
+            alan.addWidget(x)
+            form.addLayout(alan)
         self.yil_filtre.textChanged.connect(lambda _t: self._ara_simdi())
         self.tur_filtre.currentTextChanged.connect(lambda _t: self._ara_simdi())
         self.sirket_filtre.textChanged.connect(lambda _t: self._ara_simdi())
         self.etiket_filtre.textChanged.connect(lambda _t: self._ara_simdi())
-        form.addWidget(label("KAYITLI ARAMALAR", "eyebrow"))
+        form.addWidget(bolum("Kayıtlı aramalar"))
         self.kayitli_liste = QComboBox()
         self.kayitli_liste.setPlaceholderText("Kayıtlı arama")
         self.kayitli_liste.activated.connect(self._kayitli_calistir)
         form.addWidget(self.kayitli_liste)
         kayit_satir = QHBoxLayout()
+        kayit_satir.setSpacing(8)
         self.kaydet_btn = QPushButton("Kaydet")
+        self.kaydet_btn.setProperty("kucuk", True)
         self.kaydet_btn.clicked.connect(self._arama_kaydet)
         kayit_satir.addWidget(self.kaydet_btn)
         self.kayit_sil_btn = QPushButton("Sil")
+        self.kayit_sil_btn.setProperty("kucuk", True)
         self.kayit_sil_btn.clicked.connect(self._kayitli_sil)
         kayit_satir.addWidget(self.kayit_sil_btn)
+        kayit_satir.addStretch(1)
         form.addLayout(kayit_satir)
-        form.addWidget(label("ETİKET", "eyebrow"))
+        form.addWidget(bolum("Etiket"))
         self.etiket_yaz = QLineEdit()
         self.etiket_yaz.setPlaceholderText("Seçili sonuca etiket")
         form.addWidget(self.etiket_yaz)
+        etiket_satir = QHBoxLayout()
+        etiket_satir.setSpacing(8)
         self.etiket_ekle_btn = QPushButton("Etiketle")
+        self.etiket_ekle_btn.setProperty("kucuk", True)
         self.etiket_ekle_btn.clicked.connect(self._etiket_ekle)
-        form.addWidget(self.etiket_ekle_btn)
+        etiket_satir.addWidget(self.etiket_ekle_btn)
         self.etiket_sil_btn = QPushButton("Etiketi kaldır")
+        self.etiket_sil_btn.setProperty("kucuk", True)
         self.etiket_sil_btn.clicked.connect(self._etiket_sil)
-        form.addWidget(self.etiket_sil_btn)
+        etiket_satir.addWidget(self.etiket_sil_btn)
+        etiket_satir.addStretch(1)
+        form.addLayout(etiket_satir)
         self.aktif_filtre = QLabel("")
         self.aktif_filtre.setProperty("ikincil", True)
         self.aktif_filtre.setWordWrap(True)
         form.addWidget(self.aktif_filtre)
         form.addStretch(1)
         islik.addWidget(filtre)
+
+        # -- sonuc sutunu --
         orta = QWidget()
         ok = QVBoxLayout(orta)
-        ok.setContentsMargins(0, 18, 0, 0)
+        ok.setContentsMargins(16, 14, 16, 14)
+        ok.setSpacing(10)
         bas = QHBoxLayout()
-        bas.addWidget(label("SONUÇLAR", "eyebrow"))
-        self.sonuc_sayi = label("", "pill")
+        bas.setSpacing(9)
+        bas.addWidget(bolum("Sonuçlar"))
+        self.sonuc_sayi = sayac("")
         self.sonuc_sayi.hide()
         bas.addWidget(self.sonuc_sayi)
         bas.addStretch(1)
         self.csv_btn = QPushButton("CSV indir")
+        self.csv_btn.setProperty("ghost", True)
+        self.csv_btn.setProperty("kucuk", True)
         self.csv_btn.clicked.connect(self._sonuc_csv)
         bas.addWidget(self.csv_btn)
         ok.addLayout(bas)
@@ -730,7 +815,7 @@ class AnaPencere(QMainWindow):
         self.sonuc_liste.setObjectName("cardList")
         self.sonuc_liste.setItemDelegate(CardDelegate(self.sonuc_liste))
         self.sonuc_liste.setModel(self.sonuc_model)
-        self.sonuc_liste.setSpacing(4)
+        self.sonuc_liste.setSpacing(2)
         self.sonuc_liste.clicked.connect(self._secim_guncelle)
         self.sonuc_liste.doubleClicked.connect(self._sec)
         self.sonuc_panel = QStackedWidget()
@@ -744,12 +829,18 @@ class AnaPencere(QMainWindow):
         self.oneri.setWordWrap(True)
         ok.addWidget(self.oneri)
         self.search_more = QPushButton("Sonraki sonuçlar")
+        self.search_more.setProperty("kucuk", True)
         self.search_more.clicked.connect(self._search_next)
         self.search_more.hide()
         ok.addWidget(self.search_more)
         islik.addWidget(orta)
-        ayrinti, al = card()
-        al.addWidget(label("SEÇİLİ EVRAK", "eyebrow"))
+
+        # -- secili evrak sutunu --
+        ayrinti = QWidget()
+        al = QVBoxLayout(ayrinti)
+        al.setContentsMargins(16, 14, 16, 16)
+        al.setSpacing(10)
+        al.addWidget(bolum("Seçili evrak"))
         self.secim_ad = label("Henüz seçim yok", "subheading")
         self.secim_ad.setWordWrap(True)
         al.addWidget(self.secim_ad)
@@ -777,11 +868,12 @@ class AnaPencere(QMainWindow):
         islik.setStretchFactor(0, 0)
         islik.setStretchFactor(1, 1)
         islik.setStretchFactor(2, 0)
-        islik.setSizes([320, 480, 250])
+        islik.setSizes([240, 520, 260])
         self.arama_islik = islik
-        k.addWidget(islik, 1)
-        self.yigin.addWidget(w)
+        yuzey_layout.addWidget(islik)
+        k.addWidget(yuzey, 1)
         self._secim_guncelle()
+        self.yigin.addWidget(w)
 
     def _secim_guncelle(self, _idx=None):
         secili = self._secili_dosya()
@@ -1086,10 +1178,12 @@ class AnaPencere(QMainWindow):
     def _ekran_kaynaklar(self):
         w = QWidget()
         k = QVBoxLayout(w)
-        k.setContentsMargins(0, 0, 0, 0)
+        k.setContentsMargins(22, 18, 22, 20)
+        k.setSpacing(14)
         bas = QHBoxLayout()
-        bas.addWidget(label("KLASÖRLER", "eyebrow"))
-        self.kaynak_sayi = label("", "pill")
+        bas.setSpacing(9)
+        bas.addWidget(bolum("Klasörler"))
+        self.kaynak_sayi = sayac("")
         self.kaynak_sayi.hide()
         bas.addWidget(self.kaynak_sayi)
         bas.addStretch(1)
@@ -1098,6 +1192,11 @@ class AnaPencere(QMainWindow):
         ekle.clicked.connect(self._kok_ekle)
         bas.addWidget(ekle)
         k.addLayout(bas)
+        yuzey = QFrame()
+        yuzey.setObjectName("card")
+        yuzey_layout = QHBoxLayout(yuzey)
+        yuzey_layout.setContentsMargins(0, 0, 0, 0)
+        yuzey_layout.setSpacing(0)
         self.kok_model = QStandardItemModel()
         self.kok_liste = QListView()
         self.kok_liste.setObjectName("cardList")
@@ -1105,22 +1204,27 @@ class AnaPencere(QMainWindow):
         self.kok_liste.setMinimumWidth(160)
         self.kok_liste.setItemDelegate(CardDelegate(self.kok_liste, "folder", compact=True))
         self.kok_liste.setModel(self.kok_model)
+        self.kok_liste.setSpacing(2)
         self.kok_panel = QStackedWidget()
         self.kok_panel.addWidget(self.kok_liste)
         self.kok_panel.addWidget(EmptyState("İlk klasörünüzü ekleyin", "Aranacak belgelerin bulunduğu klasörleri\n“Klasör ekle” ile seçin.", "folder"))
         self.source_split = QSplitter(Qt.Horizontal)
         self.source_split.installEventFilter(self)
         self.source_split.addWidget(self.kok_panel)
-        details, dl = card()
+        ayrinti = QWidget()
+        dl = QVBoxLayout(ayrinti)
+        dl.setContentsMargins(16, 14, 16, 16)
+        dl.setSpacing(10)
         kaydir = QScrollArea()
         kaydir.setWidgetResizable(True)
         kaydir.setFrameShape(QScrollArea.NoFrame)
         ic = QWidget()
         form = QVBoxLayout(ic)
         form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(10)
         dl.addWidget(kaydir, 1)
         kaydir.setWidget(ic)
-        form.addWidget(label("SEÇİLİ KAYNAK", "eyebrow"))
+        form.addWidget(bolum("Seçili kaynak"))
         self.source_title = label("Bir kaynak seçin", "subheading")
         self.source_path = label("", "ikincil")
         self.source_path.setTextFormat(Qt.PlainText)
@@ -1132,27 +1236,32 @@ class AnaPencere(QMainWindow):
         form.addWidget(self.source_status)
         form.addWidget(label("Kaynağı kaldırmak diskteki belgeleri silmez.", "ikincil"))
         form.addWidget(bolme())
-        form.addWidget(label("DIŞLANANLAR", "eyebrow"))
+        form.addWidget(bolum("Dışlananlar"))
         form.addWidget(label("Hariç kuralı eklemek için klasör yolunu yazıp Dışla'ya basın:", "ikincil"))
         hsatir = QHBoxLayout()
+        hsatir.setSpacing(8)
         self.haric_kutu = QLineEdit()
         disla = QPushButton("Dışla")
+        disla.setProperty("kucuk", True)
         disla.clicked.connect(self._haric_ekle)
         hsatir.addWidget(self.haric_kutu, 1)
         hsatir.addWidget(disla)
         form.addLayout(hsatir)
         form.addStretch(1)
         kaldir = QPushButton("Kaldır")
+        kaldir.setProperty("tehlike", True)
         kaldir.clicked.connect(self._kok_kaldir)
         self.source_remove = kaldir
         form.addWidget(kaldir)
+        details = ayrinti
         details.setMinimumWidth(0)
         self.source_split.addWidget(details)
         self.source_split.setChildrenCollapsible(False)
         self.source_split.setStretchFactor(0, 1)
         self.source_split.setStretchFactor(1, 0)
-        self.source_split.setSizes([520, 280])
-        k.addWidget(self.source_split, 1)
+        self.source_split.setSizes([520, 300])
+        yuzey_layout.addWidget(self.source_split)
+        k.addWidget(yuzey, 1)
         self.kok_liste.selectionModel().currentChanged.connect(self._source_selected)
         self.haric_bilgi = QLabel("")
         self.haric_bilgi.hide()
@@ -1209,11 +1318,17 @@ class AnaPencere(QMainWindow):
             self._geometry_timer.start(500)
 
     def _source_layout(self):
-        if hasattr(self, "source_split"):
+        split = getattr(self, "source_split", None)
+        if split is None:
+            return
+        try:
             orientation = Qt.Vertical if self.width() < 1200 else Qt.Horizontal
-            if self.source_split.orientation() != orientation:
-                self.source_split.setOrientation(orientation)
-                self.source_split.setSizes([220, 440])
+            if split.orientation() != orientation:
+                split.setOrientation(orientation)
+                split.setSizes([220, 440])
+        except RuntimeError:
+            # Pencere kapanırken zamanlanmış çağrı: nesne silinmiş olabilir.
+            pass
 
     def _kok_ekle(self):
         yol = QFileDialog.getExistingDirectory(self, "Kaynak klasör seç")
@@ -1273,64 +1388,26 @@ class AnaPencere(QMainWindow):
         w.setObjectName("scanBody")
         w.setAttribute(Qt.WA_StyledBackground, True)
         k = QVBoxLayout(w)
-        overview = QHBoxLayout()
-        sources, sources_layout = card()
-        sources_layout.addWidget(label("TARAMA KAPSAMI", "eyebrow"))
-        self.tarama_root_count = label(f"{len(self._kokler())} kaynak klasörü", "baslik")
-        sources_layout.addWidget(self.tarama_root_count)
-        sources_layout.addWidget(label("Kaynaklar bölümünden değiştirebilirsiniz.", "ikincil"))
-        schedule, schedule_layout = card()
-        schedule_layout.addWidget(label("GÜNLÜK DÜZEN", "eyebrow"))
         hour = migrate.get_setting(self.con, "saat", "12")
         minute = migrate.get_setting(self.con, "dakika", "30")
         try:
             scheduled_time = f"{int(hour):02d}:{int(minute):02d}"
         except (TypeError, ValueError):
-            scheduled_time = "Saat belirlenmedi"
-        self.tarama_time = label(scheduled_time, "baslik")
-        schedule_layout.addWidget(self.tarama_time)
-        schedule_layout.addWidget(label("Planlanan tarama saati • Ayarlar’dan değişir.", "ikincil"))
-        durum, durum_layout = card()
-        durum_layout.addWidget(label("DURUM", "eyebrow"))
-        overview.addWidget(sources, 1)
-        overview.addWidget(schedule, 1)
-        overview.addWidget(durum, 1)
-        k.addLayout(overview)
-        k.addWidget(label("KAPSAM", "eyebrow"))
-        self.scope_mode = QComboBox()
-        self.scope_mode.addItems(["Tüm kaynaklar", "Seçili kaynaklar", "Bir klasör veya disk"])
-        k.addWidget(self.scope_mode)
-        self.scope_sources = QListWidget()
-        self.scope_sources.setMaximumHeight(140)
-        self.scope_sources.hide()
-        k.addWidget(self.scope_sources)
-        self.scope_path = QLineEdit()
-        self.scope_path.setPlaceholderText("Bu tarama için klasör veya disk yolu")
-        self.scope_path.hide()
-        k.addWidget(self.scope_path)
-        self.scope_browse = QPushButton("Taranacak klasörü seç…")
-        self.scope_browse.clicked.connect(self._scope_browse)
-        self.scope_browse.hide()
-        k.addWidget(self.scope_browse)
-        self.scope_mode.currentIndexChanged.connect(self._scope_changed)
+            scheduled_time = "—"
         self.tarama_bilgi = QLabel("Henüz tarama yapılmadı.")
         self.tarama_bilgi.setWordWrap(True)
-        durum_layout.addWidget(self.tarama_bilgi)
-        self.scan_dialog = QDialog(self)
-        self.scan_dialog.setWindowTitle("Evrakçı • Tarama ayrıntıları")
-        self.scan_dialog.resize(760, 560)
-        popup = QVBoxLayout(self.scan_dialog)
-        popup.addWidget(label("Tarama ayrıntıları", "baslik"))
-        self.popup_status = label("Henüz tarama yapılmadı.", "subheading")
-        popup.addWidget(self.popup_status)
-        self.popup_scope = label("", "ikincil")
-        self.popup_scope.setTextFormat(Qt.PlainText)
-        self.popup_scope.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.popup_scope.setMinimumWidth(0)
-        popup.addWidget(self.popup_scope)
-        self.details_open = QPushButton("Tarama ayrıntılarını aç")
-        self.details_open.clicked.connect(self._scan_show)
+        self.tarama_root_count = label("", "ikincil")
+        strip = stat_seridi([
+            ("Kapsam", f"{len(self._kokler())}", "kaynak klasör • Kaynaklar bölümünden değişir"),
+            ("Günlük düzen", scheduled_time, "Planlı tarama saati • Ayarlar’dan değişir"),
+            ("Durum", "Hazır", "Henüz tarama yapılmadı"),
+        ])
+        self.tarama_time = QLabel(scheduled_time)
+        self._stat_durum = strip
+        k.addWidget(strip)
+
         islem = QHBoxLayout()
+        islem.setSpacing(8)
         self.scan_start = QPushButton("Taramayı başlat")
         self.scan_start.setProperty("birincil", True)
         self.scan_start.clicked.connect(self._tara_baslat)
@@ -1348,15 +1425,26 @@ class AnaPencere(QMainWindow):
         self.retry_scan.hide()
         islem.addWidget(self.retry_scan)
         islem.addStretch(1)
+        self.details_open = QPushButton("Tarama ayrıntılarını aç")
         self.details_open.setProperty("ghost", True)
+        self.details_open.clicked.connect(self._scan_show)
         islem.addWidget(self.details_open)
         k.addLayout(islem)
-        k.addWidget(label("SON TARAMALAR", "eyebrow"))
-        self.scan_history = QListWidget()
-        self.scan_history.setMaximumHeight(150)
-        self.scan_history.setAccessibleName("Son tarama kayıtları")
-        k.addWidget(self.scan_history)
-        self._scan_history_refresh()
+
+        self.scan_dialog = QDialog(self)
+        self.scan_dialog.setWindowTitle("Evrakçı • Tarama ayrıntıları")
+        self.scan_dialog.resize(760, 560)
+        popup = QVBoxLayout(self.scan_dialog)
+        popup.setContentsMargins(18, 18, 18, 18)
+        popup.setSpacing(12)
+        popup.addWidget(label("Tarama ayrıntıları", "baslik"))
+        self.popup_status = label("Henüz tarama yapılmadı.", "subheading")
+        popup.addWidget(self.popup_status)
+        self.popup_scope = label("", "ikincil")
+        self.popup_scope.setTextFormat(Qt.PlainText)
+        self.popup_scope.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.popup_scope.setMinimumWidth(0)
+        popup.addWidget(self.popup_scope)
         self.tarama_bar = QProgressBar()
         self.tarama_bar.setRange(0, 0)
         self.tarama_bar.hide()
@@ -1371,13 +1459,17 @@ class AnaPencere(QMainWindow):
         detail_layout.addWidget(self.scan_current)
         self.scan_counts.hide()
         counts_grid = QGridLayout()
+        counts_grid.setSpacing(0)
         self.scan_metrics = {}
         for i, (key, caption) in enumerate((("found", "Bulunan"), ("done", "İşlenen"), ("pending", "Bekleyen"),
                                            ("skipped", "Güncel / atlanan"), ("ocr_done", "OCR tamamlanan"), ("failed", "İşlem hatası"), ("ocr_failed", "OCR hatası"))):
-            metric, ml = card()
+            metric = QWidget()
+            ml = QVBoxLayout(metric)
             ml.setContentsMargins(12, 10, 12, 10)
-            ml.addWidget(label(caption, "ikincil"))
-            value = label("0", "subheading")
+            ml.setSpacing(2)
+            ml.addWidget(label(caption, "eyebrow"))
+            value = QLabel("0")
+            value.setProperty("subheading", True)
             ml.addWidget(value)
             self.scan_metrics[key] = value
             counts_grid.addWidget(metric, i // 3, i % 3)
@@ -1386,6 +1478,7 @@ class AnaPencere(QMainWindow):
         self.scan_details_toggle = QPushButton("Ayrıntıları göster")
         self.scan_details_toggle.setCheckable(True)
         self.scan_log = QPlainTextEdit()
+        self.scan_log.setObjectName("log")
         self.scan_log.setReadOnly(True)
         self.scan_log.document().setMaximumBlockCount(200)
         self.scan_log.setMaximumHeight(160)
@@ -1406,14 +1499,32 @@ class AnaPencere(QMainWindow):
         background.clicked.connect(self.scan_dialog.hide)
         satir.addWidget(background)
         popup.addLayout(satir)
-        k.addStretch(1)
-        page = QWidget()
-        outer = QVBoxLayout(page)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(w)
-        outer.addWidget(scroll)
-        self.yigin.addWidget(page)
+
+        self.scope_mode = QComboBox()
+        self.scope_mode.addItems(["Tüm kaynaklar", "Seçili kaynaklar", "Bir klasör veya disk"])
+        self.scope_sources = QListWidget()
+        self.scope_sources.setMaximumHeight(140)
+        self.scope_sources.hide()
+        self.scope_path = QLineEdit()
+        self.scope_path.setPlaceholderText("Bu tarama için klasör veya disk yolu")
+        self.scope_path.hide()
+        self.scope_browse = QPushButton("Taranacak klasörü seç…")
+        self.scope_browse.clicked.connect(self._scope_browse)
+        self.scope_browse.hide()
+        k.addWidget(ayar_satiri("Kapsam", "Bu taramada hangi klasörlerin taranacağı.", self.scope_mode))
+        k.addWidget(self.scope_sources)
+        k.addWidget(self.scope_path)
+        k.addWidget(self.scope_browse)
+        self.scope_mode.currentIndexChanged.connect(self._scope_changed)
+
+        k.addWidget(bolum("Son taramalar"))
+        self.scan_history = QListWidget()
+        self.scan_history.setObjectName("cardList")
+        self.scan_history.setAccessibleName("Son tarama kayıtları")
+        k.addWidget(self.scan_history, 1)
+        self._scan_history_refresh()
+        k.addWidget(self.tarama_bilgi)
+        self.yigin.addWidget(w)
         self.isci = None
         self.isci_thread = None
         self._izleyiciler = []
@@ -1640,11 +1751,13 @@ class AnaPencere(QMainWindow):
                  "interrupted": "Kesintiye uğradı", "error": "Hata"}
         for stamp, root, result, found, done, pending, failed, ocr_done, ocr_failed in rows:
             when = dt.datetime.fromtimestamp(stamp).strftime("%d.%m.%Y %H:%M")
-            self.scan_history.addItem(
-                f"{when} • {os.path.basename(root) or root} • {names.get(result, 'Sürüyor')} "
-                f"• {done} işlendi / {found} bulundu • {pending} bekliyor • "
-                f"{failed + ocr_failed} hata"
+            item = QListWidgetItem(
+                f"{when}\n{os.path.basename(root) or root}  •  {names.get(result, 'Sürüyor')}"
+                f"  •  {done} işlendi / {found} bulundu  •  {pending} bekliyor"
+                f"  •  {failed + ocr_failed} hata"
             )
+            item.setData(Qt.UserRole, result)
+            self.scan_history.addItem(item)
 
     def _tara_temizle(self):
         thread = self.isci_thread
@@ -1713,42 +1826,49 @@ class AnaPencere(QMainWindow):
                 f"İzleme: {len(bekleyen)} klasörde değişiklik → tarama başlıyor.")
             self._tara_baslat(roots=bekleyen, automatic=True)
 
-    # -- gecmis --
     # -- geçmiş: liste + seçili arama ayrıntısı --
     def _ekran_gecmis(self):
         w = QWidget()
         k = QVBoxLayout(w)
-        k.setContentsMargins(0, 0, 0, 0)
-        split = QSplitter(Qt.Horizontal)
-        split.setChildrenCollapsible(False)
-        sol = QWidget()
-        sl = QVBoxLayout(sol)
-        sl.setContentsMargins(0, 18, 0, 0)
+        k.setContentsMargins(22, 18, 22, 20)
+        k.setSpacing(14)
         bas = QHBoxLayout()
-        bas.addWidget(label("ARAMALAR", "eyebrow"))
-        self.gecmis_sayi = label("", "pill")
+        bas.setSpacing(9)
+        bas.addWidget(bolum("Aramalar"))
+        self.gecmis_sayi = sayac("")
         bas.addWidget(self.gecmis_sayi)
         bas.addStretch(1)
         self.gecmis_temizle_ust = QPushButton("Temizle")
         self.gecmis_temizle_ust.setToolTip("Tümünü temizle")
-        self.gecmis_temizle_ust.setProperty("ghost", True)
+        self.gecmis_temizle_ust.setProperty("kucuk", True)
         self.gecmis_temizle_ust.clicked.connect(self._gecmis_temizle)
         bas.addWidget(self.gecmis_temizle_ust)
-        sl.addLayout(bas)
+        k.addLayout(bas)
+
+        yuzey = QFrame()
+        yuzey.setObjectName("card")
+        yuzey_layout = QHBoxLayout(yuzey)
+        yuzey_layout.setContentsMargins(0, 0, 0, 0)
+        yuzey_layout.setSpacing(0)
+        split = QSplitter(Qt.Horizontal)
+        split.setChildrenCollapsible(False)
         self.gecmis_model = QStandardItemModel()
         self.gecmis_liste = QListView()
         self.gecmis_liste.setObjectName("cardList")
         self.gecmis_liste.setItemDelegate(CardDelegate(self.gecmis_liste, "history"))
         self.gecmis_liste.setModel(self.gecmis_model)
+        self.gecmis_liste.setSpacing(2)
         self.gecmis_liste.clicked.connect(self._gecmis_ayrinti)
         self.gecmis_liste.doubleClicked.connect(self._gecmis_kullan)
         self.gecmis_panel = QStackedWidget()
         self.gecmis_panel.addWidget(self.gecmis_liste)
         self.gecmis_panel.addWidget(EmptyState("Aramalarınız burada kalır", "Önceki aramalarınıza yeniden ulaşabilir\nve aynı filtrelerle devam edebilirsiniz.", "history"))
-        sl.addWidget(self.gecmis_panel, 1)
-        split.addWidget(sol)
-        ayrinti, al = card()
-        al.addWidget(label("SEÇİLİ ARAMA", "eyebrow"))
+        split.addWidget(self.gecmis_panel)
+        ayrinti = QWidget()
+        al = QVBoxLayout(ayrinti)
+        al.setContentsMargins(16, 14, 16, 16)
+        al.setSpacing(10)
+        al.addWidget(bolum("Seçili arama"))
         self.gecmis_sorgu = label("Bir arama seçin", "subheading")
         self.gecmis_sorgu.setWordWrap(True)
         al.addWidget(self.gecmis_sorgu)
@@ -1765,14 +1885,16 @@ class AnaPencere(QMainWindow):
         self.gecmis_sil_btn.clicked.connect(self._gecmis_sil)
         al.addWidget(self.gecmis_sil_btn)
         self.gecmis_temizle_btn = QPushButton("Tümünü temizle")
+        self.gecmis_temizle_btn.setProperty("tehlike", True)
         self.gecmis_temizle_btn.clicked.connect(self._gecmis_temizle)
         al.addWidget(self.gecmis_temizle_btn)
         split.addWidget(ayrinti)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 0)
-        split.setSizes([520, 280])
+        split.setSizes([560, 300])
         self.gecmis_split = split
-        k.addWidget(split, 1)
+        yuzey_layout.addWidget(split)
+        k.addWidget(yuzey, 1)
         self.yigin.addWidget(w)
         self._gecmis_ayrinti()
 
@@ -1847,34 +1969,41 @@ class AnaPencere(QMainWindow):
             hist_mod.clear(self.con)
             self._gecmis_tazele()
 
-    # -- yedekler --
-    def _ekran_yedekler(self):
-        w = QWidget()
-        k = QVBoxLayout(w)
+    # -- yedekler: Ayarlar icinde bolum; ayri sekme degil --
+    def _yedek_bolumu(self, k):
+        """Yedek listesi ve işlemleri; Ayarlar sayfasının sonuna eklenir."""
+        bas = QHBoxLayout()
+        bas.setSpacing(9)
+        bas.addWidget(bolum("Yedekler"))
+        bas.addStretch(1)
+        yeni = QPushButton("Yedek oluştur")
+        yeni.setProperty("birincil", True)
+        yeni.clicked.connect(self._yedek_al)
+        bas.addWidget(yeni)
+        geri = QPushButton("Geri yükle")
+        geri.clicked.connect(self._geri_yukle)
+        bas.addWidget(geri)
+        k.addLayout(bas)
+        yuzey = QFrame()
+        yuzey.setObjectName("card")
+        yuzey_layout = QVBoxLayout(yuzey)
+        yuzey_layout.setContentsMargins(6, 6, 6, 6)
+        yuzey_layout.setSpacing(0)
         self.yedek_model = QStandardItemModel()
         self.yedek_liste = QListView()
         self.yedek_liste.setObjectName("cardList")
         self.yedek_liste.setItemDelegate(CardDelegate(self.yedek_liste, "backup"))
         self.yedek_liste.setModel(self.yedek_model)
+        self.yedek_liste.setSpacing(2)
         self.yedek_panel = QStackedWidget()
         self.yedek_panel.addWidget(self.yedek_liste)
         self.yedek_panel.addWidget(EmptyState("Arama bilgilerinizi koruyun", "Henüz bir yedek yok. “Yedek oluştur” ile\nşifreli bir kopya saklayabilirsiniz.", "backup"))
-        k.addWidget(self.yedek_panel, 1)
-        satir = QHBoxLayout()
-        yeni = QPushButton("Yedek oluştur")
-        yeni.setProperty("birincil", True)
-        yeni.clicked.connect(self._yedek_al)
-        geri = QPushButton("Geri yükle")
-        geri.clicked.connect(self._geri_yukle)
-        satir.addWidget(yeni)
-        satir.addWidget(geri)
-        satir.addStretch(1)
-        k.addLayout(satir)
+        yuzey_layout.addWidget(self.yedek_panel, 1)
+        k.addWidget(yuzey, 1)
         self.yedek_bilgi = QLabel("Yedekler bu bilgisayarda saklanır. Kaynak belgelerinizi içermez.")
         self.yedek_bilgi.setProperty("ikincil", True)
         self.yedek_bilgi.setWordWrap(True)
         k.addWidget(self.yedek_bilgi)
-        self.yigin.addWidget(w)
         self._yedek_tazele()
 
     def _yedek_dizin(self):
@@ -1924,30 +2053,35 @@ class AnaPencere(QMainWindow):
         self.centralWidget().setEnabled(False)
         self.durum.showMessage('Yedek doğrulanıyor ve geri yükleniyor…')
 
-    # -- ayarlar --
-    # -- ayarlar: bölmeli tek sütun (çalışma | tüketim | etiket | güvenlik | yedekler) --
+    # -- ayarlar: bolum basliklari + kil payi ayiricili satirlar --
     def _ekran_ayarlar(self):
         w = QWidget()
         outer = QVBoxLayout(w)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(label("ÇALIŞMA", "eyebrow"))
-        f = QFormLayout()
-        f.setVerticalSpacing(12)
-        outer.addLayout(f)
+        outer.setContentsMargins(22, 18, 22, 20)
+        outer.setSpacing(6)
+        ic = QWidget()
+        ic.setObjectName("ayarGovde")
+        ic.setAttribute(Qt.WA_StyledBackground, True)
+        k = QVBoxLayout(ic)
+        k.setContentsMargins(0, 0, 8, 0)
+        k.setSpacing(0)
+
+        def baslik(text):
+            return bolum(text)
+
         from . import ocr_setup
-        self.ocr_status = label("OCR kullanıma hazır" if ocr_setup.ready()[0] else "OCR bileşenleri eksik", "ikincil")
-        ocr_satir = QHBoxLayout()
-        ocr_satir.addWidget(self.ocr_status, 1)
-        ocr_repair = QPushButton("OCR bileşenlerini doğrula / onar")
-        ocr_repair.setProperty("ghost", True)
+        k.addWidget(baslik("Çalışma"))
+        hazir = ocr_setup.ready()[0]
+        self.ocr_status = label("Hazır" if hazir else "Eksik", "basari" if hazir else "hata")
+        ocr_repair = QPushButton("Doğrula / onar")
+        ocr_repair.setProperty("kucuk", True)
         ocr_repair.clicked.connect(self._ocr_repair)
-        ocr_satir.addWidget(ocr_repair)
-        f.addRow("OCR:", ocr_satir)
+        k.addWidget(ayar_satiri("OCR bileşenleri", "Türkçe metin tanıma durumu", self._denetim_satiri(self.ocr_status, ocr_repair)))
         self.ocr_language = QComboBox()
         self.ocr_language.addItem("Türkçe", "tur")
         self.ocr_language.addItem("İngilizce", "eng")
         self.ocr_language.setCurrentIndex(max(0, self.ocr_language.findData(migrate.get_setting(self.con, "ocr_dili", "tur"))))
-        f.addRow("OCR dili:", self.ocr_language)
+        k.addWidget(ayar_satiri("OCR dili", "Tanıma sırasında kullanılacak alfabe", self.ocr_language))
         self.scan_time_edit = QTimeEdit()
         self.scan_time_edit.setDisplayFormat("HH:mm")
         self.scan_time_edit.setAccessibleName("Günlük tarama saati")
@@ -1956,60 +2090,49 @@ class AnaPencere(QMainWindow):
             self.scan_time_edit.setTime(value if value.isValid() else QTime(12, 30))
         except ValueError:
             self.scan_time_edit.setTime(QTime(12, 30))
-        f.addRow("Günlük tarama saati:", self.scan_time_edit)
-        self.gecikme = QCheckBox("Ağ yükünü azaltmak için taramayı geciktir")
+        k.addWidget(ayar_satiri("Günlük tarama saati", "Bilgisayar açıksa bu saatte taranır.", self.scan_time_edit))
+        self.gecikme = QCheckBox()
         self.gecikme.setChecked(migrate.get_setting(self.con, "gecikme", "0") == "1")
-        f.addRow(self.gecikme)
-        self.otostart = QCheckBox("Windows açılışında başlat")
+        k.addWidget(ayar_satiri("Ağ yükünü azaltmak için taramayı geciktir", "Cihaz başına küçük rastgele gecikme ekler.", self.gecikme))
+        self.otostart = QCheckBox()
         startup_command = sched.autostart_get("Evrakci")
         self.otostart.setChecked(startup_command is not None)
-        f.addRow(self.otostart)
-        self.canli_izleme = QCheckBox("Değişen klasörleri canlı izle ve otomatik tara")
+        k.addWidget(ayar_satiri("Windows açılışında başlat", "Oturum açıldığında Evrakçı kendiliğinden başlar.", self.otostart))
+        self.canli_izleme = QCheckBox()
         self.canli_izleme.setChecked(migrate.get_setting(self.con, "canli_izleme", "1") == "1")
-        f.addRow(self.canli_izleme)
-        self.tepsiye = QCheckBox("Kapatınca tepsiye küçült")
+        k.addWidget(ayar_satiri("Değişen klasörleri canlı izle", "Değişiklik olunca kendiliğinden tarar.", self.canli_izleme))
+        self.tepsiye = QCheckBox()
         self.tepsiye.setChecked(migrate.get_setting(self.con, "tepsiye", "1") == "1")
-        f.addRow(self.tepsiye)
+        k.addWidget(ayar_satiri("Kapatınca tepsiye küçült", "Program arka planda çalışmaya devam eder.", self.tepsiye))
         import sys
         self.startup_status = label(
             "Açılış kaydı eski paket yolunu gösteriyor; Kaydet ile güncelleyin."
             if startup_command and getattr(sys, "frozen", False)
             and os.path.normcase(sys.executable) not in os.path.normcase(startup_command)
             else "", "ikincil")
-        f.addRow(self.startup_status)
-        kay = QPushButton("Kaydet")
-        kay.setProperty("birincil", True)
-        kay.clicked.connect(self._ayar_kaydet)
-        kayit_satir = QHBoxLayout()
-        kayit_satir.addWidget(kay)
-        kayit_satir.addStretch(1)
-        f.addRow(kayit_satir)
-        outer.addWidget(bolme())
-        outer.addWidget(label("TÜKETİM KLASÖRÜ", "eyebrow"))
+        k.addWidget(self.startup_status)
+
+        k.addWidget(baslik("Tüketim"))
         self.tuketim_klasoru = QLineEdit()
         self.tuketim_klasoru.setPlaceholderText("Boşsa kapalı")
         self.tuketim_klasoru.setText(migrate.get_setting(self.con, "tuketim_klasoru", ""))
-        tuketim_satir = QHBoxLayout()
-        tuketim_satir.addWidget(self.tuketim_klasoru, 1)
         self.tuketim_sec_btn = QPushButton("Seç")
+        self.tuketim_sec_btn.setProperty("kucuk", True)
         self.tuketim_sec_btn.clicked.connect(self._tuketim_sec)
-        tuketim_satir.addWidget(self.tuketim_sec_btn)
-        f.addRow("Tüketim klasörü:", tuketim_satir)
+        k.addWidget(ayar_satiri("Gelen klasörü", "Yeni evrakın düştüğü izlenen klasör.", self._denetim_satiri(self.tuketim_klasoru, self.tuketim_sec_btn)))
         self.tuketim_hedefi = QLineEdit()
         self.tuketim_hedefi.setPlaceholderText("Taşınacak arşiv klasörü")
         self.tuketim_hedefi.setText(migrate.get_setting(self.con, "tuketim_hedefi", ""))
-        hedef_satir = QHBoxLayout()
-        hedef_satir.addWidget(self.tuketim_hedefi, 1)
         self.tuketim_hedef_sec_btn = QPushButton("Seç")
+        self.tuketim_hedef_sec_btn.setProperty("kucuk", True)
         self.tuketim_hedef_sec_btn.clicked.connect(self._tuketim_hedef_sec)
-        hedef_satir.addWidget(self.tuketim_hedef_sec_btn)
-        f.addRow("Tüketim hedefi:", hedef_satir)
-        outer.addWidget(bolme())
-        outer.addWidget(label("ETİKET KURALLARI", "eyebrow"))
+        k.addWidget(ayar_satiri("Arşiv hedefi", "Evrakın taşınacağı arşiv klasörü.", self._denetim_satiri(self.tuketim_hedefi, self.tuketim_hedef_sec_btn)))
+
+        k.addWidget(baslik("Etiket kuralları"))
         self.kural_liste = QListWidget()
+        self.kural_liste.setObjectName("cardList")
         self.kural_liste.setMaximumHeight(110)
-        f.addRow("Etiket kuralları:", self.kural_liste)
-        kural_satir = QHBoxLayout()
+        k.addWidget(self.kural_liste)
         self.kural_etiket = QLineEdit()
         self.kural_etiket.setPlaceholderText("etiket")
         self.kural_etiket.setFixedWidth(110)
@@ -2018,41 +2141,54 @@ class AnaPencere(QMainWindow):
         self.kural_kip = QComboBox()
         self.kural_kip.addItems(["any", "all"])
         self.kural_ekle_btn = QPushButton("Ekle")
+        self.kural_ekle_btn.setProperty("kucuk", True)
         self.kural_ekle_btn.clicked.connect(self._kural_ekle)
         self.kural_sil_btn = QPushButton("Sil")
+        self.kural_sil_btn.setProperty("kucuk", True)
         self.kural_sil_btn.clicked.connect(self._kural_sil)
+        kural_satir = QWidget()
+        ks = QHBoxLayout(kural_satir)
+        ks.setContentsMargins(0, 0, 0, 0)
+        ks.setSpacing(8)
         for x in (self.kural_etiket, self.kural_kelimeler, self.kural_kip,
                   self.kural_ekle_btn, self.kural_sil_btn):
-            kural_satir.addWidget(x)
-        f.addRow("", kural_satir)
-        outer.addWidget(bolme())
-        outer.addWidget(label("KASA GÜVENLİĞİ", "eyebrow"))
+            ks.addWidget(x)
+        k.addWidget(ayar_satiri("Yeni kural", "Kelime eşleşince etiket kendiliğinden eklenir.", kural_satir))
+
+        k.addWidget(baslik("Kasa güvenliği"))
         self.kilit_sure = QComboBox()
         self.kilit_sure.addItems(["kapalı", "5", "15", "30"])
         cur = migrate.get_setting(self.con, "kilit_suresi", "15")
         self.kilit_sure.setCurrentText(cur if cur in ("5", "15", "30") else "kapalı")
-        f.addRow("Hareketsizlikte kilitle (dakika):", self.kilit_sure)
-        guven_satir = QHBoxLayout()
+        k.addWidget(ayar_satiri("Hareketsizlikte kilitle", "“Beni hatırla” açıkken otomatik kilit kapanır.", self.kilit_sure))
         sif = QPushButton("Parolayı değiştir")
         sif.clicked.connect(self._parola_degistir)
-        guven_satir.addWidget(sif)
         forget = QPushButton("Hatırlanan girişi kaldır")
         forget.clicked.connect(self._forget_login)
-        guven_satir.addWidget(forget)
-        guven_satir.addStretch(1)
-        f.addRow(guven_satir)
-        f.addRow(label("Beni hatırla açıkken otomatik kilit kapanır. Şifre değişirken mevcut şifrenizi doğrulamanız gerekir.", "ikincil"))
-        self.surum_bilgi = QLabel(f"Evrakçı {__version__}")
+        k.addWidget(ayar_satiri("Şifre", "Şifre değişirken mevcut şifreniz doğrulanır.", self._denetim_satiri(sif, forget)))
+        self._yedek_bolumu(k)
+        self.surum_bilgi = QLabel(f"Evrakçı {__version__} · Yerel ve şifreli çalışır")
         self.surum_bilgi.setProperty("ikincil", True)
-        f.addRow(self.surum_bilgi)
-        outer.addWidget(bolme())
-        outer.addWidget(label("YEDEKLER", "eyebrow"))
-        self.yedek_bolum = QWidget()
-        self.yedek_bolum.setLayout(QVBoxLayout())
-        self.yedek_bolum.layout().setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(self.yedek_bolum)
-        outer.addStretch()
+        k.addWidget(self.surum_bilgi)
+        k.addStretch(1)
+
+        kaydir = QScrollArea()
+        kaydir.setWidgetResizable(True)
+        kaydir.setFrameShape(QScrollArea.NoFrame)
+        kaydir.setWidget(ic)
+        outer.addWidget(kaydir, 1)
+        self.settings_page = w
         self.yigin.addWidget(w)
+        self._kural_tazele()
+
+    def _denetim_satiri(self, *widgets):
+        kutu = QWidget()
+        row = QHBoxLayout(kutu)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        for i, widget in enumerate(widgets):
+            row.addWidget(widget, 1 if i == 0 and widget.__class__.__name__ in ("QLineEdit",) else 0)
+        return kutu
 
     def _ekran_ai(self):
         w = QWidget()
@@ -2185,7 +2321,7 @@ class AnaPencere(QMainWindow):
         self.ai_doc_timer.setInterval(300)
         self.ai_doc_timer.timeout.connect(lambda: self._ai_doc_page(0))
         self.ai_doc_query.textChanged.connect(lambda: self.ai_doc_timer.start())
-        self.yigin.addWidget(w)
+        self._ai_ham = w
 
     def _ai_model_changed(self):
         if self.con is not None:
@@ -2446,20 +2582,30 @@ class AnaPencere(QMainWindow):
 
     # -- ekran/durum/tepsi/kilit --
     def _ekran(self, i):
-        started=time.perf_counter()
+        started = time.perf_counter()
         if i == len(EKRANLAR):
             self.kilitle()
             return
-        if i<0 or i>=self.yigin.count(): return
+        if i < 0 or i >= self.yigin.count():
+            return
         self.yigin.setCurrentIndex(i)
-        name=EKRANLAR[i]
-        if name=='Tarama' and self.isci_thread is not None: self._scan_show()
-        if name=='Geçmiş': self._gecmis_tazele()
-        elif name=='Taranmış Evraklar': self._files_refresh(reset=True)
-        elif name=='Kaynaklar': self._kok_tazele()
-        elif name=='Ayarlar': self._yedek_tazele()
-        elif name=='AI ile ara': self._ai_refresh_docs()
-        QTimer.singleShot(0,lambda:diagnostics.record('tab_ready_ms',str(round((time.perf_counter()-started)*1000))))
+        name = EKRANLAR[i]
+        self.head_bar.baslik.setText(name if i else "Ara")
+        self.head_bar.aciklama.setText(SAYFA_ACIKLAMA.get(name, ""))
+        self.head_bar.aciklama.setVisible(bool(SAYFA_ACIKLAMA.get(name)))
+        if name == 'Tarama' and self.isci_thread is not None:
+            self._scan_show()
+        if name == 'Geçmiş':
+            self._gecmis_tazele()
+        elif name == 'Taranmış Evraklar':
+            self._files_refresh(reset=True)
+        elif name == 'Kaynaklar':
+            self._kok_tazele()
+        elif name == 'Ayarlar':
+            self._yedek_tazele()
+        elif name == 'AI ile ara':
+            self._ai_refresh_docs()
+        QTimer.singleShot(0, lambda: diagnostics.record('tab_ready_ms', str(round((time.perf_counter() - started) * 1000))))
 
     def _durum_yaz(self):
         try:
@@ -2476,7 +2622,11 @@ class AnaPencere(QMainWindow):
             migrate.set_setting(self.con, "tema", mode)
         except Exception:
             pass
+        if getattr(self, "_toast", None) is not None:
+            self._toast.goster(f"{self.tema_sec.currentText()} uygulandı.")
         self.durum.showMessage(f"{self.tema_sec.currentText()} uygulandı.")
+        QTimer.singleShot(0, self._tema_yenile)
+        QTimer.singleShot(0, lambda: self.onizleme.yenile())
 
     def _tepsi(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -2617,7 +2767,6 @@ class AnaPencere(QMainWindow):
         self.kok_model.clear()
         self.kaynak_sayi.clear()
         self.yedek_model.clear()
-        self.yedek_sayi.clear()
         self.onizleme.temizle()
         self.scan_timer.stop()
         self._izleme_durdur()

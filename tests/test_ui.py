@@ -396,7 +396,8 @@ def test_015_time_source_and_layout(pencere, monkeypatch):
     pencere.show()
     _app().processEvents()
     buttons = [b for b, _ in pencere.rail_actions]
-    assert buttons[0].y() == buttons[1].y()
+    # Yeni ray düzeni: eylemler alt alta, daraltma düğmesinin altında.
+    assert buttons[1].y() > buttons[0].y()
     assert pencere.rail_toggle.y() < buttons[0].y()
     assert all(b.width() >= b.fontMetrics().horizontalAdvance(b.text()) + 20 for b in buttons)
     pencere._nav_toggle()

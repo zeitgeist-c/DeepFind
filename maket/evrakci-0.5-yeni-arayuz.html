@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Evrakçı 0.5 — Yeni Arayüz Tasarımı</title>
+<style>
+  /* ---------- maket sayfası (uygulama penceresi değil) ---------- */
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:#EDEFF3;color:#101828;font:15px/1.55 "Segoe UI",system-ui,sans-serif;padding:0 0 48px}
+  .page{max-width:1180px;padding:0 20px}
+  h1{font-size:24px;margin:28px 0 4px;letter-spacing:-.2px}
+  h2{font-size:17px;margin:34px 0 10px;letter-spacing:-.1px}
+  h2 .n{display:inline-block;min-width:22px;height:22px;line-height:22px;text-align:center;border-radius:7px;background:#0E7C6B;color:#fff;font-size:12px;font-weight:700;margin-right:8px;vertical-align:1px}
+  p.sub{color:#5A6472;margin:0 0 14px;max-width:78ch}
+  .note{background:#fff;border:1px solid #DDE1E8;border-radius:12px;padding:14px 16px;margin:14px 0;max-width:900px}
+  .note b{font-weight:600}
+  table.tok{border-collapse:collapse;background:#fff;font-size:13px;margin:6px 0 4px}
+  table.tok th,table.tok td{border:1px solid #DDE1E8;padding:5px 10px;text-align:left}
+  table.tok th{background:#F4F6F9;font-weight:600}
+  .sw{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid #0002;vertical-align:-2px;margin-right:6px}
+  ul.plain{margin:6px 0 0;padding-left:20px;max-width:88ch}
+  ul.plain li{margin:3px 0}
+
+  /* ---------- uygulama penceresi iskeleti ---------- */
+  .win{display:flex;width:100%;max-width:1140px;border:1px solid #C9CFD9;border-radius:12px;overflow:hidden;
+       box-shadow:0 10px 30px rgba(16,24,40,.10);margin:10px 0 6px;font-size:13.5px}
+  .win.light{--zemin:#F1F3F7;--yuzey:#FFFFFF;--yuzey2:#F6F8FB;--metin:#101828;--ikincil:#667085;--sinir:#E4E7EC;
+             --marka:#0E7C6B;--marka-metin:#FFFFFF;--marka-tint:#E7F4F1;--secili:#EFF6F4;--uyari:#B54708;--hata:#B42318;
+             --ray:#F6F8FB;--ray-aktif:#E8EEF3;--golge:0 1px 2px rgba(16,24,40,.04)}
+  .win.dark{--zemin:#0E1116;--yuzey:#161B22;--yuzey2:#1B212A;--metin:#E6EDF3;--ikincil:#8B949E;--sinir:#272E38;
+            --marka:#4FD1B5;--marka-metin:#062B24;--marka-tint:#15332D;--secili:#1A2A28;--uyari:#F0B45C;--hata:#FF8A8A;
+            --ray:#12171D;--ray-aktif:#1E242C;--golge:none}
+  .win{background:var(--zemin);color:var(--metin)}
+
+  /* ray */
+  .rail{width:236px;flex:none;background:var(--ray);border-right:1px solid var(--sinir);padding:16px 12px 14px;display:flex;flex-direction:column;gap:4px}
+  .brand{display:flex;align-items:center;gap:9px;padding:2px 8px 14px}
+  .logo{width:28px;height:28px;border-radius:8px;background:var(--marka);display:flex;align-items:center;justify-content:center;color:var(--marka-metin);font-weight:800;font-size:13px}
+  .brand .nm{font-weight:600;font-size:15px;letter-spacing:-.1px}
+  .brand .vr{color:var(--ikincil);font-size:11.5px;margin-left:auto}
+  .navlbl{font-size:10.5px;font-weight:700;letter-spacing:.7px;color:var(--ikincil);padding:12px 9px 5px;text-transform:uppercase;opacity:.85}
+  .navi{display:flex;align-items:center;gap:10px;padding:7.5px 10px;border-radius:8px;color:var(--metin);opacity:.82}
+  .navi.on{background:var(--ray-aktif);opacity:1;font-weight:600}
+  .navi svg{flex:none;opacity:.75}
+  .navi.on svg{opacity:1}
+  .navi .count{margin-left:auto;font-size:11px;color:var(--ikincil);font-weight:600}
+  .railfoot{margin-top:auto;border-top:1px solid var(--sinir);padding-top:10px;display:flex;flex-direction:column;gap:4px}
+  .railfoot .navi{opacity:.72;font-size:13px}
+
+  /* içerik */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .head{display:flex;align-items:flex-start;gap:16px;padding:18px 24px 14px;border-bottom:1px solid var(--sinir);background:var(--yuzey)}
+  .head .t{font-size:19px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
+  .head .d{color:var(--ikincil);font-size:12.5px;margin-top:2px}
+  .head .brew{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+  /* butonlar */
+  .btn{border:1px solid transparent;border-radius:8px;padding:6.5px 13px;font:inherit;font-size:13px;font-weight:600;background:var(--yuzey);color:var(--metin);cursor:default;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+  .btn.pri{background:var(--marka);color:var(--marka-metin)}
+  .btn.sec{border-color:var(--sinir);background:var(--yuzey)}
+  .btn.gho{background:transparent;color:var(--marka)}
+  .btn.dan{background:transparent;color:var(--hata);border-color:var(--sinir)}
+  .btn.sm{padding:4px 10px;font-size:12px;border-radius:7px}
+  .btn.dis{color:var(--ikincil);opacity:.55}
+  .btn.link{background:none;color:var(--marka);border:none;padding:6px 4px}
+
+  /* girdiler */
+  .in{background:var(--yuzey);border:1px solid var(--sinir);border-radius:8px;padding:6.5px 10px;color:var(--ikincil);font-size:13px;min-height:32px;display:flex;align-items:center}
+  .in.focus{border-color:var(--marka);box-shadow:0 0 0 3px var(--marka-tint);color:var(--metin)}
+  .in.mini{align-items:center;justify-content:space-between}
+
+  /* arama satırı */
+  .srow{display:flex;gap:10px;padding:16px 24px 14px}
+  .sbox{flex:1;display:flex;align-items:center;gap:10px;background:var(--yuzey);border:1px solid var(--sinir);border-radius:10px;padding:9px 13px}
+  .sbox .ph{color:var(--ikincil);font-size:14px}
+
+  /* paneller: tek yüzey + kıl payı ayırıcı */
+  .panes{display:flex;flex:1;min-height:0;margin:0 24px 20px;background:var(--yuzey);border:1px solid var(--sinir);border-radius:12px;overflow:hidden;box-shadow:var(--golge)}
+  .pane{padding:14px 16px;min-width:0}
+  .pane+.pane{border-left:1px solid var(--sinir)}
+  .pane.tint{background:var(--yuzey2)}
+  .ptitle{font-size:10.5px;font-weight:700;letter-spacing:.7px;color:var(--ikincil);margin:0 0 10px;text-transform:uppercase}
+  .field{margin-bottom:10px}
+  .field .lb{font-size:12px;color:var(--ikincil);margin-bottom:5px}
+
+  /* sonuç satırları */
+  .row{padding:10px 12px;border-radius:9px;margin-bottom:6px;border:1px solid transparent}
+  .row:hover{background:var(--yuzey2)}
+  .row.on{background:var(--secili);border-color:color-mix(in srgb, var(--marka) 35%, transparent)}
+  .row .nm{font-weight:600;font-size:13.5px}
+  .row .pt{color:var(--ikincil);font-size:11.5px;margin:1px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .sn{font-size:12.5px;opacity:.92}
+  .row .sn mark{background:color-mix(in srgb, var(--uyari) 22%, transparent);color:inherit;border-radius:3px;padding:0 2px}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center}
+  .tg{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--yuzey2);border:1px solid var(--sinir);color:var(--ikincil)}
+  .tg.pri{background:var(--marka-tint);border-color:transparent;color:var(--marka);font-weight:600}
+
+  /* ölçü blokları (kutusuz) */
+  .stats{display:flex;gap:0;margin:0 24px;border:1px solid var(--sinir);border-radius:12px;background:var(--yuzey);overflow:hidden}
+  .stat{flex:1;padding:14px 18px}
+  .stat+.stat{border-left:1px solid var(--sinir)}
+  .stat .k{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--ikincil);text-transform:uppercase}
+  .stat .v{font-size:22px;font-weight:650;letter-spacing:-.3px;margin-top:4px}
+  .stat .v small{font-size:12px;font-weight:500;color:var(--ikincil);letter-spacing:0}
+  .stat .h{font-size:11.5px;color:var(--ikincil);margin-top:2px}
+
+  /* ayarlar: iki kolonlu satırlar */
+  .sect{padding:0 24px 8px}
+  .sect h3{font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ikincil);text-transform:uppercase;margin:20px 0 2px}
+  .frow{display:flex;gap:20px;align-items:center;padding:11px 0;border-bottom:1px solid var(--sinir)}
+  .frow:last-child{border-bottom:none}
+  .frow .fl{flex:1;min-width:0}
+  .frow .fl .n{font-size:13.5px;font-weight:550}
+  .frow .fl .h{font-size:11.5px;color:var(--ikincil);margin-top:1px}
+  .frow .fc{flex:none;display:flex;gap:8px;align-items:center;min-width:190px;justify-content:flex-end}
+
+  /* liste satırları (geçmiş / kayıtlar) */
+  .lrow{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--sinir);font-size:13px}
+  .lrow:last-child{border-bottom:none}
+  .lrow .w{color:var(--ikincil);font-size:11.5px;min-width:96px}
+  .lrow .m{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .toast{margin:0 24px 16px;display:flex;align-items:center;gap:9px;background:var(--marka-tint);color:var(--marka);border-radius:9px;padding:9px 13px;font-size:12.5px;font-weight:600}
+
+  /* bileşen vitrini */
+  .gal{display:flex;flex-wrap:wrap;gap:10px;background:#fff;border:1px solid #DDE1E8;border-radius:12px;padding:16px;align-items:center}
+  .galwrap{display:flex;gap:26px;flex-wrap:wrap}
+  .galcol{min-width:220px}
+  .gallbl{font-size:11px;font-weight:700;letter-spacing:.6px;color:#667085;text-transform:uppercase;margin:0 0 8px}
+  .galv{background:#F1F3F7;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:9px}
+  .galv.dk{background:#0E1116}
+  .dark .btn.sec{background:var(--yuzey2)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Evrakçı — yeni arayüz tasarımı (0.5)</h1>
+  <p class="sub">Aynı işlevler, tek bir görsel dil. Kutular kutu içine girmiyor; çizgi yalnızca gerçekten ayırması gereken yerde var.</p>
+
+  <div class="note">
+    <b>Sorunların çözümü:</b>
+    <ul class="plain">
+      <li><b>Ray artık temayla uyumlu.</b> Sabit lacivert gitti: açıkta yumuşak gri yüzey, koyuda koyu yüzey — ikisi de aynı paletten.</li>
+      <li><b>Kart içinde kart yok.</b> Sayfa başına tek yüzey; sütunlar ince ayırıcıyla bölünüyor. Filtreler kendi çerçevesi yerine hafif tonlu zemin taşıyor.</li>
+      <li><b>Çizgiler görünür ve anlamlı.</b> Açık temada beyaz üstüne beyaz bitti; zemin gri, yüzey beyaz, ayırıcı kıl payı.</li>
+      <li><b>Tek tuş takımı.</b> Üç buton çeşidi: dolgulu (asıl iş), çerçeveli (ikincil), yazı (üçüncül). Aynı yükseklik, aynı köşe yarıçapı.</li>
+    </ul>
+  </div>
+
+  <h2><span class="n">1</span>Ara — açık tema</h2>
+  <p class="sub">Sol ray gruplanmış menü, tek yüzey üzerinde üç bölme: filtre | sonuçlar | seçili evrak.</p>
+  <div class="win light">
+    <div class="rail">
+      <div class="brand"><div class="logo">E</div><div class="nm">Evrakçı</div><div class="vr">0.5.0</div></div>
+      <div class="navlbl">Arama</div>
+      <div class="navi on"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Ara</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>AI ile ara</div>
+      <div class="navlbl">Arşiv</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Kaynaklar<span class="count">1</span></div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M8 8h8"/></svg>Tarama</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M12 7.5V12l3 2"/></svg>Geçmiş</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h7l4 4v12H7z"/><path d="M14 4v4h4"/></svg>Taranmış Evraklar</div>
+      <div class="railfoot">
+        <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z"/></svg>Ayarlar</div>
+        <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg>Kasayı kilitle</div>
+      </div>
+    </div>
+    <div class="main">
+      <div class="head">
+        <div>
+          <div class="t">Ara</div>
+          <div class="d">Dosya adı, içerik ve klasör bağlamıyla arayın.</div>
+        </div>
+        <div class="brew">
+          <span class="tg pri">Kasa açık</span>
+          <button class="btn sec">Şimdi tara</button>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sbox">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#667085" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+          <span class="ph">Arşivinizde arayın…   örn. Ankara vergi 2024</span>
+        </div>
+        <button class="btn pri">Ara</button>
+      </div>
+      <div class="panes" style="min-height:396px">
+        <div class="pane tint" style="width:212px">
+          <div class="ptitle">Filtreler</div>
+          <div class="field"><div class="lb">Yıl</div><div class="in">2024</div></div>
+          <div class="field"><div class="lb">Tür</div><div class="in mini">tümü <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+          <div class="field"><div class="lb">Şirket veya klasör</div><div class="in">arsiv</div></div>
+          <div class="field"><div class="lb">Etiket</div><div class="in" style="color:#667085">etiket</div></div>
+          <div class="ptitle" style="margin-top:16px">Kayıtlı aramalar</div>
+          <div class="in mini">Kayıtlı arama <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+          <div style="display:flex;gap:8px;margin-top:9px"><button class="btn sec sm">Kaydet</button><button class="btn sec sm">Sil</button></div>
+        </div>
+        <div class="pane" style="flex:1">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div class="ptitle" style="margin:0">Sonuçlar</div>
+            <span class="tg pri">2 sonuç</span>
+            <button class="btn gho sm" style="margin-left:auto">CSV indir</button>
+          </div>
+          <div class="row on">
+            <div class="nm">Ankara Vergi Levhası 2024.pdf</div>
+            <div class="pt">C:\Arşiv\Vergi\Ankara Vergi Levhası 2024.pdf</div>
+            <div class="sn">…Ayşe Yılmaz <mark>2024</mark> yılı <mark>vergi</mark> levhası…</div>
+            <div class="tags"><span class="tg">PDF</span><span class="tg">Sayfa 1</span><span class="tg pri">vergi</span><span class="tg pri">2024</span></div>
+          </div>
+          <div class="row">
+            <div class="nm">Tahsilat Listesi 2024.xlsx</div>
+            <div class="pt">C:\Arşiv\Muhasebe\Tahsilat Listesi 2024.xlsx</div>
+            <div class="sn">…<mark>Ankara</mark> tahsilat dökümü 12.500 TL…</div>
+            <div class="tags"><span class="tg">XLSX</span><span class="tg">Sayfa Tahsilat</span></div>
+          </div>
+        </div>
+        <div class="pane" style="width:238px">
+          <div class="ptitle">Seçili evrak</div>
+          <div style="font-weight:600;font-size:14px;letter-spacing:-.1px">Ankara Vergi Levhası 2024.pdf</div>
+          <div style="color:var(--ikincil);font-size:11.5px;margin-top:3px;word-break:break-all">C:\Arşiv\Vergi\Ankara Vergi Levhası 2024.pdf</div>
+          <div style="margin-top:12px;font-size:12.5px;line-height:1.9">
+            <div><span style="color:var(--ikincil)">Tür</span> · PDF</div>
+            <div><span style="color:var(--ikincil)">Etiket</span> · vergi, 2024</div>
+          </div>
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
+            <button class="btn pri">Ön izle</button>
+            <button class="btn sec">Yol kopyala</button>
+          </div>
+        </div>
+      </div>
+      <div class="toast">✓ Yeni tema uygulandı.</div>
+    </div>
+  </div>
+
+  <h2><span class="n">2</span>Tarama — açık tema</h2>
+  <p class="sub">Sayaçlar kutu değil, kıl payı ayırıcıyla bölünmüş ölçü şeridi. İşlem düğmeleri tek satırda; son taramalar düz liste.</p>
+  <div class="win light">
+    <div class="rail">
+      <div class="brand"><div class="logo">E</div><div class="nm">Evrakçı</div><div class="vr">0.5.0</div></div>
+      <div class="navlbl">Arama</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Ara</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>AI ile ara</div>
+      <div class="navlbl">Arşiv</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Kaynaklar<span class="count">1</span></div>
+      <div class="navi on"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M8 8h8"/></svg>Tarama</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M12 7.5V12l3 2"/></svg>Geçmiş</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h7l4 4v12H7z"/><path d="M14 4v4h4"/></svg>Taranmış Evraklar</div>
+      <div class="railfoot">
+        <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z"/></svg>Ayarlar</div>
+        <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg>Kasayı kilitle</div>
+      </div>
+    </div>
+    <div class="main">
+      <div class="head">
+        <div>
+          <div class="t">Tarama</div>
+          <div class="d">Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.</div>
+        </div>
+        <div class="brew">
+          <button class="btn sec">Tarama ayrıntıları</button>
+          <button class="btn pri">Taramayı başlat</button>
+        </div>
+      </div>
+      <div style="padding:18px 24px 4px">
+        <div class="stats">
+          <div class="stat"><div class="k">Kapsam</div><div class="v">1 <small>kaynak klasör</small></div><div class="h">Kaynaklar bölümünden değiştirilir</div></div>
+          <div class="stat"><div class="k">Günlük düzen</div><div class="v">12:30</div><div class="h">Planlı tarama saati</div></div>
+          <div class="stat"><div class="k">Durum</div><div class="v" style="font-size:15px;font-weight:600">Henüz tarama yapılmadı</div><div class="h">Son tarama: —</div></div>
+        </div>
+      </div>
+      <div class="sect" style="padding-top:16px">
+        <div class="frow">
+          <div class="fl"><div class="n">Kapsam</div><div class="h">Bu taramada hangi klasörlerin taranacağı.</div></div>
+          <div class="fc" style="min-width:240px"><div class="in mini" style="width:240px">Tüm kaynaklar <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        </div>
+        <div class="frow">
+          <div class="fl"><div class="n">İşlem</div><div class="h">Duraklatıldığında güvenli noktada bekler; iptal bugün otomatik başlamaz.</div></div>
+          <div class="fc">
+            <button class="btn pri">Başlat</button>
+            <button class="btn sec dis">Duraklat</button>
+            <button class="btn sec dis">İptal</button>
+          </div>
+        </div>
+      </div>
+      <div class="sect" style="flex:1">
+        <h3>Son taramalar</h3>
+        <div style="border:1px solid var(--sinir);border-radius:12px;overflow:hidden;background:var(--yuzey);margin-top:6px">
+          <div class="lrow"><span class="w">15.10.2026 03:08</span><span class="m">arşiv</span><span class="tg">Kısmi</span><span class="tg">0 işlendi / 4 bulundu</span><span class="tg">4 bekliyor</span></div>
+          <div class="lrow"><span class="w">14.10.2026 12:30</span><span class="m">arşiv</span><span class="tg pri">Tamamlandı</span><span class="tg">4 işlendi / 4 bulundu</span><span class="tg">0 hata</span></div>
+          <div class="lrow"><span class="w">13.10.2026 12:30</span><span class="m">arşiv</span><span class="tg">İptal edildi</span><span class="tg">2 işlendi / 4 bulundu</span><span class="tg">—</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">3</span>Ayarlar — açık tema</h2>
+  <p class="sub">Bölüm başlıkları + kıl payı ayırıcılı satırlar. Etiket solda, denetim sağda, tek hizada. Kaydet sayfa başlığında.</p>
+  <div class="win light">
+    <div class="rail">
+      <div class="brand"><div class="logo">E</div><div class="nm">Evrakçı</div><div class="vr">0.5.0</div></div>
+      <div class="navlbl">Arama</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Ara</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>AI ile ara</div>
+      <div class="navlbl">Arşiv</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Kaynaklar<span class="count">1</span></div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M8 8h8"/></svg>Tarama</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M12 7.5V12l3 2"/></svg>Geçmiş</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h7l4 4v12H7z"/><path d="M14 4v4h4"/></svg>Taranmış Evraklar</div>
+      <div class="railfoot">
+        <div class="navi on"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z"/></svg>Ayarlar</div>
+        <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg>Kasayı kilitle</div>
+      </div>
+    </div>
+    <div class="main">
+      <div class="head">
+        <div>
+          <div class="t">Ayarlar</div>
+          <div class="d">Çalışma tercihleri, kasa güvenliği ve yedekler.</div>
+        </div>
+        <div class="brew">
+          <span class="tg">Tema: Sistem</span>
+          <button class="btn pri">Kaydet</button>
+        </div>
+      </div>
+      <div class="sect">
+        <h3>Çalışma</h3>
+        <div class="frow"><div class="fl"><div class="n">OCR bileşenleri</div><div class="h">Türkçe metin tanıma hazır</div></div>
+          <div class="fc"><span class="tg pri">Hazır</span><button class="btn sec">Doğrula / onar</button></div></div>
+        <div class="frow"><div class="fl"><div class="n">OCR dili</div></div>
+          <div class="fc"><div class="in mini" style="width:170px">Türkçe <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div></div>
+        <div class="frow"><div class="fl"><div class="n">Günlük tarama saati</div><div class="h">Bilgisayar açıksa bu saatte taranır.</div></div>
+          <div class="fc"><div class="in mini" style="width:120px">12:30</div></div></div>
+        <div class="frow"><div class="fl"><div class="n">Ağ yükünü azaltmak için taramayı geciktir</div><div class="h">Cihaz başına küçük rastgele gecikme ekler.</div></div>
+          <div class="fc"><span style="width:38px;height:22px;border-radius:999px;background:var(--marka);display:inline-block;position:relative"><span style="position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#fff"></span></span></div></div>
+        <div class="frow"><div class="fl"><div class="n">Windows açılışında başlat</div></div>
+          <div class="fc"><span style="width:38px;height:22px;border-radius:999px;background:var(--marka);display:inline-block;position:relative"><span style="position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#fff"></span></span></div></div>
+        <div class="frow"><div class="fl"><div class="n">Değişen klasörleri canlı izle</div><div class="h">Değişiklik olunca kendiliğinden tarar.</div></div>
+          <div class="fc"><span style="width:38px;height:22px;border-radius:999px;background:var(--marka);display:inline-block;position:relative"><span style="position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#fff"></span></span></div></div>
+        <div class="frow"><div class="fl"><div class="n">Kapatınca tepsiye küçült</div></div>
+          <div class="fc"><span style="width:38px;height:22px;border-radius:999px;background:var(--marka);display:inline-block;position:relative"><span style="position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#fff"></span></span></div></div>
+        <h3>Tüketim klasörü</h3>
+        <div class="frow"><div class="fl"><div class="n">Tüketim klasörü</div><div class="h">Boş bırakılırsa kapalıdır.</div></div>
+          <div class="fc" style="min-width:300px"><div class="in" style="flex:1;width:230px;color:#667085">Boşsa kapalı</div><button class="btn sec">Seç</button></div></div>
+        <div class="frow"><div class="fl"><div class="n">Tüketim hedefi</div><div class="h">Taşınacak arşiv klasörü.</div></div>
+          <div class="fc" style="min-width:300px"><div class="in" style="flex:1;width:230px;color:#667085">Taşınacak arşiv klasörü</div><button class="btn sec">Seç</button></div></div>
+        <h3>Kasa güvenliği</h3>
+        <div class="frow"><div class="fl"><div class="n">Hareketsizlikte kilitle</div><div class="h">“Beni hatırla” açıkken otomatik kilit kapanır.</div></div>
+          <div class="fc"><div class="in mini" style="width:150px">15 dakika <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div></div>
+        <div class="frow"><div class="fl"><div class="n">Şifre</div><div class="h">Şifre değişirken mevcut şifre doğrulanır.</div></div>
+          <div class="fc"><button class="btn sec">Parolayı değiştir</button><button class="btn sec">Hatırlanan girişi kaldır</button></div></div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid var(--sinir);color:var(--ikincil);font-size:11.5px">Evrakçı 0.5.0 · Yerel ve şifreli çalışır</div>
+    </div>
+  </div>
+
+  <h2><span class="n">4</span>Ara — koyu tema</h2>
+  <p class="sub">Aynı yapı, aynı jetonlar. Mavi-siyah karışımı yerine nötr koyu; vurgu rengi koyuda açılıyor.</p>
+  <div class="win dark dark2">
+    <div class="rail">
+      <div class="brand"><div class="logo">E</div><div class="nm">Evrakçı</div><div class="vr">0.5.0</div></div>
+      <div class="navlbl">Arama</div>
+      <div class="navi on"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Ara</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>AI ile ara</div>
+      <div class="navlbl">Arşiv</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Kaynaklar<span class="count">1</span></div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M8 8h8"/></svg>Tarama</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M12 7.5V12l3 2"/></svg>Geçmiş</div>
+      <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h7l4 4v12H7z"/><path d="M14 4v4h4"/></svg>Taranmış Evraklar</div>
+      <div class="railfoot">
+        <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z"/></svg>Ayarlar</div>
+        <div class="navi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg>Kasayı kilitle</div>
+      </div>
+    </div>
+    <div class="main">
+      <div class="head">
+        <div>
+          <div class="t">Ara</div>
+          <div class="d">Dosya adı, içerik ve klasör bağlamıyla arayın.</div>
+        </div>
+        <div class="brew">
+          <span class="tg pri">Kasa açık</span>
+          <button class="btn sec">Şimdi tara</button>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sbox" style="background:var(--yuzey2)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8B949E" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+          <span class="ph">tahsilat</span>
+        </div>
+        <button class="btn pri">Ara</button>
+      </div>
+      <div class="panes" style="min-height:340px">
+        <div class="pane tint" style="width:212px">
+          <div class="ptitle">Filtreler</div>
+          <div class="field"><div class="lb">Yıl</div><div class="in" style="background:var(--yuzey2)">2024</div></div>
+          <div class="field"><div class="lb">Tür</div><div class="in mini" style="background:var(--yuzey2)">tümü <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+          <div class="field"><div class="lb">Etiket</div><div class="in" style="background:var(--yuzey2)">tahsilat</div></div>
+          <div class="ptitle" style="margin-top:16px">Etiket</div>
+          <div class="in" style="background:var(--yuzey2)">Seçili sonuca etiket</div>
+        </div>
+        <div class="pane" style="flex:1">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div class="ptitle" style="margin:0">Sonuçlar</div><span class="tg pri">1 sonuç</span>
+            <button class="btn gho sm" style="margin-left:auto">CSV indir</button>
+          </div>
+          <div class="row on">
+            <div class="nm">Tahsilat Listesi 2024.xlsx</div>
+            <div class="pt">C:\Arşiv\Muhasebe\Tahsilat Listesi 2024.xlsx</div>
+            <div class="sn">…<mark>tahsilat</mark> dökümü 12.500 TL…</div>
+            <div class="tags"><span class="tg">XLSX</span><span class="tg">Tahsilat</span></div>
+          </div>
+        </div>
+        <div class="pane" style="width:238px">
+          <div class="ptitle">Seçili evrak</div>
+          <div style="font-weight:600;font-size:14px">Tahsilat Listesi 2024.xlsx</div>
+          <div style="color:var(--ikincil);font-size:11.5px;margin-top:3px;word-break:break-all">C:\Arşiv\Muhasebe\Tahsilat Listesi 2024.xlsx</div>
+          <div style="margin-top:12px;font-size:12.5px;line-height:1.9">
+            <div><span style="color:var(--ikincil)">Tür</span> · XLSX</div>
+            <div><span style="color:var(--ikincil)">Etiket</span> · tahsilat</div>
+          </div>
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
+            <button class="btn pri">Ön izle</button>
+            <button class="btn sec">Yol kopyala</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">5</span>Jetonlar ve bileşenler</h2>
+  <div class="galwrap">
+    <div class="galcol">
+      <p class="gallbl">Açık tema</p>
+      <table class="tok">
+        <tr><th>Jeton</th><th>Değer</th></tr>
+        <tr><td>Zemin</td><td><span class="sw" style="background:#F1F3F7"></span>#F1F3F7</td></tr>
+        <tr><td>Yüzey</td><td><span class="sw" style="background:#FFFFFF"></span>#FFFFFF</td></tr>
+        <tr><td>Yüzey (tonlu)</td><td><span class="sw" style="background:#F6F8FB"></span>#F6F8FB</td></tr>
+        <tr><td>Metin</td><td><span class="sw" style="background:#101828"></span>#101828</td></tr>
+        <tr><td>İkincil metin</td><td><span class="sw" style="background:#667085"></span>#667085</td></tr>
+        <tr><td>Ayırıcı</td><td><span class="sw" style="background:#E4E7EC"></span>#E4E7EC</td></tr>
+        <tr><td>Vurgu</td><td><span class="sw" style="background:#0E7C6B"></span>#0E7C6B</td></tr>
+      </table>
+    </div>
+    <div class="galcol">
+      <p class="gallbl">Koyu tema</p>
+      <table class="tok">
+        <tr><th>Jeton</th><th>Değer</th></tr>
+        <tr><td>Zemin</td><td><span class="sw" style="background:#0E1116"></span>#0E1116</td></tr>
+        <tr><td>Yüzey</td><td><span class="sw" style="background:#161B22"></span>#161B22</td></tr>
+        <tr><td>Yüzey (tonlu)</td><td><span class="sw" style="background:#1B212A"></span>#1B212A</td></tr>
+        <tr><td>Metin</td><td><span class="sw" style="background:#E6EDF3"></span>#E6EDF3</td></tr>
+        <tr><td>İkincil metin</td><td><span class="sw" style="background:#8B949E"></span>#8B949E</td></tr>
+        <tr><td>Ayırıcı</td><td><span class="sw" style="background:#272E38"></span>#272E38</td></tr>
+        <tr><td>Vurgu</td><td><span class="sw" style="background:#4FD1B5"></span>#4FD1B5</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2><span class="n">6</span>Buton ve denetim takımı</h2>
+  <div class="galwrap">
+    <div class="galcol">
+      <p class="gallbl">Açık</p>
+      <div class="galv" style="background:#F1F3F7">
+        <div><button class="btn pri">Taramayı başlat</button> <button class="btn sec">Şimdi tara</button></div>
+        <div><button class="btn sec sm">Kaydet</button> <button class="btn sec sm dis">Duraklat</button> <button class="btn gho sm">CSV indir</button></div>
+        <div><button class="btn dan sm">Kaldır</button> <button class="btn link">Bağlantıyı test et</button></div>
+        <div class="in mini" style="width:220px">tümü <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <div class="in focus" style="width:220px">Odaklanmış alan</div>
+        <div class="tags"><span class="tg pri">Kasa açık</span><span class="tg">PDF</span><span class="tg">4 bekliyor</span></div>
+      </div>
+    </div>
+    <div class="galcol dark dark2">
+      <p class="gallbl">Koyu</p>
+      <div class="galv dk">
+        <div><button class="btn pri">Taramayı başlat</button> <button class="btn sec">Şimdi tara</button></div>
+        <div><button class="btn sec sm">Kaydet</button> <button class="btn sec sm dis">Duraklat</button> <button class="btn gho sm">CSV indir</button></div>
+        <div><button class="btn dan sm">Kaldır</button> <button class="btn link">Bağlantıyı test et</button></div>
+        <div class="in mini" style="width:220px;background:#1B212A">tümü <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <div class="in focus" style="width:220px;background:#161B22">Odaklanmış alan</div>
+        <div class="tags"><span class="tg pri">Kasa açık</span><span class="tg">PDF</span><span class="tg">4 bekliyor</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:22px">
+    <b>Hiçbir işlev kaybolmuyor:</b> 7 sekmenin tamamı, arama filtreleri, kayıtlı aramalar, etiketler, CSV, ön izleme penceresi,
+    AI adımları, tarama denetimleri, geçmiş, kayıt listesi, yedekler, ayarların tamamı ve ilk kurulum sihirbazı aynı kalıyor —
+    yalnız görünüm ve yerleşim değişiyor.
+  </div>
+
+</div>
+</body>
+</html>

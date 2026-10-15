@@ -3,8 +3,8 @@ import os,time
 from PySide6.QtCore import Qt,QTimer,QUrl
 from PySide6.QtGui import QStandardItem,QDesktopServices
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QScrollArea,QPushButton,QLineEdit,
-    QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar,QBoxLayout,QLabel,QSplitter)
-from .ui import bolme, card, label
+    QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar,QBoxLayout,QLabel,QSplitter,QFrame)
+from .ui import bolme, card, label, sayac, CardDelegate
 from .tasks import DatabaseTask,list_files
 from . import ai,backup,history,diagnostics
 
@@ -45,87 +45,95 @@ def scroll(widget):
 def install(w):
     # Existing behaviors are reparented, rather than duplicated or discarded.
     w._list_cache={}
-    search=w.yigin.widget(0); backups=w.yigin.widget(4); settings=w.yigin.widget(5); assistant=w.yigin.widget(6)
-    w.yigin.removeWidget(backups); w.yigin.removeWidget(assistant)
-    # Ara ekranı üç sütun işlik olarak hazır; üstüne arama çubuğu ve ilerleme eklenir.
-    search.layout().insertWidget(0,w.search_bar)
-    w.search_progress=QProgressBar(); w.search_progress.setRange(0,0); w.search_progress.setTextVisible(False); w.search_progress.hide()
-    search.layout().insertWidget(1,w.search_progress)
-    # AI: sol kurulum rail + sağ numaralı adımlar
-    kurulum,kurulum_layout=card(); kurulum.setObjectName("sideRail")
-    kurulum_layout.addWidget(label('KURULUM','eyebrow'))
+    # AI: sol kurulum paneli + sag numarali adimlar, tek yuzey uzerinde
+    kurulum=QWidget(); kurulum.setObjectName("sideRail"); kurulum.setAttribute(Qt.WA_StyledBackground, True)
+    kurulum_layout=QVBoxLayout(kurulum); kurulum_layout.setContentsMargins(16,16,16,16); kurulum_layout.setSpacing(10)
+    kurulum_layout.addWidget(label('Kurulum','eyebrow'))
     kurulum_layout.addWidget(w.ai_kurulum)
-    adimlar=QWidget(); adim_layout=QVBoxLayout(adimlar); adim_layout.setContentsMargins(0,0,0,0)
+    kurulum_layout.addStretch(1)
+    adimlar=QWidget(); adim_layout=QVBoxLayout(adimlar); adim_layout.setContentsMargins(16,14,16,14); adim_layout.setSpacing(14)
     for num,box,baslik in (('1',w.ai_soru,'SORU'),('2',w.ai_alinti,'ALINTILAR'),('3',w.ai_yanit,'YANIT')):
-        satir=QHBoxLayout()
-        rozet=QLabel(num); rozet.setObjectName("numb"); satir.addWidget(rozet,0,Qt.AlignTop)
-        adim,adim_inner=card(); adim_inner.addWidget(label(baslik,'eyebrow')); adim_inner.addWidget(box)
+        satir=QHBoxLayout(); satir.setSpacing(12)
+        rozet=QLabel(num); rozet.setObjectName("numb"); rozet.setFixedWidth(22); rozet.setAlignment(Qt.AlignCenter)
+        satir.addWidget(rozet,0,Qt.AlignTop)
+        adim=QWidget(); adim_inner=QVBoxLayout(adim); adim_inner.setContentsMargins(0,0,0,0); adim_inner.setSpacing(8)
+        adim_inner.addWidget(label(baslik,'eyebrow')); adim_inner.addWidget(box)
         satir.addWidget(adim,1); adim_layout.addLayout(satir)
-    adim_layout.addStretch(1)
+        if num=='3': adim_layout.addStretch(1)
     adim_kaydir = QScrollArea()
     adim_kaydir.setWidgetResizable(True)
     adim_kaydir.setFrameShape(QScrollArea.NoFrame)
     adim_kaydir.setWidget(adimlar)
     for box in (w.ai_kurulum,w.ai_soru,w.ai_alinti,w.ai_yanit):
         for text in box.findChildren(QLabel): text.setWordWrap(True)
-    w.ai_page=QWidget(); ai_sayfa=QVBoxLayout(w.ai_page); ai_sayfa.setContentsMargins(0,0,0,0)
+    w.ai_page=QWidget(); ai_sayfa=QVBoxLayout(w.ai_page); ai_sayfa.setContentsMargins(22,18,22,20); ai_sayfa.setSpacing(14)
     ai_split=QSplitter(Qt.Horizontal); ai_split.setChildrenCollapsible(False)
+    yuzey=QFrame(); yuzey.setObjectName("card"); yl=QHBoxLayout(yuzey); yl.setContentsMargins(0,0,0,0); yl.setSpacing(0)
     ai_split.addWidget(kurulum); ai_split.addWidget(adim_kaydir)
-    ai_split.setStretchFactor(0,0); ai_split.setStretchFactor(1,1); ai_split.setSizes([250,730])
-    w.ai_split=ai_split; ai_sayfa.addWidget(ai_split)
-    w.backup_card,backup_layout=card()
-    baslik_satir=QHBoxLayout()
-    baslik_satir.addWidget(label('Yedekler','baslik'))
-    w.yedek_sayi=label('','pill'); w.yedek_sayi.hide(); baslik_satir.addWidget(w.yedek_sayi)
-    baslik_satir.addStretch(1)
-    backup_layout.addLayout(baslik_satir)
-    backup_layout.addWidget(backups)
-    w.yedek_bolum.layout().addWidget(w.backup_card)
-    settings_index=w.yigin.indexOf(settings); w.yigin.removeWidget(settings)
-    w.settings_page=QWidget(); QVBoxLayout(w.settings_page).addWidget(scroll(settings))
-    w.yigin.insertWidget(settings_index,w.settings_page)
-    files=QWidget(); layout=QVBoxLayout(files); layout.setContentsMargins(0,0,0,0)
-    filters=QHBoxLayout(); w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText('Dosya adı veya tam yol')
+    ai_split.setStretchFactor(0,0); ai_split.setStretchFactor(1,1); ai_split.setSizes([260,720])
+    yl.addWidget(ai_split)
+    w.ai_split=ai_split; ai_sayfa.addWidget(yuzey,1)
+    ham = getattr(w,'_ai_ham',None)
+    if ham is not None:
+        w.yigin.removeWidget(ham)
+        ham.setParent(None)
+        ham.deleteLater()
+    w.yigin.insertWidget(1,w.ai_page)
+    files=QWidget(); layout=QVBoxLayout(files); layout.setContentsMargins(22,18,22,20); layout.setSpacing(14)
+    filters=QHBoxLayout(); filters.setSpacing(9)
+    w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText('Dosya adı veya tam yol')
     w.file_status=QComboBox(); w.file_status.addItem('Tüm durumlar','')
     for value,caption in STATUS.items(): w.file_status.addItem(caption,value)
     filters.addWidget(w.file_filter,1); filters.addWidget(w.file_status)
-    w.file_notice=label('','pill'); w.file_notice.hide(); filters.addWidget(w.file_notice); layout.addLayout(filters)
+    w.file_notice=sayac(''); w.file_notice.hide(); filters.addWidget(w.file_notice); layout.addLayout(filters)
     from PySide6.QtGui import QStandardItemModel
+    yuzey2=QFrame(); yuzey2.setObjectName("card"); y2l=QHBoxLayout(yuzey2); y2l.setContentsMargins(0,0,0,0); y2l.setSpacing(0)
     split=QSplitter(Qt.Horizontal); split.setChildrenCollapsible(False)
-    sol=QWidget(); sl=QVBoxLayout(sol); sl.setContentsMargins(0,18,0,0)
-    sl.addWidget(label('KAYITLAR','eyebrow'))
-    w.file_model=QStandardItemModel(); w.file_list=QListView(); w.file_list.setModel(w.file_model); w.file_list.setWordWrap(True)
+    w.file_model=QStandardItemModel(); w.file_list=QListView(); w.file_list.setModel(w.file_model)
+    w.file_list.setObjectName("cardList"); w.file_list.setWordWrap(True)
+    w.file_list.setItemDelegate(CardDelegate(w.file_list))
+    w.file_list.setSpacing(2)
     w.file_list.clicked.connect(w._dosya_ayrinti)
-    sl.addWidget(w.file_list,1); split.addWidget(sol)
-    dosya,dl=card(); dl.addWidget(label('SEÇİLİ KAYIT','eyebrow'))
+    split.addWidget(w.file_list)
+    dosya=QWidget(); dl=QVBoxLayout(dosya); dl.setContentsMargins(16,14,16,16); dl.setSpacing(10)
+    dl.addWidget(label('Seçili kayıt','eyebrow'))
     w.dosya_ad=label('Bir kayıt seçin','subheading'); w.dosya_ad.setWordWrap(True); dl.addWidget(w.dosya_ad)
     w.dosya_yol=label('','ikincil'); w.dosya_yol.setTextFormat(Qt.PlainText)
-    w.dosya_yol.setTextInteractionFlags(Qt.TextSelectableByMouse); w.dosya_yol.setWordWrap(True); dl.addWidget(w.dosya_yol)
+    w.dosya_yol.setTextInteractionFlags(Qt.TextSelectableByMouse); w.dosya_yol.setWordWrap(True)
+    w.dosya_yol.setMaximumHeight(60); dl.addWidget(w.dosya_yol)
     w.dosya_bilgi=label('','ikincil'); w.dosya_bilgi.setWordWrap(True); dl.addWidget(w.dosya_bilgi)
     dl.addWidget(bolme())
     dl.addStretch(1)
     w.dosya_onizle=QPushButton('Ön izle'); w.dosya_onizle.setProperty('birincil',True)
     w.dosya_onizle.clicked.connect(w._file_open); w.dosya_onizle.setEnabled(False); dl.addWidget(w.dosya_onizle)
-    split.addWidget(dosya); split.setStretchFactor(0,1); split.setStretchFactor(1,0); split.setSizes([520,280])
+    split.addWidget(dosya); split.setStretchFactor(0,1); split.setStretchFactor(1,0); split.setSizes([560,300])
     w.dosya_split=split
-    layout.addWidget(split,1)
-    controls=QHBoxLayout()
-    refresh=QPushButton('Yenile'); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
-    errors=QPushButton('Kapsam'); errors.setToolTip('Kapsam hatalarını göster'); errors.clicked.connect(w._coverage_report)
-    prev=QPushButton('Önceki'); prev.clicked.connect(lambda:w._files_page(-1))
-    w.file_next=QPushButton('Sonraki'); w.file_next.clicked.connect(lambda:w._files_page(1))
+    y2l.addWidget(split)
+    layout.addWidget(yuzey2,1)
+    controls=QHBoxLayout(); controls.setSpacing(8)
+    refresh=QPushButton('Yenile'); refresh.setProperty('kucuk',True); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
+    errors=QPushButton('Kapsam'); errors.setProperty('kucuk',True); errors.setToolTip('Kapsam hatalarını göster'); errors.clicked.connect(w._coverage_report)
+    prev=QPushButton('Önceki'); prev.setProperty('kucuk',True); prev.clicked.connect(lambda:w._files_page(-1))
+    w.file_next=QPushButton('Sonraki'); w.file_next.setProperty('kucuk',True); w.file_next.clicked.connect(lambda:w._files_page(1))
     for button in (refresh,errors,prev,w.file_next): controls.addWidget(button)
-    layout.addLayout(controls); w.yigin.insertWidget(4,files)
+    controls.addStretch(1)
+    layout.addLayout(controls)
+    # Taranmis Evraklar: Ayarlar'dan hemen once, kimligiyle bulunur.
+    ayarlar = None
+    for index in range(w.yigin.count()):
+        if w.yigin.widget(index) is getattr(w,'settings_page',None):
+            ayarlar = index
+            break
+    olcum = 5 if ayarlar is None else ayarlar
+    w.yigin.insertWidget(olcum, files)
     w._dosya_ayrinti()
-    w.yigin.insertWidget(1,w.ai_page)
     w.file_offset=0; w.file_rows=[]
     w.file_debounce=QTimer(w); w.file_debounce.setSingleShot(True); w.file_debounce.setInterval(300)
     w.file_debounce.timeout.connect(lambda:w._files_refresh(reset=True))
     w.file_filter.textChanged.connect(lambda:w.file_debounce.start()); w.file_status.currentIndexChanged.connect(lambda:w._files_refresh(reset=True))
     w.file_list.doubleClicked.connect(w._file_open)
     w.nav.blockSignals(True); w.nav.clear(); w.nav.addItems(['Ara','AI ile ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']); w.nav.setCurrentRow(0); w.nav.blockSignals(False)
-    from . import theme
-    for i,kind in enumerate(('search','search','folder','scan','history','folder','settings')): w.nav.item(i).setIcon(theme.symbol_icon(kind))
+    w._nav_ikonlari()
     w.yigin.setCurrentIndex(0)
 
 def layout_cards(w):
@@ -171,8 +179,6 @@ def refresh_backups(w):
         for b in rows:
             item=QStandardItem(f'{os.path.basename(b["path"])}\n{b["boyut"]//1024} KB • Şifreli kasa')
             item.setEditable(False); item.setData(b['path']); w.yedek_model.appendRow(item)
-        w.yedek_sayi.setText(f'{len(rows)} yedek')
-        w.yedek_sayi.setVisible(bool(rows))
         w.yedek_panel.setCurrentIndex(0 if rows else 1)
     job(w,'backups',lambda _:backup.list_backups(directory),ready)
 

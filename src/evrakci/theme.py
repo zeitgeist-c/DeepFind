@@ -1,18 +1,25 @@
-"""Tasarim jetonlari: acik/koyu/sistem. Plan bolum 19 baslangic paleti."""
+"""Tasarım jetonları ve uygulama stil sayfası (0.5 arayüz dili).
+
+Tek yüzey + kıl payı ayırıcı: kart içinde kart yok. Ray temayla uyumludur
+(açıkta yumuşak gri, koyuda nötr koyu). Kod içinde sabit renk kullanılmaz;
+renk gereken yerde `pal()` çağrılır.
+"""
 from __future__ import annotations
 
 TOKENS = {
     "acik": {
-        "zemin": "#F4F6FA", "panel": "#FFFFFF", "metin": "#17243B", "buton_metin": "#FFFFFF",
-        "ikincil": "#65748B", "marka": "#137C70", "sinir": "#E1E7F0",
-        "secili": "#E9F6F2", "uyari": "#986A19", "hata": "#BC4253", "basari": "#137C70",
-        "ray": "#EEF2F8",
+        "zemin": "#F1F3F7", "panel": "#FFFFFF", "yuzey2": "#F6F8FB",
+        "metin": "#101828", "ikincil": "#667085", "buton_metin": "#FFFFFF",
+        "marka": "#0E7C6B", "marka_tint": "#E7F4F1", "sinir": "#E4E7EC",
+        "secili": "#EFF6F4", "uyari": "#B54708", "hata": "#B42318", "basari": "#0E7C6B",
+        "ray": "#F6F8FB", "ray_aktif": "#E8EEF3", "ray_metin": "#101828", "ray_ikincil": "#667085",
     },
     "koyu": {
-        "zemin": "#0D1523", "panel": "#172237", "metin": "#F1F5FC", "buton_metin": "#09251F",
-        "ikincil": "#B1BED3", "marka": "#67D9BC", "sinir": "#455570",
-        "secili": "#1C3B3B", "uyari": "#E5B969", "hata": "#F18D99", "basari": "#67D9BC",
-        "ray": "#101C30",
+        "zemin": "#0E1116", "panel": "#161B22", "yuzey2": "#1B212A",
+        "metin": "#E6EDF3", "ikincil": "#9BA6B4", "buton_metin": "#062B24",
+        "marka": "#4FD1B5", "marka_tint": "#15332D", "sinir": "#333B47",
+        "secili": "#1E312E", "uyari": "#F0B45C", "hata": "#FF8A8A", "basari": "#4FD1B5",
+        "ray": "#12171D", "ray_aktif": "#232A34", "ray_metin": "#E6EDF3", "ray_ikincil": "#9BA6B4",
     },
 }
 
@@ -37,27 +44,29 @@ def app_icon():
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
     painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor("#137C70"))
+    painter.setBrush(QColor("#0E7C6B"))
     painter.drawRoundedRect(QRectF(0, 0, 64, 64), 14, 14)
     painter.setBrush(QColor("#FFFFFF"))
     painter.drawRoundedRect(QRectF(19, 12, 28, 40), 4, 4)
-    painter.setPen(QPen(QColor("#137C70"), 3))
+    painter.setPen(QPen(QColor("#0E7C6B"), 3))
     for y, end in ((25, 40), (33, 40), (41, 35)):
         painter.drawLine(25, y, end, y)
     painter.end()
     return QIcon(pixmap)
 
 
-def symbol_icon(kind, color="#91A3BF"):
+def symbol_icon(kind, color=None):
     """Uygulamanın küçük, tutarlı çizgi simgeleri; harici font gerekmez."""
     from PySide6.QtCore import Qt, QRectF
     from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+    if color is None:
+        color = pal()["ikincil"]
     pixmap = QPixmap(48, 48)
     pixmap.fill(Qt.transparent)
     p = QPainter(pixmap)
     p.setRenderHint(QPainter.Antialiasing)
     p.scale(2, 2)
-    pen = QPen(QColor(color), 1.6)
+    pen = QPen(QColor(color), 1.5)
     pen.setCapStyle(Qt.RoundCap)
     pen.setJoinStyle(Qt.RoundJoin)
     p.setPen(pen)
@@ -67,6 +76,12 @@ def symbol_icon(kind, color="#91A3BF"):
         p.drawLine(x, 6, other, 12); p.drawLine(other, 12, x, 18)
     elif kind == "search":
         p.drawEllipse(QRectF(4, 3, 13, 13)); p.drawLine(16, 15, 21, 20)
+    elif kind == "ai":
+        p.drawLine(12, 3, 12, 6); p.drawLine(12, 18, 12, 21)
+        p.drawLine(5, 5, 7, 7); p.drawLine(17, 17, 19, 19)
+        p.drawLine(3, 12, 6, 12); p.drawLine(18, 12, 21, 12)
+        p.drawLine(5, 19, 7, 17); p.drawLine(17, 7, 19, 5)
+        p.drawEllipse(QRectF(9, 9, 6, 6))
     elif kind == "folder":
         p.drawRoundedRect(QRectF(3, 7, 18, 13), 2, 2); p.drawLine(3, 7, 3, 4)
         p.drawLine(3, 4, 10, 4); p.drawLine(10, 4, 13, 7)
@@ -92,6 +107,8 @@ def symbol_icon(kind, color="#91A3BF"):
     elif kind == "exit":
         p.drawLine(10, 3, 4, 3); p.drawLine(4, 3, 4, 21); p.drawLine(4, 21, 10, 21)
         p.drawLine(10, 12, 21, 12); p.drawLine(17, 8, 21, 12); p.drawLine(21, 12, 17, 16)
+    elif kind == "check":
+        p.drawLine(4, 12, 10, 18); p.drawLine(10, 18, 20, 6)
     else:
         p.drawRoundedRect(QRectF(6, 3, 13, 18), 2, 2)
         for y in (9, 13, 17): p.drawLine(9, y, 16, y)
@@ -105,101 +122,157 @@ def resolve(mode: str, system_dark: bool = False) -> str:
     return "acik"
 
 
-def stylesheet(pal: dict) -> str:
+def pal(**over) -> dict:
+    """Etkin temanın jetonları. Kod içinde sabit renk yerine bunu kullanın."""
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance()
+    name = "acik"
+    if app is not None:
+        name = app.property("evrakci_theme") or "acik"
+    values = dict(TOKENS.get(name, TOKENS["acik"]))
+    values.update(over)
+    return values
+
+
+def stylesheet(p: dict) -> str:
     from pathlib import Path
     assets = (Path(__file__).parent / "assets").as_posix()
-    check = "check-dark.svg" if pal is TOKENS["koyu"] else "check-light.svg"
+    check = "check-dark.svg" if p.get("zemin") == TOKENS["koyu"]["zemin"] else "check-light.svg"
     return f"""
-QWidget {{ color: {pal['metin']}; font-family: 'Segoe UI'; font-size: 14px; }}
-QMainWindow, QDialog, QWizard, QWidget#kok {{ background: {pal['zemin']}; }}
-QFrame#card, QWidget#pageCard, QWidget#preview, QWizardPage#setupPage {{
- background: {pal['panel']}; border: 1px solid {pal['sinir']}; border-radius: 16px; }}
-QFrame#sideRail {{ background: {pal['ray']}; border: 1px solid {pal['sinir']}; border-radius: 12px; }}
-QLabel#numb {{ background: {pal['marka']}; color: {pal['buton_metin']};
- border-radius: 11px; font-weight: 700; font-size: 13px; padding: 2px 7px; }}
-QFrame#bolme {{ background: {pal['sinir']}; border: none; min-height: 1px; max-height: 1px; }}
+QWidget {{ color: {p['metin']}; font-family: 'Segoe UI'; font-size: 14px; }}
+QMainWindow, QDialog, QWizard, QWidget#kok, QWidget#sayfa {{ background: {p['zemin']}; }}
+
+/* -- yüzeyler: tek katman, kıl payı çerçeve -- */
+QFrame#card, QWidget#pageCard, QWidget#preview, QWizardPage#setupPage, QFrame#panel {{
+ background: {p['panel']}; border: 1px solid {p['sinir']}; border-radius: 12px; }}
+QFrame#sideRail, QWidget#sideRail {{ background: {p['yuzey2']}; border: none;
+ border-right: 1px solid {p['sinir']}; border-radius: 0px; }}
+QFrame#rail {{ background: {p['ray']}; border: none;
+ border-right: 1px solid {p['sinir']}; border-radius: 0px; }}
+QFrame#rail QLabel {{ background: transparent; }}
+QWidget#scanBody {{ background: {p['zemin']}; border: none; }}
+QWidget#headBar {{ background: {p['panel']}; border-bottom: 1px solid {p['sinir']}; }}
+QFrame#ayrac {{ background: {p['sinir']}; border: none; min-height: 1px; max-height: 1px; }}
+QFrame#ayracD {{ background: {p['sinir']}; border: none; min-width: 1px; max-width: 1px; }}
+QFrame#bolme {{ background: {p['sinir']}; border: none; min-height: 1px; max-height: 1px; }}
+QWidget#statStrip {{ background: {p['panel']}; border: 1px solid {p['sinir']}; border-radius: 12px; }}
 QStackedWidget {{ background: transparent; }}
-QWidget#scanBody {{ background: {pal['panel']}; border: none; }}
-QFrame#rail {{ background: #112039; border-radius: 16px; }}
-QFrame#rail QLabel {{ color: #F3F7FF; background: transparent; }}
-QFrame#rail QLabel[ikincil="true"] {{ color: #98A9C3; }}
-QFrame#rail QLabel[eyebrow="true"] {{ color: #8195B5; }}
-QLabel[eyebrow="true"] {{ color: {pal['ikincil']}; font-size: 11px; font-weight: 600; }}
-QLabel[subheading="true"] {{ font-size: 17px; font-weight: 600; }}
-QLabel[hero="true"] {{ font-size: 29px; font-weight: 700; }}
-QLabel[baslik="true"][hero="true"] {{ font-size: 32px; }}
-QLabel[pill="true"] {{ color: {pal['marka']}; background: {pal['secili']};
- padding: 6px 11px; border-radius: 12px; font-size: 12px; }}
-QLabel#step {{ color: #91A5C3; padding: 9px 10px; border-radius: 10px; }}
-QLabel#step[active="true"] {{ color: #FFFFFF; background: #243E57; font-weight: 600; }}
-QLabel#step[done="true"] {{ color: #70D6BC; }}
+QScrollArea {{ background: transparent; border: none; }}
+QScrollArea > QWidget > QWidget {{ background: transparent; }}
+QScrollArea#paperCanvas {{ background: {p['zemin']}; border: 1px solid {p['sinir']}; border-radius: 10px; }}
+QWidget#ayarGovde {{ background: {p['zemin']}; }}
+
+/* -- tipografi -- */
+QLabel[eyebrow="true"] {{ color: {p['ikincil']}; font-size: 11px; font-weight: 700; }}
+QLabel[subheading="true"] {{ font-size: 15px; font-weight: 600; }}
+QLabel[hero="true"] {{ font-size: 28px; font-weight: 700; }}
+QLabel[baslik="true"][hero="true"] {{ font-size: 30px; }}
+QLabel[baslik="true"] {{ font-size: 19px; font-weight: 700; }}
+QLabel[ikincil="true"] {{ color: {p['ikincil']}; }}
+QLabel[uyari="true"] {{ color: {p['uyari']}; }}
+QLabel[hata="true"] {{ color: {p['hata']}; }}
+QLabel[basari="true"] {{ color: {p['basari']}; }}
+QLabel#step {{ color: {p['ray_ikincil']}; padding: 9px 10px; border-radius: 8px; }}
+QLabel#step[active="true"] {{ color: {p['metin']}; background: {p['ray_aktif']}; font-weight: 600; }}
+QLabel#step[done="true"] {{ color: {p['marka']}; }}
+QLabel#numb {{ background: {p['marka']}; color: {p['buton_metin']};
+ border-radius: 9px; font-weight: 700; font-size: 12px; padding: 2px 7px; }}
+
+/* -- rozetler -- */
+QLabel[pill="true"] {{ color: {p['marka']}; background: {p['marka_tint']};
+ padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }}
+QLabel[sayac="true"] {{ color: {p['ikincil']}; background: {p['yuzey2']};
+ border: 1px solid {p['sinir']}; padding: 2px 9px; border-radius: 999px; font-size: 12px; }}
+
+/* -- girdiler -- */
 QListWidget, QListView, QTreeView, QTableWidget, QTextBrowser, QLineEdit, QComboBox,
-QSpinBox, QTimeEdit, QPlainTextEdit {{ background: {pal['panel']}; color: {pal['metin']};
- border: 1px solid {pal['sinir']}; border-radius: 9px; padding: 8px;
- selection-background-color: {pal['secili']}; selection-color: {pal['metin']}; }}
-QLineEdit#search {{ min-height: 34px; padding: 10px 16px; font-size: 15px;
- background: {pal['panel']}; border-radius: 12px; }}
-QLineEdit:focus, QComboBox:focus, QTimeEdit:focus, QSpinBox:focus {{ border: 1px solid {pal['marka']}; }}
-QComboBox {{ padding-right: 28px; }}
-QComboBox::drop-down {{ border: none; width: 26px; }}
-QComboBox::down-arrow {{ image: url("{assets}/chevron-down.svg"); width: 12px; height: 8px; }}
-QTimeEdit, QSpinBox {{ padding-right: 28px; }}
-QTimeEdit::up-button, QSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; border: none; width: 24px; }}
-QTimeEdit::down-button, QSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; border: none; width: 24px; }}
+QSpinBox, QTimeEdit, QPlainTextEdit {{ background: {p['panel']}; color: {p['metin']};
+ border: 1px solid {p['sinir']}; border-radius: 8px; padding: 7px 10px;
+ selection-background-color: {p['secili']}; selection-color: {p['metin']}; }}
+QLineEdit:focus, QComboBox:focus, QTimeEdit:focus, QSpinBox:focus, QPlainTextEdit:focus,
+QTextBrowser:focus {{ border: 1px solid {p['marka']}; }}
+QLineEdit#search {{ min-height: 34px; padding: 9px 14px; font-size: 15px; border-radius: 10px; }}
+QComboBox {{ padding-right: 26px; }}
+QComboBox::drop-down {{ border: none; width: 24px; }}
+QComboBox::down-arrow {{ image: url("{assets}/chevron-down.svg"); width: 11px; height: 7px; }}
+QTimeEdit, QSpinBox {{ padding-right: 26px; }}
+QTimeEdit::up-button, QSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; border: none; width: 22px; }}
+QTimeEdit::down-button, QSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; border: none; width: 22px; }}
 QTimeEdit::up-arrow, QSpinBox::up-arrow {{ image: url("{assets}/chevron-up.svg"); width: 10px; height: 6px; }}
 QTimeEdit::down-arrow, QSpinBox::down-arrow {{ image: url("{assets}/chevron-down.svg"); width: 10px; height: 6px; }}
-QPushButton {{ background: {pal['panel']}; color: {pal['metin']};
- border: 1px solid {pal['sinir']}; border-radius: 9px; padding: 10px 16px; font-weight: 600; }}
-QPushButton:hover {{ background: {pal['secili']}; border-color: {pal['marka']}; }}
-QPushButton:pressed {{ background: {pal['sinir']}; }}
-QPushButton:focus {{ border: 2px solid {pal['marka']}; }}
-QPushButton:default, QPushButton[birincil="true"] {{ background: {pal['marka']};
- color: {pal['buton_metin']}; border: none; }}
-QPushButton[ghost="true"] {{ background: transparent; border: none; color: {pal['marka']}; font-weight: 600; }}
-QPushButton[ghost="true"]:hover {{ background: {pal['secili']}; border: none; }}
-QPushButton:disabled {{ color: {pal['ikincil']}; background: {pal['zemin']}; }}
-QListView::item {{ padding: 12px; border-radius: 8px; }}
-QListView::item:hover {{ background: {pal['zemin']}; }}
-QListView::item:selected {{ background: {pal['secili']}; color: {pal['metin']}; }}
+QComboBox QAbstractItemView {{ background: {p['panel']}; color: {p['metin']};
+ border: 1px solid {p['sinir']}; padding: 4px; selection-background-color: {p['secili']}; }}
+
+/* -- butonlar: üç çeşit -- */
+QPushButton {{ background: {p['panel']}; color: {p['metin']};
+ border: 1px solid {p['sinir']}; border-radius: 8px; padding: 7px 13px; font-weight: 600; }}
+QPushButton:hover {{ background: {p['secili']}; border-color: {p['marka']}; }}
+QPushButton:pressed {{ background: {p['sinir']}; }}
+QPushButton:default, QPushButton[birincil="true"] {{ background: {p['marka']};
+ color: {p['buton_metin']}; border: 1px solid transparent; }}
+QPushButton:default:hover, QPushButton[birincil="true"]:hover {{ border-color: {p['metin']}; }}
+QPushButton[ghost="true"] {{ background: transparent; border: none; color: {p['marka']}; font-weight: 600; }}
+QPushButton[ghost="true"]:hover {{ background: {p['marka_tint']}; border: none; }}
+QPushButton[tehlike="true"] {{ background: transparent; color: {p['hata']}; border: 1px solid {p['sinir']}; }}
+QPushButton[tehlike="true"]:hover {{ border-color: {p['hata']}; background: transparent; }}
+QPushButton[kucuk="true"] {{ padding: 4px 10px; font-size: 12px; border-radius: 7px; }}
+QPushButton[dar="true"] {{ padding: 5px 8px; }}
+QPushButton:disabled {{ color: {p['ikincil']}; background: {p['panel']}; border-color: {p['sinir']}; }}
+QPushButton[birincil="true"]:disabled {{ background: {p['sinir']}; color: {p['ikincil']}; }}
+
+/* -- listeler -- */
+QListView::item {{ padding: 10px; border-radius: 8px; }}
+QListView::item:hover {{ background: {p['yuzey2']}; }}
+QListView::item:selected {{ background: {p['secili']}; color: {p['metin']}; }}
 QListView#cardList {{ border: none; padding: 0; background: transparent; }}
-QTreeView {{ background: {pal['zemin']}; alternate-background-color: {pal['panel']}; }}
-QTreeView::item {{ min-height: 28px; }}
-QTreeView::item:selected {{ background: {pal['secili']}; color: {pal['metin']}; border: 1px solid {pal['marka']}; }}
-QComboBox QAbstractItemView {{ background: {pal['panel']}; color: {pal['metin']}; selection-background-color: {pal['secili']}; }}
-QFrame#rail QPushButton {{ background: #1B304C; color: #D9E4F5; border-color: #344963; padding: 8px 5px; }}
-QFrame#rail QPushButton:hover {{ background: #25435A; border-color: #70D6BC; }}
-QListWidget#navigation {{ background: transparent; color: #A9B9D1; border: none; padding: 0; }}
-QListWidget#navigation::item {{ padding: 13px 14px; margin: 3px 0; border-radius: 10px; }}
-QListWidget#navigation::item:hover {{ background: #1B304C; }}
-QListWidget#navigation::item:selected {{ background: #25435A; font-weight: 600; color: #FFFFFF; }}
-QLabel[ikincil="true"] {{ color: {pal['ikincil']}; }}
-QLabel[baslik="true"] {{ font-size: 23px; font-weight: 700; }}
-QLabel[uyari="true"] {{ color: {pal['uyari']}; }}
-QLabel[hata="true"] {{ color: {pal['hata']}; }}
-QLabel[basari="true"] {{ color: {pal['basari']}; }}
-QCheckBox {{ spacing: 10px; padding: 5px 0; }}
-QCheckBox::indicator {{ width: 18px; height: 18px; }}
-QProgressBar {{ border: none; background: {pal['sinir']}; border-radius: 5px; min-height: 8px; }}
-QProgressBar::chunk {{ background: {pal['marka']}; border-radius: 5px; }}
-QStatusBar {{ background: {pal['zemin']}; color: {pal['ikincil']}; border: none; font-size: 12px; }}
+QTreeView {{ background: {p['panel']}; alternate-background-color: {p['yuzey2']}; }}
+QTreeView::item {{ min-height: 26px; }}
+QTreeView::item:selected {{ background: {p['secili']}; color: {p['metin']}; }}
+QHeaderView::section {{ background: {p['yuzey2']}; padding: 9px; border: none;
+ border-bottom: 1px solid {p['sinir']}; }}
+
+/* -- ray -- */
+QListWidget#navigation {{ background: transparent; color: {p['ray_metin']};
+ border: none; padding: 0; }}
+QListWidget#navigation::item {{ padding: 8px 10px; margin: 1px 0; border-radius: 8px; }}
+QListWidget#navigation::item:hover {{ background: {p['ray_aktif']}; }}
+QListWidget#navigation::item:selected {{ background: {p['ray_aktif']}; font-weight: 600; color: {p['metin']}; }}
+QFrame#rail QPushButton {{ background: transparent; color: {p['ray_metin']};
+ border: 1px solid {p['sinir']}; padding: 7px 8px; text-align: left; }}
+QFrame#rail QPushButton:hover {{ background: {p['ray_aktif']}; border-color: {p['marka']}; }}
+
+/* -- diğer -- */
+QCheckBox {{ spacing: 9px; padding: 4px 0; }}
+QCheckBox::indicator {{ width: 18px; height: 18px; border: 1px solid {p['sinir']};
+ border-radius: 4px; background: {p['panel']}; }}
+QCheckBox::indicator:checked {{ background: {p['marka']}; border-color: {p['marka']};
+ image: url("{assets}/{check}"); }}
+QProgressBar {{ border: none; background: {p['sinir']}; border-radius: 4px; min-height: 6px; max-height: 6px; }}
+QProgressBar::chunk {{ background: {p['marka']}; border-radius: 4px; }}
+QStatusBar {{ background: {p['yuzey2']}; color: {p['ikincil']};
+ border-top: 1px solid {p['sinir']}; font-size: 12px; }}
 QStatusBar::item {{ border: none; }}
-QMenuBar, QMenu {{ background: {pal['panel']}; color: {pal['metin']}; }}
-QMenu::item:selected {{ background: {pal['secili']}; }}
-QSplitter::handle {{ background: {pal['zemin']}; width: 12px; }}
-QScrollArea {{ background: transparent; border: none; }}
-QScrollArea#paperCanvas {{ background: {pal['zemin']}; border-radius: 10px; }}
-QScrollBar:vertical {{ background: transparent; width: 7px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: {pal['sinir']}; border-radius: 3px; min-height: 24px; }}
+QMenuBar, QMenu {{ background: {p['panel']}; color: {p['metin']}; }}
+QMenu::item:selected {{ background: {p['secili']}; }}
+QSplitter::handle {{ background: {p['sinir']}; width: 1px; height: 1px; }}
+QSplitter::handle:hover {{ background: {p['marka']}; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {p['sinir']}; border-radius: 4px; min-height: 26px; }}
+QScrollBar::handle:vertical:hover {{ background: {p['ikincil']}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
-QCheckBox::indicator {{ border: 1px solid {pal['sinir']}; border-radius: 4px; background: {pal['panel']}; }}
-QCheckBox::indicator:checked {{ background: {pal['marka']}; border-color: {pal['marka']}; image: url("{assets}/{check}"); }}
-QHeaderView::section {{ background: {pal['secili']}; padding: 10px; border: none; }}
-QToolTip {{ background: {pal['panel']}; color: {pal['metin']}; border: 1px solid {pal['sinir']}; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar::handle:horizontal {{ background: {p['sinir']}; border-radius: 4px; min-width: 26px; }}
+QScrollBar::handle:horizontal:hover {{ background: {p['ikincil']}; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
+QToolTip {{ background: {p['panel']}; color: {p['metin']}; border: 1px solid {p['sinir']}; }}
+QPlainTextEdit#log {{ font-family: 'Cascadia Mono', 'Consolas'; font-size: 12px; }}
 """
 
+
 def apply(app, mode: str) -> str:
-    """Temayi uygula, cozulmus adi don (sistem->acik/koyu)."""
+    """Temayı uygula, çözülmüş adı döndür (sistem->acik/koyu)."""
     from PySide6.QtGui import QStyleHints
     install_turkish(app)
     from PySide6.QtCore import QSettings
@@ -236,7 +309,7 @@ def scan_icons(paused=False):
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.drawPixmap(10, 10, app_icon().pixmap(44, 44))
-        painter.setPen(QPen(QColor("#67D9BC"), 5))
+        painter.setPen(QPen(QColor("#4FD1B5"), 5))
         if paused:
             painter.drawLine(24, 54, 24, 63)
             painter.drawLine(36, 54, 36, 63)

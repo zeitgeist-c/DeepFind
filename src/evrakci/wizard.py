@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFileSystemMod
                                QLabel, QLineEdit, QListView, QPushButton, QTreeView,
                                QVBoxLayout, QWizard, QWizardPage, QFrame, QSplitter)
 from .theme import app_icon, install_turkish
-from .ui import brand, card, label
+from .ui import brand, bolme, card, label
 from .ui import CardDelegate
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QAbstractItemView
@@ -40,8 +40,8 @@ class Sihirbaz(QWizard):
         self.setWindowTitle("Evrakçı — İlk kurulum")
         self.setWindowIcon(app_icon())
         self.setWizardStyle(QWizard.ClassicStyle)
-        self.setMinimumSize(1000, 660)
-        self.resize(1080, 700)
+        self.setMinimumSize(980, 640)
+        self.resize(1060, 690)
         self.setOption(QWizard.NoBackButtonOnStartPage)
         self.setButtonLayout([QWizard.CancelButton, QWizard.CustomButton1, QWizard.Stretch, QWizard.BackButton,
                               QWizard.NextButton, QWizard.FinishButton])
@@ -71,13 +71,14 @@ class Sihirbaz(QWizard):
         self.secim["tema"] = self.tema.currentData()
         rail = QFrame()
         rail.setObjectName("rail")
-        rail.setFixedWidth(242)
+        rail.setFixedWidth(258)
         rail_layout = QVBoxLayout(rail)
-        rail_layout.setContentsMargins(22, 24, 22, 24)
-        rail_layout.setSpacing(6)
-        brand(rail_layout, size=38)
-        rail_layout.addSpacing(12)
-        rail_layout.addWidget(label("ÇALIŞMA ALANINIZI KURALIM", "eyebrow"))
+        rail_layout.setContentsMargins(24, 26, 24, 26)
+        rail_layout.setSpacing(2)
+        brand(rail_layout, size=32)
+        rail_layout.addSpacing(18)
+        rail_layout.addWidget(label("İlk kurulum", "eyebrow"))
+        rail_layout.addSpacing(6)
         self.steps = []
         for i, title in enumerate(("Hoş geldiniz", "Kasa şifresi", "Klasörler", "Düzen", "Son kontrol")):
             step = label(f"{i + 1:02d}   {title}")
@@ -85,7 +86,8 @@ class Sihirbaz(QWizard):
             rail_layout.addWidget(step)
             self.steps.append(step)
         rail_layout.addStretch()
-        rail_layout.addWidget(label("Belgeleriniz yerinde.\nAramanız size özel.", "subheading"))
+        rail_layout.addWidget(bolme())
+        rail_layout.addSpacing(14)
         rail_layout.addWidget(label("Kaynak belgeleriniz korunur.\nArama bilgileri şifreli saklanır.", "ikincil"))
         self._rail = rail
         self.setSideWidget(rail)
