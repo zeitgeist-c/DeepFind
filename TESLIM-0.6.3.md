@@ -16,6 +16,9 @@ tablosu kaldırıldı; `docs_fts` tek indekste katlanmış metin taşıyor
   katlanmış sorgu 15 ms).
 - EXE FileVersion/ProductVersion **0.6.3**; BAT aynı sürüm EXE'sini çalıştırır;
   manifest 0.6.3.
+- `Evrakçı-0.6.3.zip`: **169.624.208 bayt**. SHA-256:
+  `264e7875d15bbdcaa018209ebf14483e55d5a6fe453511cdda06963e833a5ecb`. ZIP CRC
+  doğrulanmış; paketli EXE smoke 25/25 GEÇTİ.
 - Yeni CLI: `evrakci --kasa <yol> sikistir` — VACUUM ile fiziksel küçülme
   (uygulama kapalıyken; ~kasa boyutu kadar geçici disk ister).
 
