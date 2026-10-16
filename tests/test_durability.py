@@ -152,9 +152,11 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
     src = pathlib.Path(os.path.dirname(__file__), "..", "src", "evrakci")
     yazan = []
     for f in src.glob("*.py"):
-        if f.name in ("cli.py", "backup.py"):
-            # backup.py: yalniz yonetilen yerel hedeflere yazar (dest/staging/manifest);
-            # kaynak-dizin kaniti test_backup.py::test_bak_kaynaga_dokunmaz'da (runtime).
+        if f.name in ("cli.py", "backup.py", "recovery.py"):
+            # backup.py / recovery.py: yalniz yonetilen yerel hedeflere yazar
+            # (dest/staging/manifest ve kasa klasorundeki evrakci-kurtarma.*);
+            # kaynak-dizin kaniti test_backup.py::test_bak_kaynaga_dokunmaz ve
+            # test_recovery.py::test_kurtarma_islem_kaynaga_dokunmaz (runtime).
             continue
         in_guard = False  # _rmtree_tmp: tek korumali silme noktasi (ocr-tmp alti)
         for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
@@ -236,3 +238,24 @@ def test_doc_adaptru_yoksa_ad_yol(tmp_path):
     assert doc_adapter.extract_doc_guarded("yok.doc") is None
     r = extract.extract("arsiv.dp", ".doc", 10)
     assert r.status == "unsupported_content" and r.error_code == "UNSUPPORTED_CONTENT"
+
+
+def test_scn06_iptal_devam_tutarliligi(tmp_path):
+    """Iptal (stop) -> result cancelled; yeniden tarama complete + kayipsiz."""
+    kok = str(tmp_path / "arsiv")
+    os.makedirs(kok)
+    for i in range(4):
+        _pdf(kok, f"c{i}.pdf", f"iptal testi {i} Ankara")
+    time.sleep(2.5)
+    con, db = _kasa(tmp_path)
+    cagrilar = []
+    def erken_dur():
+        cagrilar.append(1)
+        return len(cagrilar) > 2  # kesif basinda dur: cancelled + kaldi yerden devam
+    s1 = coordinator.run_scan(con, db, kok, stop=erken_dur)
+    assert s1["result"] == "cancelled", s1
+    s2 = coordinator.run_scan(con, db, kok)
+    assert s2["result"] == "complete", s2
+    assert s1["done"] + s2["done"] == 4, (s1, s2)  # kayip is yok
+    assert len(search.search(con, "iptal")) == 4
+    con.close()

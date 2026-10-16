@@ -60,7 +60,8 @@ def ready() -> tuple[bool, list[str]]:
 def _engine_check(directory: Path) -> None:
     env = dict(os.environ, TESSDATA_PREFIX=str(directory))
     completed = subprocess.run([str(executable()), "--list-langs"], capture_output=True,
-                               text=True, timeout=30, env=env)
+                               text=True, timeout=30, env=env,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     found = set(completed.stdout.split())
     if completed.returncode or not set(MODELS).issubset(found):
         raise RuntimeError("OCR motoru dil modellerini yükleyemedi: " + completed.stderr[:400])

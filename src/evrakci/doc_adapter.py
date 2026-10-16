@@ -35,6 +35,7 @@ def convert_doc(path: str, workdir: str) -> str:
          f"-env:UserInstallation=file:///{profile}",
          "--convert-to", "txt:Text (encoded):UTF8", "--outdir", outdir, path],
         capture_output=True, text=True, timeout=CONVERT_TIMEOUT,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     if r.returncode != 0:
         raise ConvertFailed(f"soffice rc={r.returncode}: {r.stderr[:200]}")

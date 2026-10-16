@@ -33,6 +33,11 @@ EXE_CANDIDATES = (
     "C:/Program Files/Tesseract-OCR/tesseract.exe",
 )
 
+
+def _no_window() -> int:
+    """Windows'ta alt süreç konsol penceresi açmasın (diğer OS'te 0)."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # --- butceler (plan bolum 8/11/21 adaylari) ---
 MIN_TEXT_CHARS = 20       # sayfada bu kadar dogal metin varsa OCR atlanir
 RENDER_DPIS = (300, 200, 150, 100)
@@ -101,7 +106,7 @@ def langs_available() -> list:
         env["TESSDATA_PREFIX"] = td
     try:
         p = subprocess.run([exe, "--list-langs"], capture_output=True, text=True,
-                           timeout=30, env=env)
+                           timeout=30, env=env, creationflags=_no_window())
         return [l.strip() for l in p.stdout.splitlines()
                 if l.strip() and "available" not in l.lower() and "list of" not in l.lower()]
     except Exception:
@@ -252,7 +257,7 @@ def _run_tess(png: str, langs: str, psm: int, timeout: int, workdir: str) -> tup
             [exe, png, "stdout", "-l", langs, "--psm", str(psm),
              "-c", "tessedit_create_tsv=1"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=timeout, cwd=workdir,
+            timeout=timeout, cwd=workdir, creationflags=_no_window(),
             env=_tess_env())
         return p.stdout, time.perf_counter() - t0, None
     except subprocess.TimeoutExpired:
