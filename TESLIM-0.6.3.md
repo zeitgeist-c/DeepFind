@@ -22,6 +22,14 @@ tablosu kaldırıldı; `docs_fts` tek indekste katlanmış metin taşıyor
 - Yeni CLI: `evrakci --kasa <yol> sikistir` — VACUUM ile fiziksel küçülme
   (uygulama kapalıyken; ~kasa boyutu kadar geçici disk ister).
 
+## Canlı kasa sonucu (16.10.2026, kullanıcı onayıyla)
+
+`C:\Users\user\AppData\Local\Evrakci\Data\evrakci.db` — migration + VACUUM
+koştu: **20,44 GB → 8,62 GB (%58 küçülme)**; migration 4036 s, VACUUM 753 s,
+2.478.310 segment, `schema_version=9`, `folded_text` yok, `docs_fts_folded` yok,
+`integrity-check` OK. Canlı arama doğrulaması: "istanbul" strict, "sırnak"→sirnak
+folded sınıfıyla bulundu.
+
 ## Kullanıcı için akış (canlı kasa, 21 GB)
 
 1. Programı kapatın; ZIP'i tamamen yeni klasöre çıkarıp EXE/BAT'ı çalıştırın.
@@ -32,6 +40,10 @@ tablosu kaldırıldı; `docs_fts` tek indekste katlanmış metin taşıyor
 3. Uygulamayı kapatın, sonra küçülmeyi uygulayın:
    `Evrakçı-0.6.3.exe --kasa "<kasa yolu>" --sifre "<sifre>" sikistir`
    (boyut ölçümü çıktıya yazılır: `once=.. GB sonar=.. GB`).
+
+NOT: Canlı kasada migration + VACUUM bu teslimle birlikte koştu (yukarıdaki
+canlı sonuç). Yeni ZIP'i kurduğunuzda kasa zaten v9 olduğundan açılışta ek
+geçiş çalışmaz; `sikistir`a da gerek kalmaz.
 
 Yerel commit ve `v0.6.3` etiketi bu teslimle oluşturulur. Push/Release ayrı
 yetkiyle yapılır. Bu teslimde canlı kasaya dokunulmadı.
