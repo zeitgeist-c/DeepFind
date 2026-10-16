@@ -7,14 +7,6 @@ MAX_DOCS = 500  # compatibility; never a per-token cutoff
 FUZZY_MIN_RESULTS = 5
 RAWTOK_RE = re.compile(r"[A-Za-zÇçĞğIıİiÖöŞşÜü0-9]+")
 
-def _files_with(con, table, token):
-    if table not in ('docs_fts',):
-        raise ValueError('Invalid index')
-    return {r[0] for r in con.execute(f'SELECT DISTINCT s.file_id FROM {table} JOIN segments s ON s.seg_id={table}.rowid WHERE {table} MATCH ?', ('"'+token.replace('"','""')+'"',))}
-
-def _intersect(sets):
-    return set.intersection(*sets) if sets else set()
-
 _OR_SPLIT_RE = re.compile(r"\s+(?:OR|VEYA)\s+", re.IGNORECASE)
 _NOT_PHRASE_RE = re.compile(r'-"([^"]+)"')
 _NOT_WORD_RE = re.compile(r"(?:^|\s)- ?([A-Za-zÇçĞğIıİiÖöŞşÜü0-9]+)")

@@ -1,5 +1,17 @@
 # Evrakçı — DURUM
 
+## 0.6.4 temizlik + v9 denetim turu — 16.10.2026
+
+0.6.3 sonrası kapanış: kanıtlı gereksizler temizlendi (0.1.0 A8 tanı betikleri,
+eski spec dosyaları, kullanılmayan importlar — AST kanıtlı), v9 değişiminin
+dokunduğu yollar denetimden geçti (UDF'siz erişim davranışı, sürüm koruması,
+snippet/fuzzy/OR/sayfalama yolları, integrity). Bulguların tamamı temiz çıktı;
+kod değişikliği gerektiren denetim bulgusu olmadı. Ayrıntı:
+`DENETIM-0.6.4.md`.
+
+Doğrulama: **208 test** (3 kez, düşüş yok), AST import taraması temiz, ikinci
+referans taraması kırık referans yok.
+
 ## 0.6.3 kasa boyut optimizasyonu (şema v9) — 16.10.2026
 
 Kasa üç kopya yerine tek kopya taşıyor: `segments.folded_text` kolonu ve

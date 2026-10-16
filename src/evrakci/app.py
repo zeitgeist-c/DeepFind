@@ -15,12 +15,12 @@ from PySide6.QtCore import QUrl
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply, QLocalServer, QLocalSocket
 from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel, QColor
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
-                               QDialogButtonBox, QFileDialog, QFormLayout,
+                               QFileDialog,
                                QHBoxLayout, QLabel, QLineEdit, QListView,
                                QListWidget, QMainWindow, QMessageBox, QPushButton,
                                QSplitter, QStackedWidget, QStatusBar,
                                QSystemTrayIcon, QMenu, QVBoxLayout, QWidget,
-                               QProgressBar, QSpinBox, QTimeEdit, QSizePolicy, QGridLayout, QFrame, QPlainTextEdit, QListWidgetItem, QScrollArea, QStyledItemDelegate, QStyle)
+                               QProgressBar, QTimeEdit, QSizePolicy, QGridLayout, QFrame, QPlainTextEdit, QListWidgetItem, QScrollArea, QStyledItemDelegate, QStyle)
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
@@ -29,7 +29,7 @@ from .preview import Onizleme
 from .version import __version__
 from .vocab import rebuild_vocab
 from .auth import ParolaDialog, MOD_KURTARMA
-from .ui import (ayar_satiri, ayrac_d, bolum, bolme, brand, card, label, sayac,
+from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
                  sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate)
 from . import archive_ui
 

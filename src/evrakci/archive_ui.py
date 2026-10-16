@@ -1,12 +1,12 @@
 """Archive workspace composition and asynchronous, paged UI operations."""
-import os,time
-from PySide6.QtCore import Qt,QTimer,QUrl
-from PySide6.QtGui import QStandardItem,QDesktopServices
+import os
+from PySide6.QtCore import Qt,QTimer
+from PySide6.QtGui import QStandardItem
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QScrollArea,QPushButton,QLineEdit,
-    QComboBox,QListView,QDialog,QHBoxLayout,QProgressBar,QBoxLayout,QLabel,QSplitter,QFrame)
-from .ui import bolme, card, label, sayac, CardDelegate
+    QComboBox,QListView,QHBoxLayout,QBoxLayout,QLabel,QSplitter,QFrame)
+from .ui import bolme, label, sayac, CardDelegate
 from .tasks import DatabaseTask,list_files
-from . import ai,backup,history,diagnostics
+from . import ai,backup,history
 
 STATUS={'pending':'Bekliyor','ok':'Tamamlandı','partial':'Kısmi','encrypted':'Kilitli',
         'unsupported_content':'İçerik motoru yok','corrupt':'Hatalı','missing':'Erişilemiyor','excluded':'Hariç'}

@@ -23,7 +23,6 @@ def run(report_path):
     from .scan import Entry
     from .workers import run_work
     from .app import AnaPencere
-    from .auth import ParolaDialog
     from .version import __version__
     report = {"version": __version__, "ok": False}
     checkpoint("application")

@@ -7,8 +7,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QDir, Qt, QStringListModel
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFileSystemModel, QFormLayout, QHBoxLayout,
+from PySide6.QtCore import QDir, Qt
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFileSystemModel, QHBoxLayout,
                                QLabel, QLineEdit, QListView, QPushButton, QTreeView,
                                QVBoxLayout, QWizard, QWizardPage, QFrame, QSplitter)
 from .theme import app_icon, install_turkish

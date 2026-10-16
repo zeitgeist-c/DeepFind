@@ -1,5 +1,4 @@
 """Kasa giriş, parola yenileme ve kurtarma anahtarı ekranları."""
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                                QPushButton, QCheckBox, QFrame, QHBoxLayout)
 from .ui import brand as draw_brand, label

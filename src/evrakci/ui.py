@@ -4,7 +4,7 @@ Tasarım kuralı: tek yüzey + kıl payı ayırıcı. Kutu içinde kutu yok; ren
 her zaman `theme.pal()` üzerinden gelir, sabit renk kullanılmaz.
 """
 from PySide6.QtCore import Qt, QSize, QRectF, QTimer
-from PySide6.QtGui import QColor, QFont, QPen, QPainter, QFontMetrics
+from PySide6.QtGui import QColor, QFont, QPainter, QFontMetrics
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget,
                                QStyledItemDelegate, QStyle, QSizePolicy)
 from . import theme
