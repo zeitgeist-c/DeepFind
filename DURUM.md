@@ -1,5 +1,46 @@
 # Evrakçı — DURUM
 
+## 0.6.2 denetim düzeltmeleri — 15.10.2026
+
+0.6.1 kök kaldırma düzeltmesinin ardından yapılan derin denetimde aynı sınıftan üç
+ek kusur bulundu ve kapatıldı:
+
+1. **Dışla da sürücü kökünde eşleşmiyordu:** `exclusions.purge_rule` SQL LIKE'ı kök
+   `C:\` için çift ayraç kalıbı arıyordu; canlı kasa ölçümü 112K kayıtta 0 eşleşme.
+   Ayrıca SQL wildcard içeren klasör adları yanlış eşleşiyordu. Artık aday daraltma
+   kök-ayraç farkındalıklı, kesin karar tekil `is_excluded` ile veriliyor.
+2. **Kaldırma/Dışla işlemleri atomik değildi:** kök silinip sözlük yenilemesi
+   başarısız olursa kayıtlar yarım kalıyordu. Her iki işlem artık tek transaction:
+   hata olursa kök/kural/dosya/sözlük birlikte geri alınır.
+3. **Dışla ve tarama/izleme çakışabiliyordu:** Dışla GUI thread'inde senkron koşup
+   arayüzü kilitleyebiliyordu ve arka plan mutasyonu varken tarama/kilit/çıkış
+   başlayabiliyordu. Dışla `HaricIsci` QThread işçisine taşındı; tarama izleme,
+   zamanlayıcı, kilit ve çıkış yolları mutasyon sırasında kapalı; mutasyonlar
+   `ScanLock` ile çapraz süreç taramalara karşı da korunuyor.
+
+Ek: hariç temizliği artık sözlükten içerik terimlerini düşürüyor (dosya-adı terimleri
+korunur); kök kaldırma tarama izleyicisini yeni kök listesine göre tazeliyor.
+
+Doğrulama: **199 test**, kaynak smoke **25 kontrol**; paketli EXE smoke aynı 25 kontrolle
+koşacak. Canlı kasaya dokunulmadı.
+
+## 0.6.1 kök kaldırma düzeltmesi — 15.10.2026
+
+Kullanıcı "Kaynaklar → Kaldır" ile kök kaldırırken uygulama "Yanıt Vermiyor" durumuna
+düştü ve kök listeden silinse de indeksteki kayıtlar kaldı. İki kök neden:
+
+1. `exclusions.is_excluded` sürücü köklerinde (C:\, G:\) çalışmıyordu: kök zaten
+   ayraçla bittiği için kod çift ayraç (C:\) arıyor, hiçbir dosyayla eşleşmiyordu.
+   Canlı kasada C:\ altında 112.019 kaydın 0'ı eşleşiyordu; kaldırma indeks
+   boşaltamıyordu.
+2. `_kok_kaldir` GUI thread'inde senkron koşuyordu: 112K satır DELETE + 2.48M
+   segmentlik sözlük yeniden üretimi arayüzü dakikalarca donduruyordu.
+
+Düzeltme: `is_excluded` kök-ayraç çakışması giderildi (klasör yolları davranışı
+korundu); kök kaldırma `KokKaldirIsci` QThread işçisine taşındı — arayüz kilitlenmez,
+süreçte buton "Kaldırılıyor…" durumunda ve kilit/çıkış korumalı. Doğrulama: **193 test
+geçti** (2 yeni exclusions + 2 yeni UI worker testi dahil).
+
 ## 0.5.0 arayüz yenilemesi — 15.10.2026
 
 Kullanıcının arayüzü hiç beğenmemesi üzerine tüm arayüz sıfırdan yeniden tasarlandı. Önce mevcut 16 ekran görüntüsü alınıp piksel ölçümüyle sorunlar kanıtlandı, tasarım maketi onaylandı, birebir uygulandı.
@@ -35,6 +76,9 @@ Son güncelleme: 27.09.2026 (A0 + A1 tamamlandı)
 - Yapılmayanlar: NAS pilotu + temiz-makine denemesi (erişim yok, kullanıcıda).
 - Kapanış: yerel commit + `v0.1.0` (push/release/deploy yok).
 
+## Çalışma ağacındaki düzeltme (commitlenmedi — 29.09.2026)
+- OCR'da sayfa başına açılıp kapanan konsol penceresi: `ocr.py` (`_run_tess`, `langs_available`), `ocr_setup.py` (`_engine_check`) ve `doc_adapter.py` (`convert_doc`) artık Windows'ta `CREATE_NO_WINDOW` ile çalışıyor. Doğrulama: `test_ocr.py` + `test_ocr_setup.py` 16 geçti.
+
 ## Kilitli runtime adayları (A1 kanıtlı)
 - CPython 3.13.15 x64 (birincil) + 3.12.10 (ikincil); sqlcipher3==0.6.2 (cipher 4.12.0 community, FTS5, WAL, şifreli yedek OK).
 - pypdfium2==5.13.0, openpyxl==3.1.5, xlrd==2.0.2, python-docx==1.2.0, defusedxml==0.7.1.
@@ -49,6 +93,8 @@ Son güncelleme: 27.09.2026 (A0 + A1 tamamlandı)
 ## Kullanıcıdan bekleyen (karar)
 1. DOC zorunluluğu: KAPSAMDA — adaptör denenecek (27.09.2026 kullanıcı kararı).
 2. Disk temp türev kabulü: KABUL — kontrollü temp (27.09.2026 kullanıcı kararı).
+3. Sorunlu dosyalar listesi: yol + hata nedeni + aç (29.09.2026 kullanıcı isteği, sonraya kaldı).
+4. Dosyaya elle not/içerik girişi: aramada çıkar, yeniden taramada silinmez, ayrı saklanır (29.09.2026 kullanıcı isteği, sonraya kaldı).
 
 ## Bilinen sınırlar
 - Temiz makine (Python/Office yok) + 8 GB RAM + Win10 + 2 PC NAS testi: A8'e kaldı.
