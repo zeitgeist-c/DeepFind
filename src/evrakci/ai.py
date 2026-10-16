@@ -114,6 +114,7 @@ def parse_question(question: str, retrieval_query: str | None = None) -> dict:
 
 
 def prepare_question(con, question: str, retrieval_query: str | None = None) -> Preview:
+    nz.install(con)  # hits ifadesi fold() UDF'ine bagli (v9)
     question = question.strip()
     if not 3 <= len(question) <= 1000:
         raise ValueError("Soruyu 3–1000 karakter arasında yazın.")
@@ -133,7 +134,7 @@ def prepare_question(con, question: str, retrieval_query: str | None = None) -> 
     sources = []
     total = 0
     for result in results:
-        hits=' + '.join('CASE WHEN instr(s.folded_text,?)>0 THEN 1 ELSE 0 END' for _ in terms) or '0'
+        hits=' + '.join('CASE WHEN instr(fold(s.raw_text),?)>0 THEN 1 ELSE 0 END' for _ in terms) or '0'
         rows = con.execute(
             "SELECT s.seg_id,f.file_id,f.path,f.name,f.ext,s.page,s.label,s.raw_text "
             "FROM files f JOIN segments s ON s.file_id=f.file_id "

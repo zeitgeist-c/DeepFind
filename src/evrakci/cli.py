@@ -197,6 +197,26 @@ def cmd_parola(args) -> int:
     return 0
 
 
+def cmd_sikistir(args) -> int:
+    """VACUUM: fiziksel boyutu küçült. Uygulama KAPALI iken calistirilmali;
+    buyuk kasada dakikalar surer ve kasa boyutu kadar gecici disk ister."""
+    _vault, _schema, *_rest, _m4 = _load()
+    before = os.path.getsize(args.kasa) if os.path.exists(args.kasa) else 0
+    con = _open_db(args)
+    try:
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        con.execute("VACUUM")
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        pages = con.execute("PRAGMA page_count").fetchone()[0]
+        size_page = con.execute("PRAGMA page_size").fetchone()[0]
+    finally:
+        con.close()
+    after = os.path.getsize(args.kasa) if os.path.exists(args.kasa) else 0
+    print(f"once={before/1024**3:.2f} GB sonar={after/1024**3:.2f} GB "
+          f"sayfa={pages}x{size_page}", flush=True)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="evrakci")
     ap.add_argument("--kasa", default=DEFAULT_VAULT)
@@ -228,6 +248,7 @@ def main(argv=None) -> int:
     p_p.add_argument("yeni")
     p_p.add_argument("--hedef", required=True)
     sub.add_parser("tani", help="Tani ciktisi: surumler, sayilar, OCR durumu")
+    sub.add_parser("sikistir", help="Kasayi VACUUM ile fiziksel kucult (uygulama kapali iken)")
     args = ap.parse_args(argv)
     if args.komut == "init":
         return cmd_init(args)
@@ -245,6 +266,8 @@ def main(argv=None) -> int:
         return cmd_parola(args)
     if args.komut == "tani":
         return cmd_tani(args)
+    if args.komut == "sikistir":
+        return cmd_sikistir(args)
     return cmd_ara(args)
 
 

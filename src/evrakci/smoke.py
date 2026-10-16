@@ -242,8 +242,8 @@ def run(report_path):
             pen.con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",
                             (p3, "NameSurvives", ".pdf"))
             fid = pen.con.execute("SELECT file_id FROM files WHERE path=?", (p3,)).fetchone()[0]
-            pen.con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) "
-                            "VALUES (?,?,?,?,?,?)", (fid,"text",1,"Sayfa 1","BodyRemoved","bodyremoved"))
+            pen.con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) "
+                            "VALUES (?,?,?,?,?)", (fid,"text",1,"Sayfa 1","BodyRemoved"))
             pen.con.execute("INSERT INTO vocabulary(term,freq) VALUES ('namesurvives',1),('bodyremoved',1)")
             pen.con.commit()
             worker = HaricIsci(db, password, k3)

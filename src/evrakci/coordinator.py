@@ -6,6 +6,7 @@ import time
 
 from . import exclusions as exc
 from . import extract as ex
+from . import normalize as nz
 from . import ocr as ocr_mod
 from . import queue as q
 from . import scan as scan_mod
@@ -191,12 +192,12 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
 
         def _row(kind, page, label, raw):
             raw = unicodedata.normalize("NFC", raw or "")
-            return (file_id, rev_id, kind, page, label, raw, nz.folded(raw))
+            return (file_id, rev_id, kind, page, label, raw)
 
         if res.segments:
             for segment in res.segments:
                 for part, start, end in ex.chunks(segment):
-                    con.execute('INSERT INTO segments(file_id,rev_id,kind,page,label,raw_text,folded_text,start_offset,end_offset) VALUES (?,?,?,?,?,?,?,?,?)',
+                    con.execute('INSERT INTO segments(file_id,rev_id,kind,page,label,raw_text,start_offset,end_offset) VALUES (?,?,?,?,?,?,?,?)',
                                 _row(part.kind,part.page,part.label,part.raw_text)+(start,end))
         to_write = []
         if not res.segments:
@@ -204,13 +205,13 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
             to_write = [_row("name_only", None, row[0], row[0])]
         if context.strip():
             cx = unicodedata.normalize("NFC", context.strip())
-            to_write.append((file_id, rev_id, "context", None, "Konum", cx, nz.folded(cx)))
+            to_write.append((file_id, rev_id, "context", None, "Konum", cx))
         name = con.execute("SELECT name FROM files WHERE file_id=?", (file_id,)).fetchone()[0]
         if res.segments:
             to_write.append(_row("name_only", None, "Dosya adı", name))
         con.executemany(
-            "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text, folded_text)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
             to_write,
         )
         con.execute("DELETE FROM file_years WHERE file_id=?", (file_id,))
@@ -413,9 +414,9 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
             raw = r.text.strip()
             con.execute(
                 "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text,"
-                " folded_text, method, confidence) VALUES (?,?,?,?,?,?,?,?,?)",
+                " method, confidence) VALUES (?,?,?,?,?,?,?,?)",
                 (fid, rev_id, "ocr_page", r.page, f"Sayfa {r.page} (OCR)",
-                 raw, nz.folded(raw), r.method, round(r.mean_conf, 1)),
+                 raw, r.method, round(r.mean_conf, 1)),
             )
         con.execute("COMMIT")
     except TimeoutError:
@@ -448,6 +449,7 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
 def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None, limit=None) -> dict:
     """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi.
     limit: bu calistirmada en fazla kac dosya islenir (kalan is pending kalir)."""
+    nz.install(con)  # segment yazim/silim trigger'lari fold() UDF'ine bagli (v9)
     stats = {"found": 0, "done": 0, "changed": 0, "unstable": 0, "failed": 0,
              "missing": 0, "ocr_done": 0, "ocr_deferred": 0, "ocr_failed": 0,
              "hashed": 0, "skipped": 0, "complete": False, "result": "partial"}

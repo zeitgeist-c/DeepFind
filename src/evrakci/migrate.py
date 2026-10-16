@@ -135,7 +135,7 @@ def ensure_current(con) -> None:
     if con.execute("SELECT 1 FROM sqlite_master WHERE name='schema_meta'").fetchone():
         row = con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
         version = int(row[0]) if row else None
-    if version is not None and version > 8:
+    if version is not None and version > 9:
         raise RuntimeError("Kasa daha yeni bir sürümle oluşturulmuş; bu sürümle açılamaz.")
     if version is not None and version < 7:
         # Older startup paths wrote a lower version during their idempotent
@@ -157,6 +157,7 @@ def ensure_current(con) -> None:
         ensure_v5(con)
     ensure_v8(con)
     ensure_archive(con)
+    ensure_v9(con)
 
 def ensure_archive(con):
     """Additive archive capabilities; existing index and version remain readable."""
@@ -198,6 +199,66 @@ def ensure_archive(con):
     con.execute("INSERT INTO schema_meta(k,v) VALUES('archive_version','034') ON CONFLICT(k) DO UPDATE SET v=excluded.v")
     if 'start_offset' not in {r[1] for r in con.execute('PRAGMA table_info(extraction_stage)')}:
         con.execute('ALTER TABLE extraction_stage ADD COLUMN start_offset INTEGER NOT NULL DEFAULT 0')
+    con.commit()
+
+
+def sqlite_supports_drop_column(con) -> bool:
+    ver = tuple(int(p) for p in con.execute("SELECT sqlite_version()").fetchone()[0].split(".")[:2])
+    return ver >= (3, 35)
+
+
+def ensure_v9(con) -> None:
+    """v9: tek katlanmis FTS. docs_fts trigger'lari fold() UDF'i ile katlanmis
+    metin yazar; `segments.folded_text` kolonu ve `docs_fts_folded` tablosu
+    kaldirilir (her belgede 1 ham kopya + tek FTS — ~8-9 GB kazanc).
+
+    Idempotent; startup.open_vault akisi migration oncesi otomatik yedek alir.
+    VACUUM burada degil, ayrica (sadece kapanista / CLI) — buyuk kasada dakikalar.
+    """
+    from . import normalize as nz
+    from . import schema as schema_mod
+    nz.install(con)  # fold() olmadan trigger/rebuild yanlis ya da hataya duser
+    version_row = con.execute(
+        "SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
+    version = int(version_row[0]) if version_row else 0
+    cols = {r[1] for r in con.execute("PRAGMA table_info(segments)")}
+    has_folded_col = "folded_text" in cols
+    has_folded_fts = bool(con.execute(
+        "SELECT 1 FROM sqlite_master WHERE name='docs_fts_folded'").fetchone())
+    needs_marker = not con.execute(
+        "SELECT v FROM schema_meta WHERE k=?", (schema_mod.FTS_FOLDED_KEY,)).fetchone()
+
+    if version >= 9 and not has_folded_col and not has_folded_fts and not needs_marker:
+        return  # zaten v9
+
+    # 1) docs_fts_folded yardimci tablo + trigger'larini kaldir (shadow tablolar
+    #    FTS5 tarafindan otomatik duser).
+    con.execute("DROP TRIGGER IF EXISTS segf_ai")
+    con.execute("DROP TRIGGER IF EXISTS segf_ad")
+    if has_folded_fts:
+        con.execute("DROP TABLE IF EXISTS docs_fts_folded")
+
+    # 2) Trigger'lari fold() yazan v9 govdesine cevir.
+    schema_mod._folded_triggers(con)
+
+    # 3) Katlanmis indeksi bastan kur (rebuild trigger'a girmez; bkz. rebuild_fts).
+    if needs_marker or version < 9:
+        schema_mod.rebuild_fts(con)
+    schema_mod.mark_folded(con)
+
+    # 4) folded_text kolonunu dusur (SQLite >= 3.35; sqlcipher3 3.51 destekli).
+    if has_folded_col:
+        if sqlite_supports_drop_column(con):
+            con.execute("ALTER TABLE segments DROP COLUMN folded_text")
+        # Desteklenmiyorsa kolon bos/okunmaz kalir; boyut VACUUM'da serbest kalir.
+
+    con.execute(
+        "INSERT INTO schema_meta(k, v) VALUES ('schema_version', '9') "
+        "ON CONFLICT(k) DO UPDATE SET v=excluded.v")
+    # Eski tamamlanmis taramalarin kapsam kayitlari bos yer kaplar (~0,25 GB);
+    # surebilen (finished_at NULL) taramalarin kapsami resume icin kalmali.
+    con.execute("DELETE FROM scan_scopes WHERE run_id IN "
+                "(SELECT run_id FROM scan_runs WHERE finished_at IS NOT NULL)")
     con.commit()
 
 

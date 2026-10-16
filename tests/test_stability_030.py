@@ -142,35 +142,94 @@ def test_existing_v7_vault_opens_without_legacy_backfill(tmp_path, monkeypatch):
 
     from evrakci import vocab
 
-    def legacy_called(_con):
-        raise AssertionError("Mevcut kasada ağır eski geçiş çalışmamalı")
-
-    monkeypatch.setattr(vocab, "ensure_v5", legacy_called)
     con = vault.open_vault(db, "sentetik-mevcut-kasa-1234")
     try:
         migrate.ensure_current(con)
-        assert con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0] == "8"
+        assert con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0] == "9"
         assert con.execute("SELECT name FROM files").fetchone()[0] == "koru.doc"
         migrate.ensure_current(con)
-        assert con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0] == "8"
+        assert con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0] == "9"
     finally:
         con.close()
 
 
-def test_legacy_folded_backfill_processes_multiple_batches(tmp_path):
+def test_v9_folded_index_single_copy(tmp_path):
+    """v9: segmentler tek kopya; docs_fts katlanmis icerir, folded_text yok."""
     db = str(tmp_path / "index.db")
     con = vault.open_vault(db, "sentetik-eski-kasa-1234")
     try:
         schema.ensure_schema(con)
         fid = con.execute("INSERT INTO files(path, name, ext) VALUES ('c:/ornek/belge.doc', 'belge.doc', '.doc')").lastrowid
         con.executemany(
-            "INSERT INTO segments(file_id, kind, label, raw_text) VALUES (?, 'body', 'satır', 'Ankara belge')",
-            [(fid,)] * 225,
+            "INSERT INTO segments(file_id, kind, label, raw_text) VALUES (?, 'body', 'satır', ?)",
+            [(fid, "Ankara Belge Şırnak")] * 225,
         )
         con.commit()
         ensure_v5(con)
-        assert con.execute("SELECT count(*) FROM segments WHERE folded_text='ankara belge'").fetchone()[0] == 225
-        assert con.execute("SELECT count(*) FROM docs_fts_folded").fetchone()[0] == 225
+        migrate.ensure_v9(con)
+        cols = {r[1] for r in con.execute("PRAGMA table_info(segments)")}
+        assert "folded_text" not in cols
+        assert not con.execute("SELECT 1 FROM sqlite_master WHERE name='docs_fts_folded'").fetchone()
+        assert con.execute("SELECT count(*) FROM docs_fts").fetchone()[0] == 225
+        # katlanmis arama tek indekste calisir
+        assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH '\"sirnak\"'").fetchone()[0] == 225
+        # silme trigger'i katlanmis indeksle tutarli
+        con.execute("DELETE FROM segments WHERE seg_id=(SELECT min(seg_id) FROM segments)")
+        con.commit()
+        con.execute("INSERT INTO docs_fts(docs_fts) VALUES('integrity-check')")
+        assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH '\"sirnak\"'").fetchone()[0] == 224
+    finally:
+        con.close()
+
+
+def test_v9_migration_from_v8_shape(tmp_path):
+    """Eski bicim (folded_text kolonu + docs_fts_folded + ham docs_fts) -> v9."""
+    db = str(tmp_path / "index.db")
+    con = vault.open_vault(db, "sentetik-v8-kasa-1234")
+    try:
+        # Once gercek zincirle tam sema, sonra FTS kismini v8 bicimine dusur:
+        # folded_text kolonu + docs_fts_folded + HAM yazan docs_fts trigger'lari.
+        migrate.ensure_current(con)  # v9 temiz kasa (tum tablolar + v9 isaretleri)
+        con.executescript("""
+ALTER TABLE segments ADD COLUMN folded_text TEXT DEFAULT '';
+CREATE VIRTUAL TABLE docs_fts_folded USING fts5(label, raw_text, content='segments', content_rowid='seg_id');
+CREATE TRIGGER segf_ai AFTER INSERT ON segments BEGIN
+  INSERT INTO docs_fts_folded(rowid,label,raw_text) VALUES(new.seg_id,new.label,new.folded_text); END;
+CREATE TRIGGER segf_ad AFTER DELETE ON segments BEGIN
+  INSERT INTO docs_fts_folded(docs_fts_folded,rowid,label,raw_text) VALUES('delete',old.seg_id,old.label,old.folded_text); END;
+DROP TRIGGER seg_ai;
+DROP TRIGGER seg_ad;
+CREATE TRIGGER seg_ai AFTER INSERT ON segments BEGIN
+  INSERT INTO docs_fts(rowid,label,raw_text) VALUES(new.seg_id,new.label,new.raw_text); END;
+CREATE TRIGGER seg_ad AFTER DELETE ON segments BEGIN
+  INSERT INTO docs_fts(docs_fts,rowid,label,raw_text) VALUES('delete',old.seg_id,old.label,old.raw_text); END;
+DELETE FROM schema_meta WHERE k='fts_folded';
+UPDATE schema_meta SET v='8' WHERE k='schema_version';
+""")
+        from evrakci import normalize as nz
+        fid = con.execute("INSERT INTO files(path,name,ext,index_status) VALUES ('c:/a/istanbul.pdf','istanbul.pdf','.pdf','ok')").lastrowid
+        for ham in ("İstanbul nüfusu", "Iğdır ili", "ÇANKIRI merkez", "Şırnak ilçesi"):
+            con.execute("INSERT INTO segments(file_id,kind,label,raw_text,folded_text) VALUES (?,'body','Sayfa 1',?,?)",
+                        (fid, ham, nz.folded(ham)))
+        con.commit()
+        # ham indeks: katlanmis sorgu bulamaz, ham sorgu bulur
+        assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH '\"sirnak\"'").fetchone()[0] == 0
+        assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH '\"Şırnak\"'").fetchone()[0] == 1
+
+        migrate.ensure_current(con)
+
+        assert con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0] == "9"
+        cols = {r[1] for r in con.execute("PRAGMA table_info(segments)")}
+        assert "folded_text" not in cols
+        assert not con.execute("SELECT 1 FROM sqlite_master WHERE name='docs_fts_folded'").fetchone()
+        # katlanmis arama artik tek indekste
+        for sorgu in ("istanbul", "igdir", "cankiri", "sirnak"):
+            assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH ?", ('"'+sorgu+'"',)).fetchone()[0] == 1
+        # yazma yolu da fold'lu: yeni eklenen segment katlanmis bulunur
+        con.execute("INSERT INTO segments(file_id,kind,label,raw_text) VALUES (?,'body','Sayfa 2','ıssız sokak')", (fid,))
+        con.commit()
+        assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH '\"issiz\"'").fetchone()[0] == 1
+        con.execute("INSERT INTO docs_fts(docs_fts) VALUES('integrity-check')")
     finally:
         con.close()
 

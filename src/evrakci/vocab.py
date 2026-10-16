@@ -42,39 +42,8 @@ def ensure_v5(con) -> None:
     from .migrate import ensure_v4
     ensure_v4(con)
     con.executescript(SCHEMA_V5_EXTRA)
-    try:
-        cols = [r[1] for r in con.execute("PRAGMA table_info(segments)").fetchall()]
-        if "folded_text" not in cols:
-            con.execute("ALTER TABLE segments ADD COLUMN folded_text TEXT DEFAULT ''")
-    except Exception:
-        pass
-    con.execute(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts_folded USING fts5("
-        "label, raw_text, content='segments', content_rowid='seg_id')"
-    )
-    con.execute(
-        "CREATE TRIGGER IF NOT EXISTS segf_ai AFTER INSERT ON segments BEGIN "
-        "INSERT INTO docs_fts_folded(rowid, label, raw_text) "
-        "VALUES (new.seg_id, new.label, new.folded_text); END"
-    )
-    con.execute(
-        "CREATE TRIGGER IF NOT EXISTS segf_ad AFTER DELETE ON segments BEGIN "
-        "INSERT INTO docs_fts_folded(docs_fts_folded, rowid, label, raw_text) "
-        "VALUES ('delete', old.seg_id, old.label, old.folded_text); END"
-    )
-    # Eski kasanın ilk geçişinde bile tüm içerikleri belleğe alma.
-    last_id = 0
-    while batch := con.execute(
-            "SELECT seg_id, raw_text FROM segments WHERE seg_id>? "
-            "AND (folded_text IS NULL OR folded_text='') ORDER BY seg_id LIMIT 100",
-            (last_id,)).fetchall():
-        for seg_id, raw in batch:
-            f = nz.folded(raw or "")
-            con.execute("UPDATE segments SET folded_text=? WHERE seg_id=?", (f, seg_id))
-            con.execute("INSERT INTO docs_fts_folded(rowid, label, raw_text)"
-                        " SELECT seg_id, label, ? FROM segments WHERE seg_id=?", (f, seg_id))
-            last_id = seg_id
-        con.commit()
+    # v9: folded_text kolonu ve docs_fts_folded artik yok — docs_fts trigger
+    # uzerinden fold() UDF'i ile katlanmis icerik tasiyor (migrate.ensure_v9).
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
         "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
@@ -98,7 +67,7 @@ def rebuild_vocab(con, min_len: int = 2, *, transactional: bool = False) -> int:
     con.execute("DELETE FROM vocabulary_build")
     if not transactional:
         con.commit()
-    for sql in ("SELECT name FROM files", "SELECT folded_text FROM segments"):
+    for sql in ("SELECT name FROM files", "SELECT raw_text FROM segments"):
         cursor = con.execute(sql)
         while batch := cursor.fetchmany(200):
             counts: Counter = Counter()
@@ -146,7 +115,7 @@ def remove_files_from_vocab(con, file_ids, *, include_names: bool = True, min_le
     queries = []
     if include_names:
         queries.append("SELECT f.name FROM files f JOIN temp.evrakci_vocab_remove r USING(file_id)")
-    queries.append("SELECT s.folded_text FROM segments s JOIN temp.evrakci_vocab_remove r USING(file_id)")
+    queries.append("SELECT s.raw_text FROM segments s JOIN temp.evrakci_vocab_remove r USING(file_id)")
     for sql in queries:
         cursor = con.execute(sql)
         while batch := cursor.fetchmany(200):

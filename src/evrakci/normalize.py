@@ -25,6 +25,16 @@ def folded(s: str) -> str:
     return strict(s).translate(_FOLD)
 
 
+def install(con) -> None:
+    """fold() UDF'ini bağlantıya kaydet. Her bağlantıda çağrılmalı: FTS
+    trigger'ları indekse katlanmış metni bu SQL içinden yazar (v9).
+    Idempotent: kayitliyse yeniden kaydetme SQLITE_MISUSE verebilir."""
+    try:
+        con.execute("SELECT fold('i')").fetchone()
+    except Exception:
+        con.create_function("fold", 1, folded, deterministic=True)
+
+
 TOKEN_RE = re.compile(r"[a-zçğıöşü0-9]+", re.IGNORECASE)
 
 

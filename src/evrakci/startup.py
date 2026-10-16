@@ -17,7 +17,10 @@ def prepare_connection(path, password, backup_dir, progress=None):
     try:
         fts = con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
         marker = con.execute("SELECT 1 FROM schema_meta WHERE k='archive_version'").fetchone() if fts else None
-        if fts and ('remove_diacritics 0' not in fts[0] or not marker):
+        v9_pending = bool(fts) and con.execute(
+            "SELECT count(*) FROM schema_meta WHERE k='fts_folded'").fetchone()[0] == 0 \
+            and con.execute("SELECT count(*) FROM segments").fetchone()[0] > 0
+        if fts and ('remove_diacritics 0' not in fts[0] or not marker or v9_pending):
             diagnostics.record('migration_backup_begin')
             try:
                 snapshot = backup.create_backup(con, path, password, backup_dir,

@@ -1,7 +1,11 @@
-"""Guvenli FTS sorgusu: kullanici metni SQL/FTS dili olarak calismaz."""
+"""Guvenli FTS sorgusu: kullanici metni SQL/FTS dili olarak calismaz.
+
+v9: docs_fts katlanmis icerik tasidigi icin v1 arama terimleri de katlanir."""
 from __future__ import annotations
 
 import re
+
+from . import normalize as nz
 
 
 def build_match(query: str) -> str | None:
@@ -11,11 +15,11 @@ def build_match(query: str) -> str | None:
         if t.startswith('"') and t.endswith('"') and len(t) >= 2:
             inner = t[1:-1].replace('"', '""')
             if inner.strip():
-                parts.append(f'"{inner}"')
+                parts.append(f'"{nz.folded(inner)}"')
         else:
             clean = t.replace('"', "")
             if clean:
-                parts.append(f'"{clean}"')
+                parts.append(f'"{nz.folded(clean)}"')
     return " ".join(parts) if parts else None
 
 

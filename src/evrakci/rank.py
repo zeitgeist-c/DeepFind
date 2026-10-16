@@ -8,7 +8,7 @@ FUZZY_MIN_RESULTS = 5
 RAWTOK_RE = re.compile(r"[A-Za-zÇçĞğIıİiÖöŞşÜü0-9]+")
 
 def _files_with(con, table, token):
-    if table not in ('docs_fts', 'docs_fts_folded'):
+    if table not in ('docs_fts',):
         raise ValueError('Invalid index')
     return {r[0] for r in con.execute(f'SELECT DISTINCT s.file_id FROM {table} JOIN segments s ON s.seg_id={table}.rowid WHERE {table} MATCH ?', ('"'+token.replace('"','""')+'"',))}
 
@@ -51,15 +51,19 @@ def _quote(t):
 
 def _query(con, query, year, ext, folder, limit, offset, fuzzy=None, tag=None):
     args=[]
-    def group(table, tokens, phrases):
-        expressions = [_quote(t) for t in tokens]
-        expressions += [_quote(p) for p in phrases]
-        if fuzzy and table=='docs_fts_folded':
+    # v9: docs_fts KATLANMIS icerik tasir (fold() UDF trigger'lari). strict =
+    # orijinal terimler (diakritigsiz sorguda birebir), folded = nz.folded() ile
+    # katlanmis terimler; ikisi de ayni indekste (eski docs_fts_folded kaldirildi).
+    def group(tokens, phrases, use_fuzzy=False):
+        if use_fuzzy:
             expressions = ['('+' OR '.join('"'+x+'"' for x in [t]+fuzzy.get(t, []))+')' for t in tokens]
             expressions += ['"'+p+'"' for p in phrases]
+        else:
+            expressions = [_quote(t) for t in tokens]
+            expressions += [_quote(p) for p in phrases]
         if not expressions:
             return 'SELECT file_id FROM files WHERE 0', []
-        sql = ' INTERSECT '.join(f'SELECT s.file_id FROM {table} JOIN segments s ON s.seg_id={table}.rowid WHERE {table} MATCH ?' for _ in expressions)
+        sql = ' INTERSECT '.join(f'SELECT s.file_id FROM docs_fts JOIN segments s ON s.seg_id=docs_fts.rowid WHERE docs_fts MATCH ?' for _ in expressions)
         return sql, expressions
     strict_parts, fold_parts, excl_selects = [], [], []
     strict_args, fold_args, excl_args, hit_tokens = [], [], [], []
@@ -69,23 +73,20 @@ def _query(con, query, year, ext, folder, limit, offset, fuzzy=None, tag=None):
         folded = nz.tokens_folded(pos)
         quoted = re.findall(r'"([^"]+)"', pos)
         hit_tokens.extend(folded)
-        s_sql, s_args = group('docs_fts', raw, quoted)
+        s_sql, s_args = group(raw, quoted)
         strict_parts.append(s_sql)
         strict_args.extend(s_args)
-        f_sql, f_args = group('docs_fts_folded', folded, [nz.folded(p) for p in quoted])
+        f_sql, f_args = group(folded, [nz.folded(p) for p in quoted], use_fuzzy=bool(fuzzy))
         fold_parts.append(f_sql)
         fold_args.extend(f_args)
         for e in excl:
             excl_selects.append(f'SELECT s.file_id FROM docs_fts JOIN segments s ON s.seg_id=docs_fts.rowid WHERE docs_fts MATCH ?')
-            excl_args.append(_quote(e))
-            excl_selects.append(f'SELECT s.file_id FROM docs_fts_folded JOIN segments s ON s.seg_id=docs_fts_folded.rowid WHERE docs_fts_folded MATCH ?')
             excl_args.append(_quote(nz.folded(e)))
     strict=' UNION '.join(strict_parts)
     fold=' UNION '.join(fold_parts)
     args.extend(strict_args)
     args.extend(fold_args)
-    hit_expr=' + '.join('CASE WHEN instr(s.folded_text, ?) > 0 THEN 1 ELSE 0 END' for _ in hit_tokens) or '0'
-    args.extend(hit_tokens)
+    hit_expr=' + '.join('CASE WHEN instr(fold(s2.raw_text), ?) > 0 THEN 1 ELSE 0 END' for _ in hit_tokens) or '0'
     # Rank/filter before fetching content. Only one segment per output document.
     filters=["f.index_status NOT IN ('excluded','pending')"]
     if year:
@@ -100,17 +101,22 @@ def _query(con, query, year, ext, folder, limit, offset, fuzzy=None, tag=None):
         filters.append(f"f.file_id NOT IN ({' UNION '.join(excl_selects)})")
         args.extend(excl_args)
     args.extend([limit,offset])
+    args.extend(hit_tokens)  # hit_expr en son alt sorguda (SQL'de LIMIT'ten sonra)
+    # Segment secimi (hit_expr -> fold() Python UDF) yalniz LIMIT gecmis satirlar
+    # icin kossun: once dokuman sayfasi belirlenir, segment sonra secilir.
     sql=f'''WITH strict AS ({strict}), folded AS ({fold}), candidates AS (
       SELECT file_id,100 base FROM strict UNION ALL SELECT file_id,{30 if fuzzy else 60} FROM folded WHERE file_id NOT IN (SELECT file_id FROM strict)
-    ), chosen AS (SELECT f.file_id,f.path,f.name,f.ext,f.index_status,f.error_code,c.base,
-      (SELECT s.seg_id FROM segments s WHERE s.file_id=f.file_id ORDER BY ({hit_expr}) DESC,
-        CASE WHEN s.kind IN ('name_only','context') THEN 1 ELSE 0 END,s.seg_id LIMIT 1) seg_id
+    ), picked AS (SELECT f.file_id,f.path,f.name,f.ext,f.index_status,f.error_code,c.base
       FROM candidates c JOIN files f ON f.file_id=c.file_id WHERE {' AND '.join(filters)}
       ORDER BY c.base DESC,f.path LIMIT ? OFFSET ?)
-      SELECT c.*,s.label,s.page,s.raw_text,s.kind FROM chosen c JOIN segments s ON s.seg_id=c.seg_id'''
+      SELECT p.file_id,p.path,p.name,p.ext,p.index_status,p.error_code,p.base,s.seg_id,s.label,s.page,s.raw_text,s.kind
+      FROM picked p JOIN segments s ON s.seg_id=(
+        SELECT s2.seg_id FROM segments s2 WHERE s2.file_id=p.file_id ORDER BY ({hit_expr}) DESC,
+        CASE WHEN s2.kind IN ('name_only','context') THEN 1 ELSE 0 END,s2.seg_id LIMIT 1)'''
     return con.execute(sql,args).fetchall()
 
 def search_ranked(con, query, year=None, ext=None, limit=50, folder=None, offset=0, tag=None):
+    nz.install(con)  # hit_expr fold() UDF'ine bagli (v9)
     tokens=nz.tokens_folded(query)
     if len(query)>2000 or len(RAWTOK_RE.findall(query))>32:
         raise ValueError('sorgu çok uzun')
@@ -126,9 +132,21 @@ def search_ranked(con, query, year=None, ext=None, limit=50, folder=None, offset
             known={r[0] for r in rows}
             rows += [r for r in _query(con,query,year,ext,folder,limit+1,offset,alternatives,tag=tag) if r[0] not in known]
     more=len(rows)>limit
+    # v9: tek katlanmis indeks. Sinif karari artik ham metne gore verilir:
+    # 'strict' = sorgunun yazim bicimi ham metinde aynen geciyor (tr_lower
+    # token kumesi), aksi halde toleransli (folded). FTS tek indeks oldugu
+    # icin kapi (base) sinifi tek basina yaniltici olabilir.
+    want={nz.tr_lower(t) for t in RAWTOK_RE.findall(query)}
+    quoted=bool(re.findall(r'"([^"]+)"', query))
     results=[]; counts={'strict':0,'folded':0,'fuzzy':0}
     for fid,path,name,fext,status,error,base,sid,label,page,raw,kind in rows[:limit]:
-        cls={100:'strict',60:'folded',30:'fuzzy'}[base]; counts[cls]+=1
+        cls={100:'strict',60:'folded',30:'fuzzy'}[base]
+        if want and not quoted and cls in ('strict','folded'):
+            doc={nz.tr_lower(t) for t in RAWTOK_RE.findall((raw or '')+' '+name)}
+            exact=want <= doc
+            if cls=='strict' and not exact: cls, base = 'folded', 60
+            elif cls=='folded' and exact: cls, base = 'strict', 100
+        counts[cls]+=1
         years=[r[0] for r in con.execute('SELECT year FROM file_years WHERE file_id=?',(fid,))]
         name_hit=any(t in nz.folded(name) for t in tokens)
         why=(['ad'] if name_hit else [])+[{'strict':'birebir icerik','folded':'toleransli icerik','fuzzy':'yaklasik icerik'}[cls]]

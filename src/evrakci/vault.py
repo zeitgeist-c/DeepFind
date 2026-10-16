@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import sqlcipher3
 
+from . import normalize as nz
+
 BUSY_TIMEOUT_MS = 5000
 
 # Sifresiz kasa ic anahtari: kullanici sifre belirlemezse kasa bununla acilir.
@@ -28,6 +30,9 @@ def open_vault(path: str, password: str) -> sqlcipher3.Connection:
         if not row or not str(row[0]).startswith("4."):
             raise RuntimeError(f"beklenmeyen cipher_version: {row}")
         con.execute("PRAGMA journal_mode=WAL")
+        # v9: FTS trigger'lari fold() UDF'i ile katlanmis metin yazar; her
+        # bağlantıda tanımlı olmasi sart (tanimsizsa trigger INSERT'i hata verir).
+        nz.install(con)
         return con
     except Exception:
         con.close()

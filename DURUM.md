@@ -1,5 +1,38 @@
 # Evrakçı — DURUM
 
+## 0.6.3 kasa boyut optimizasyonu (şema v9) — 16.10.2026
+
+Kasa üç kopya yerine tek kopya taşıyor: `segments.folded_text` kolonu ve
+`docs_fts_folded` tablosu tamamen kaldırıldı. `docs_fts` artık FTS trigger'larında
+`fold()` Python UDF'i ile **katlanmış** metin yazıyor; toleranslı arama tek
+indekste çalışıyor. `schema_version` 8 → 9.
+
+- **Yazma yolu:** `vault.open_vault` her bağlantıya `fold()` UDF'ini kaydediyor
+  (`normalize.install`); `seg_ai`/`seg_ad` trigger'ları `fold(new.x)` yazıyor.
+  `index.py`, `coordinator.py`, OCR yolundan `folded_text` parametreleri çıkarıldı.
+- **Okuma yolu:** `rank.py` strict+folded sınıflarını tek `docs_fts` üzerinden
+  yürütüyor; sınıf kararı ham metinle veriliyor (diakritik aynıysa strict).
+  Segment seçimi `instr(fold(s.raw_text), ?)` ile artık LIMIT sonrası çalışıyor.
+  `search.py` (v1) terimleri de katlıyor. `ai.py` aynı UDF'i kullanıyor.
+- **Kanıtlanan plan sapması:** FTS5 `rebuild` komutu trigger'ları **atlar** ve
+  içerik tablosundan ham metin yazar (ölçüldü). Bu yüzden `rebuild_fts`
+  `delete-all` + `fold()`lu `INSERT…SELECT` kullanıyor; migration da böyle kuruyor.
+- **Migration (`ensure_v9`):** `docs_fts_folded` + `segf_*` trigger'ları düşer,
+  indeks katlanmış doldurulur, `folded_text` kolonu silinir (SQLite ≥3.35),
+  bitmiş taramaların `scan_scopes` kayıtları temizlenir. Açılışta otomatik koşar;
+  startup migration öncesi otomatik yedek alır, hata olursa kasayı geri yükler.
+  Eski kasa yeni sürümle açılmazsa koruma: `schema_version > 9` reddi.
+- **Fiziksel küçülme:** `evrakci … sikistir` CLI komutu (VACUUM) — uygulama
+  kapalıyken; VACUUM migration'a gömülü değil.
+- **Doğrulama:** 208 test (yeni: 6 parametrize İ/ı/İ-ğ-ş-ç vakası, strict/folded
+  sınıf, tek-kopya şema, v8→v9 migration, integrity-check), kaynak smoke 25
+  kontrol, eval holdout top1=1.0 top3=1.0 (p95 1.6 ms). Sentetik boyut kanalı
+  (`eval/kasa_boyut_kanit.py`): 200k segmentlik v8 biçimli kasa **918 MB → 424 MB
+  (%54)**, migration 37 s, katlanmış sorgu 15 ms, integrity-check GEÇTİ.
+  Canlı 21 GB kasa için beklenen ~%40 (plandan iyi).
+- **Canlı kasa migration'ı:** ilk açılışta otomatik (yedek + doğrulamalı);
+  VACUUM sonrası `sikistir` CLI ile yapılır, uygulama kapalıyken.
+
 ## 0.6.2 denetim düzeltmeleri — 15.10.2026
 
 0.6.1 kök kaldırma düzeltmesinin ardından yapılan derin denetimde aynı sınıftan üç

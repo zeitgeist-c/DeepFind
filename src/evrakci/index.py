@@ -9,6 +9,7 @@ from .scan import Entry
 
 
 def index_entry(con, entry: Entry, res: ExtractResult, context: str = "") -> int:
+    nz.install(con)  # FTS trigger'i fold() UDF'ine bagli (v9)
     cur = con.execute("BEGIN IMMEDIATE")
     try:
         con.execute(
@@ -25,27 +26,27 @@ def index_entry(con, entry: Entry, res: ExtractResult, context: str = "") -> int
             rows = []
             for s in res.segments:
                 raw = unicodedata.normalize("NFC", s.raw_text or "")
-                rows.append((file_id, None, s.kind, s.page, s.label, raw, nz.folded(raw)))
+                rows.append((file_id, None, s.kind, s.page, s.label, raw))
             raw_name = unicodedata.normalize("NFC", entry.name)
-            rows.append((file_id, None, "name_only", None, "Dosya adı", raw_name, nz.folded(raw_name)))
+            rows.append((file_id, None, "name_only", None, "Dosya adı", raw_name))
             if context.strip():
                 cx = unicodedata.normalize("NFC", context.strip())
-                rows.append((file_id, None, "context", None, "Konum", cx, nz.folded(cx)))
+                rows.append((file_id, None, "context", None, "Konum", cx))
             con.executemany(
-                "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text, folded_text)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
                 rows,
             )
         else:
             # Ad/yol her zaman bulunur: icerik yoksa baslik segmenti
             raw = unicodedata.normalize("NFC", entry.name)
-            segs = [(file_id, None, "name_only", None, entry.name, raw, nz.folded(raw))]
+            segs = [(file_id, None, "name_only", None, entry.name, raw)]
             if context.strip():
                 cx = unicodedata.normalize("NFC", context.strip())
-                segs.append((file_id, None, "context", None, "Konum", cx, nz.folded(cx)))
+                segs.append((file_id, None, "context", None, "Konum", cx))
             con.executemany(
-                "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text, folded_text)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
                 segs,
             )
         for y in nz.extract_years(entry.name, context):

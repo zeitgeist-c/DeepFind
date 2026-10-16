@@ -18,7 +18,7 @@ def main():
     con=sqlite3.connect(':memory:'); schema.ensure_schema(con); ensure_v5(con); migrate.ensure_current(con)
     count=10000
     con.executemany("INSERT INTO files(file_id,path,name,ext,index_status) VALUES (?,?,?,'.pdf','ok')",[(i,f'C:/synthetic/{i:05}.pdf',f'{i}.pdf') for i in range(1,count+1)])
-    con.executemany('INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) VALUES (?,\'pdf_page\',1,\'Sayfa 1\',?,?)',[(i,f'tahsilat makbuzu evrak {i}',f'tahsilat makbuzu evrak {i}') for i in range(1,count+1)]); con.commit()
+    con.executemany('INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,\'pdf_page\',1,\'Sayfa 1\',?)',[(i,f'tahsilat makbuzu evrak {i}') for i in range(1,count+1)]); con.commit()
     durations=[]
     for i in range(30):
         start=time.perf_counter(); result=rank.search_ranked(con,'tahsilat makbuzu'); durations.append((time.perf_counter()-start)*1000)
@@ -34,7 +34,7 @@ def main():
         db=str(Path(directory)/'index.db'); password='synthetic-eval-034-1234'
         encrypted=vault.open_vault(db,password); migrate.ensure_current(encrypted)
         encrypted.execute("INSERT INTO files(path,name,ext,index_status) VALUES ('C:/synthetic/12345.pdf','12345.pdf','.pdf','ok')")
-        encrypted.execute("INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) VALUES (1,'pdf_page',1,'Sayfa 1','Tahsilat makbuzu 54321: 18750 TL','tahsilat makbuzu 54321: 18750 tl')"); encrypted.commit(); encrypted.close()
+        encrypted.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (1,'pdf_page',1,'Sayfa 1','Tahsilat makbuzu 54321: 18750 TL')"); encrypted.commit(); encrypted.close()
         window=AnaPencere(db,password); window.show(); app.processEvents()
         for mode in ('acik','koyu'):
             for width,height in ((1500,1000),(1050,760)):

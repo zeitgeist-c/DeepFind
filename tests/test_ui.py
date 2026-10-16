@@ -319,8 +319,8 @@ def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     for p, text, freq in docs:
         con.execute("INSERT INTO files(path, name, ext) VALUES (?,?,?)", (p, os.path.basename(p), ".pdf"))
         fid = con.execute("SELECT file_id FROM files WHERE path=?", (p,)).fetchone()[0]
-        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) VALUES (?,?,?,?,?,?)",
-                    (fid,"text",1,"Sayfa 1",text,text.lower()))
+        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,?,?,?,?)",
+                    (fid,"text",1,"Sayfa 1",text))
         con.execute("INSERT INTO vocabulary(term,freq) VALUES (?,?) ON CONFLICT(term) DO UPDATE SET freq=freq+excluded.freq",
                     (text.lower(),freq))
     con.commit()
@@ -480,8 +480,8 @@ def test_haric_isci_atomik_surucu_koku_temizligi(tmp_path):
         con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)", (path, name, ".pdf"))
         fid = con.execute("SELECT file_id FROM files WHERE path=?", (path,)).fetchone()[0]
         folded = body.lower()
-        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text,folded_text) VALUES (?,?,?,?,?,?)",
-                    (fid,"text",1,"Sayfa 1",body,folded))
+        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,?,?,?,?)",
+                    (fid,"text",1,"Sayfa 1",body))
         for term in (name.lower(), folded):
             con.execute("INSERT INTO vocabulary(term,freq) VALUES (?,1) "
                         "ON CONFLICT(term) DO UPDATE SET freq=freq+1", (term,))

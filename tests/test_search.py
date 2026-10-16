@@ -63,6 +63,60 @@ def test_normalize_tr():
     assert normalize.NORMALIZER_VERSION == "a5-1"
 
 
+# --- v9: tek katlanmis FTS — I/ı/İ/ğ/ş/ç regresyonu (fts_udf_cozum 27 vaka) ---
+V9_VAKALAR = {
+    "İstanbul nüfusu": ["istanbul", "İSTANBUL", "Istanbul", "İstanbul"],
+    "Iğdır ili": ["igdir", "Iğdır", "IGDIR", "ıgdır"],
+    "ÇANKIRI merkez": ["cankiri", "ÇANKIRI", "çankırı"],
+    "Şırnak ilçesi": ["sirnak", "Şırnak", "ŞIRNAK", "şırnak"],
+    "Diyarbakır surları": ["diyarbakir", "Diyarbakır", "DİYARBAKIR", "diyarbakır"],
+    "ıssız sokak": ["issiz", "ıssız", "ISSIZ"],
+}
+
+
+@pytest.mark.parametrize("metin,sorgular", sorted(V9_VAKALAR.items()))
+def test_v9_folded_search_her_bicimde(tmp_path, metin, sorgular):
+    """v9: ham metin tek kopya; her yazim bicimi ayni katlanmis indekste bulunur."""
+    kok = str(tmp_path / "arsiv")
+    os.makedirs(kok, exist_ok=True)
+    _pdf(kok, "belge.pdf", metin)
+    time.sleep(2.5)
+    con, db = _kasa(tmp_path)
+    coordinator.run_scan(con, db, kok)
+    for sorgu in sorgular:
+        r = rank.search_ranked(con, sorgu)
+        assert r["results"], (metin, sorgu)
+        assert r["results"][0]["name"] == "belge.pdf", (metin, sorgu)
+    con.close()
+
+
+def test_v9_strict_ve_folded_siniflari(tmp_path):
+    """Ayni indeks: diakritikli sorgu strict, diakritiksiz ayni terim folded sinifta."""
+    kok = str(tmp_path / "arsiv")
+    os.makedirs(kok, exist_ok=True)
+    _pdf(kok, "istanbul.pdf", "İstanbul ili fatura")
+    time.sleep(2.5)
+    con, db = _kasa(tmp_path)
+    coordinator.run_scan(con, db, kok)
+    strict = rank.search_ranked(con, "İstanbul")
+    assert strict["results"] and strict["results"][0]["score_class"] == "strict"
+    folded = rank.search_ranked(con, "istanbul")
+    assert folded["results"] and folded["results"][0]["score_class"] in ("strict", "folded")
+    # her iki yazim ayni belgeyi bulur
+    assert {r["name"] for r in strict["results"]} == {r["name"] for r in folded["results"]}
+    con.close()
+
+
+def test_v9_sema_tek_kopya(tmp_path):
+    """v9 kasada folded_text kolonu ve docs_fts_folded yok; arama calisir."""
+    con, _db = _kasa(tmp_path)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(segments)")}
+    assert "folded_text" not in cols
+    assert not con.execute("SELECT 1 FROM sqlite_master WHERE name='docs_fts_folded'").fetchone()
+    assert not con.execute("SELECT 1 FROM sqlite_master WHERE name='segf_ai'").fetchone()
+    con.close()
+
+
 def test_src01_siralama_ve_aciklama(tmp_path):
     con, _db, _k = _arsiv(tmp_path)
     r = rank.search_ranked(con, "Ankara Ayşe 2024 vergi levhası")
