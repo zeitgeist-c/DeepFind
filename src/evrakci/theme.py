@@ -82,6 +82,15 @@ def symbol_icon(kind, color=None):
         p.drawLine(3, 12, 6, 12); p.drawLine(18, 12, 21, 12)
         p.drawLine(5, 19, 7, 17); p.drawLine(17, 7, 19, 5)
         p.drawEllipse(QRectF(9, 9, 6, 6))
+    elif kind == "grid":
+        for x, y in ((4, 4), (13, 4), (4, 13), (13, 13)):
+            p.drawRoundedRect(QRectF(x, y, 7, 7), 1.5, 1.5)
+    elif kind == "rows":
+        for y in (7, 12, 17):
+            p.drawLine(4, y, 21, y)
+    elif kind == "compact":
+        for y, end in ((7, 21), (12, 18), (17, 21)):
+            p.drawLine(4, y, end, y)
     elif kind == "folder":
         p.drawRoundedRect(QRectF(3, 7, 18, 13), 2, 2); p.drawLine(3, 7, 3, 4)
         p.drawLine(3, 4, 10, 4); p.drawLine(10, 4, 13, 7)
@@ -160,6 +169,24 @@ QStackedWidget {{ background: transparent; }}
 QScrollArea {{ background: transparent; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QScrollArea#paperCanvas {{ background: {p['zemin']}; border: 1px solid {p['sinir']}; border-radius: 10px; }}
+QLabel#thumbBox {{ background: {p['yuzey2']}; border: 1px solid {p['sinir']}; border-radius: 10px; }}
+QListWidget#pageRail {{ background: {p['yuzey2']}; border: 1px solid {p['sinir']};
+ border-radius: 10px; padding: 6px; }}
+QListWidget#pageRail::item {{ border-radius: 7px; padding: 3px; color: {p['ikincil']};
+ text-align: center; }}
+QListWidget#pageRail::item:hover {{ background: {p['secili']}; }}
+QListWidget#pageRail::item:selected {{ background: {p['secili']}; color: {p['metin']};
+ border: 1px solid {p['marka']}; }}
+
+/* -- filtre çipleri -- */
+QFrame#cip {{ background: {p['marka_tint']}; border: 1px solid {p['sinir']};
+ border-radius: 999px; }}
+QLabel[cipMetin="true"] {{ color: {p['marka']}; font-size: 12px; font-weight: 600;
+ background: transparent; }}
+QPushButton#cipKaldir {{ background: transparent; border: none; color: {p['marka']};
+ font-size: 13px; font-weight: 700; padding: 0px; }}
+QPushButton#cipKaldir:hover {{ background: {p['sinir']}; border-radius: 8px; }}
+QListView#gridList {{ border: none; padding: 0; background: transparent; }}
 QWidget#ayarGovde {{ background: {p['zemin']}; }}
 
 /* -- tipografi -- */

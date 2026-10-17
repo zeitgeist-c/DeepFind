@@ -161,6 +161,11 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
             # (indirme/acma/artik toplama); kaynak-dizin kaniti
             # test_update.py::AcmaTestleri + temizle testleri (runtime).
             continue
+        if f.name == "thumbs.py":
+            # thumbs.py: yalniz %LOCALAPPDATA%/Evrakci/thumbs onbellek dizininde
+            # uretir ve budar (os.remove). Kaynak dizine dokunmadigi runtime
+            # kanitiyla dogrulanir: test_thumbs.py::test_kucuk_resim_kaynak_dizine_dokunmaz.
+            continue
         in_guard = False  # _rmtree_tmp: tek korumali silme noktasi (ocr-tmp alti)
         for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             s = ln.strip()

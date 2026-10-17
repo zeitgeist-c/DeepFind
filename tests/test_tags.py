@@ -84,3 +84,56 @@ def test_elle_etiket_yeniden_taramada_korunur():
         assert "elle" not in rank.file_tags(con, fid)
     finally:
         con.close()
+
+
+def test_toplu_etiket_ekler_ve_kaldirir():
+    """Toplu etiket: tek işlemde tüm belgelere yazılır, kaldırma da topludur."""
+    con = database()
+    try:
+        f1, _ = _yaz(con, "C:/a/bir.pdf", "")
+        f2, _ = _yaz(con, "C:/a/iki.pdf", "")
+        f3, _ = _yaz(con, "C:/a/uc.pdf", "")
+        assert rank.tags_many(con, [f1, f2], "Vergi 2024 ") == 2   # kırpılır+küçültülür
+        assert rank.file_tags(con, f1) == ["vergi 2024"]
+        assert rank.file_tags(con, f2) == ["vergi 2024"]
+        assert rank.file_tags(con, f3) == []
+        # Aynı etiket tekrar eklenince çiftlenmez.
+        assert rank.tags_many(con, [f1, f2, f3], "vergi 2024") == 3
+        assert rank.file_tags(con, f3) == ["vergi 2024"]
+        assert rank.file_tags(con, f1) == ["vergi 2024"]
+        assert rank.tags_many(con, [f1, f3], "vergi 2024", remove=True) == 2
+        assert rank.file_tags(con, f1) == [] and rank.file_tags(con, f3) == []
+        assert rank.file_tags(con, f2) == ["vergi 2024"]
+        # Boş liste ve boş etiket sözleşmesi.
+        assert rank.tags_many(con, [], "x") == 0
+        with pytest.raises(ValueError):
+            rank.tags_many(con, [f1], "   ")
+    finally:
+        con.close()
+
+
+def test_toplu_etiket_hatada_geri_alir():
+    """Toplu etiket hatasında tek commit yapılmaz, rollback çağrılır."""
+    class SahteBaglanti:
+        def __init__(self):
+            self.commit_sayisi = 0
+            self.rollback_sayisi = 0
+            self.yazilan = []
+
+        def executemany(self, sql, args):
+            self.yazilan.extend(list(args))
+
+        def commit(self):
+            self.commit_sayisi += 1
+            raise RuntimeError("synthetic commit failure")
+
+        def rollback(self):
+            self.rollback_sayisi += 1
+
+    sahte = SahteBaglanti()
+    with pytest.raises(RuntimeError):
+        rank.tags_many(sahte, [1, 2, 3], "muhasebe")
+    assert sahte.rollback_sayisi == 1
+    assert sahte.commit_sayisi == 1
+    assert len(sahte.yazilan) == 3  # tüm satırlar aynı partide yazıldı
+

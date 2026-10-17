@@ -207,6 +207,33 @@ def remove_tag(con, file_id, tag: str) -> None:
     con.commit()
 
 
+def tags_many(con, file_ids, tag: str, *, auto: int = 0, remove: bool = False) -> int:
+    """Birden çok belgeye etiket ekler/kaldırır: tek işlem, hatada tümü geri alınır.
+
+    Yarı uygulanmış toplu işlem bırakmamak için tüm satırlar yazıldıktan sonra
+    tek `commit` yapılır; herhangi bir hata `rollback` ile geri alınır.
+    """
+    tag = (tag or "").strip().lower()
+    if not tag:
+        raise ValueError("etiket gerekli")
+    idler = list(file_ids)
+    if not idler:
+        return 0
+    try:
+        if remove:
+            con.executemany("DELETE FROM file_tags WHERE file_id=? AND tag=?",
+                            ((fid, tag) for fid in idler))
+        else:
+            con.executemany("INSERT INTO file_tags(file_id, tag, auto) VALUES (?,?,?)"
+                            " ON CONFLICT(file_id, tag) DO NOTHING",
+                            ((fid, tag, auto) for fid in idler))
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    return len(idler)
+
+
 def add_rule(con, tag: str, keywords: str, mode: str = "any") -> int:
     tag = (tag or "").strip().lower()
     keywords = (keywords or "").strip()

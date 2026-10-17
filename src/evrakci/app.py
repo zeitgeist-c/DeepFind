@@ -12,11 +12,12 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter, QTime, QEvent, QSettings, QRect
+from PySide6.QtCore import (QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter,
+                            QTime, QEvent, QSettings, QRect, QSize, QItemSelection, QItemSelectionModel)
 from PySide6.QtCore import QUrl
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply, QLocalServer, QLocalSocket
-from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel, QColor
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
+from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel, QColor, QPixmap
+from PySide6.QtWidgets import (QApplication, QAbstractItemView, QCheckBox, QComboBox, QDialog,
                                QFileDialog,
                                QHBoxLayout, QLabel, QLineEdit, QListView,
                                QListWidget, QMainWindow, QMessageBox, QPushButton,
@@ -26,14 +27,15 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
-from . import ai, migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery
+from . import ai, migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery, thumbs, sorgu
 from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
 from .vocab import rebuild_vocab
 from .auth import ParolaDialog, MOD_KURTARMA
 from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
-                 sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate)
+                 sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate, GorselKutusu,
+                 Cip, GridDelegate)
 from . import archive_ui
 
 EKRANLAR = ["Ara", "AI ile ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
@@ -786,6 +788,22 @@ class AnaPencere(QMainWindow):
             tools.addWidget(button)
         tools.addStretch(1)
         preview_layout.addLayout(tools)
+        gezinme = QHBoxLayout()
+        gezinme.setSpacing(8)
+        self.preview_once = QPushButton("‹ Önceki belge")
+        self.preview_once.setProperty("kucuk", True)
+        self.preview_once.setToolTip("Arama sonuçlarındaki önceki belge")
+        self.preview_once.clicked.connect(lambda: self._onizleme_komsu(-1))
+        self.preview_konum = label("", "ikincil")
+        self.preview_konum.setAlignment(Qt.AlignCenter)
+        self.preview_sonra = QPushButton("Sonraki belge ›")
+        self.preview_sonra.setProperty("kucuk", True)
+        self.preview_sonra.setToolTip("Arama sonuçlarındaki sonraki belge")
+        self.preview_sonra.clicked.connect(lambda: self._onizleme_komsu(1))
+        gezinme.addWidget(self.preview_once)
+        gezinme.addWidget(self.preview_konum, 1)
+        gezinme.addWidget(self.preview_sonra)
+        preview_layout.addLayout(gezinme)
         self.onizleme = Onizleme(self.preview_dialog)
         self.onizleme.setMinimumWidth(320)
         preview_layout.addWidget(self.onizleme, 1)
@@ -920,9 +938,47 @@ class AnaPencere(QMainWindow):
 
     def _open_preview(self,result):
         if self.con is None or self._locked: return
+        self._preview_result = result
         self.preview_path.setText(result['path'])
         self.onizleme.goster(self.con,result,self._sifre)
+        self._onizleme_konum()
         self.preview_dialog.show(); self.preview_dialog.raise_()
+        self.onizleme.setFocus()
+
+    def _onizleme_satir(self):
+        """Önizlenen belgenin arama sonuçlarındaki satırı (yoksa None)."""
+        yol = (getattr(self, "_preview_result", None) or {}).get("path")
+        if not yol:
+            return None
+        for satir, sonuc in enumerate(self.sonuclar):
+            if sonuc.get("path") == yol:
+                return satir
+        return None
+
+    def _onizleme_konum(self):
+        """Önizleme penceresindeki belge konumunu ve gezinme düğmelerini tazeler."""
+        satir = self._onizleme_satir()
+        if satir is None:
+            self.preview_konum.setText("")
+            self.preview_once.setEnabled(False)
+            self.preview_sonra.setEnabled(False)
+            return
+        self.preview_konum.setText(f"{satir + 1} / {len(self.sonuclar)}")
+        self.preview_once.setEnabled(satir > 0)
+        self.preview_sonra.setEnabled(satir < len(self.sonuclar) - 1)
+
+    def _onizleme_komsu(self, yon):
+        satir = self._onizleme_satir()
+        if satir is None:
+            return
+        hedef = satir + yon
+        if not 0 <= hedef < len(self.sonuclar):
+            return
+        idx = self.sonuc_model.index(hedef, 0)
+        self.sonuc_liste.setCurrentIndex(idx)
+        self.sonuc_izgara.setCurrentIndex(idx)
+        self._secim_guncelle()
+        self._sec(self.sonuc_model.index(hedef, 0))
 
     def _copy_path(self):
         QApplication.clipboard().setText(self.preview_path.text())
@@ -1082,6 +1138,14 @@ class AnaPencere(QMainWindow):
         k = QVBoxLayout(w)
         k.setContentsMargins(22, 18, 22, 20)
         k.setSpacing(14)
+        # Küçük resim yükleyicileri: arama başına tazelenir (bkz. _thumblari_baslat).
+        self._thumb_loader = None
+        self._buyuk_loader = None
+        self._dosya_thumb_loader = None
+        self._thumb_items = {}
+        self._buyuk_path = None
+        self._buyuk_pixmap = None
+        self._sorgu_alanlari = set()   # sorgunun kurduğu alanlar (M5)
 
         self.search_bar = QWidget()
         ust = QHBoxLayout(self.search_bar)
@@ -1091,6 +1155,8 @@ class AnaPencere(QMainWindow):
         self.arama_kutu.setObjectName("search")
         self.arama_kutu.setAccessibleName("Belge arama")
         self.arama_kutu.setPlaceholderText("Arşivinizde arayın…   Örneğin: Ankara vergi 2024")
+        self.arama_kutu.setToolTip("Alan sözdizimi: " + sorgu.YARDIM
+                                   + "\nAlan dışı sözcükler içerik aramasına girer.")
         self.arama_kutu.setClearButtonEnabled(True)
         self.arama_kutu.returnPressed.connect(self._ara_simdi)
         ust.addWidget(self.arama_kutu, 1)
@@ -1099,6 +1165,16 @@ class AnaPencere(QMainWindow):
         search.clicked.connect(self._ara_simdi)
         ust.addWidget(search)
         k.addWidget(self.search_bar)
+        # Satır içi sorgu doğrulaması (docspell deseni): hatalı alanda imleç gösterilir.
+        self.sorgu_uyari = QLabel("")
+        self.sorgu_uyari.setProperty("hata", True)
+        self.sorgu_uyari.setTextFormat(Qt.PlainText)
+        self.sorgu_uyari.setWordWrap(True)
+        self.sorgu_uyari.setAccessibleName("Sorgu doğrulama uyarısı")
+        from PySide6.QtGui import QFont
+        self.sorgu_uyari.setFont(QFont("Cascadia Mono", 9))
+        self.sorgu_uyari.hide()
+        k.addWidget(self.sorgu_uyari)
         self.search_progress = QProgressBar()
         self.search_progress.setRange(0, 0)
         self.search_progress.setTextVisible(False)
@@ -1136,6 +1212,19 @@ class AnaPencere(QMainWindow):
         fl.addWidget(kaydir, 1)
         kaydir.setWidget(ic)
         form.addWidget(bolum("Filtreler"))
+        self.filtre_sayi = sayac("")
+        self.filtre_sayi.hide()
+        form.addWidget(self.filtre_sayi)
+        # Aktif filtreler başlığın hemen altında: kaldırılabilir çipler + sıfırlama.
+        self.filtre_cipleri = QVBoxLayout()
+        self.filtre_cipleri.setSpacing(5)
+        form.addLayout(self.filtre_cipleri)
+        self.filtre_sifirla = QPushButton("Filtreleri sıfırla")
+        self.filtre_sifirla.setProperty("kucuk", True)
+        self.filtre_sifirla.setToolTip("Tüm arama filtrelerini temizler")
+        self.filtre_sifirla.clicked.connect(lambda: self._filtre_temizle())
+        self.filtre_sifirla.hide()
+        form.addWidget(self.filtre_sifirla)
         self.yil_filtre = QLineEdit()
         self.yil_filtre.setPlaceholderText("Yıl (ör. 2024)")
         self.tur_filtre = QComboBox()
@@ -1189,10 +1278,6 @@ class AnaPencere(QMainWindow):
         etiket_satir.addWidget(self.etiket_sil_btn)
         etiket_satir.addStretch(1)
         form.addLayout(etiket_satir)
-        self.aktif_filtre = QLabel("")
-        self.aktif_filtre.setProperty("ikincil", True)
-        self.aktif_filtre.setWordWrap(True)
-        form.addWidget(self.aktif_filtre)
         form.addStretch(1)
         islik.addWidget(filtre)
 
@@ -1208,25 +1293,101 @@ class AnaPencere(QMainWindow):
         self.sonuc_sayi.hide()
         bas.addWidget(self.sonuc_sayi)
         bas.addStretch(1)
+        # Görünüm modu (paperless görünüm anahtarı deseni).
+        self.gorunum_btnleri = {}
+        for etiket, mod, ikon in (("Kompakt", "kompakt", "compact"),
+                                  ("Satırlar", "satir", "rows"),
+                                  ("Izgara", "izgara", "grid")):
+            dugme = QPushButton()
+            dugme.setCheckable(True)
+            dugme.setIcon(theme.symbol_icon(ikon))
+            dugme.setIconSize(QSize(16, 16))
+            dugme.setFixedWidth(34)
+            dugme.setProperty("dar", True)
+            dugme.setToolTip(f"{etiket} görünüm")
+            dugme.setAccessibleName(f"{etiket} görünüm")
+            dugme.clicked.connect(lambda _c=False, m=mod: self._gorunum_ayarla(m))
+            self.gorunum_btnleri[mod] = dugme
+            bas.addWidget(dugme)
+        # Gösterilecek alanlar (paperless "Show" menüsü deseni).
+        self.goster_btn = QPushButton("Göster")
+        self.goster_btn.setProperty("kucuk", True)
+        self.goster_btn.setToolTip("Satırlarda hangi bilgiler görünsün")
+        self.goster_menu = QMenu(self.goster_btn)
+        self.goster_btn.setMenu(self.goster_menu)
+        bas.addWidget(self.goster_btn)
         self.csv_btn = QPushButton("CSV indir")
         self.csv_btn.setProperty("ghost", True)
         self.csv_btn.setProperty("kucuk", True)
         self.csv_btn.clicked.connect(self._sonuc_csv)
         bas.addWidget(self.csv_btn)
         ok.addLayout(bas)
+        # Toplu işlem çubuğu: seçim denetimleri + toplu etiket/CSV.
+        self.toplu_bar = QWidget()
+        toplu = QHBoxLayout(self.toplu_bar)
+        toplu.setContentsMargins(0, 0, 0, 0)
+        toplu.setSpacing(7)
+        self.secim_btnleri = []
+        for etiket, adet, ipucu in (("Hiçbiri", 0, "Seçimi temizle"),
+                                    ("Sayfa", 50, "İlk 50 sonucu seç"),
+                                    ("Tümü", -1, "Tüm sonuçları seç")):
+            dugme = QPushButton(etiket)
+            dugme.setProperty("kucuk", True)
+            dugme.setToolTip(ipucu)
+            dugme.clicked.connect(lambda _c=False, n=adet: self._secim_ayarla(n))
+            toplu.addWidget(dugme)
+            self.secim_btnleri.append(dugme)
+        self.secim_sayac = sayac("")
+        toplu.addWidget(self.secim_sayac)
+        toplu.addStretch(1)
+        self.toplu_etiket_btn = QPushButton("Etiketle")
+        self.toplu_etiket_btn.setProperty("kucuk", True)
+        self.toplu_etiket_btn.setToolTip("Seçili belgelere tek işlemde etiket ekle")
+        self.toplu_etiket_btn.clicked.connect(lambda: self._toplu_etiket())
+        toplu.addWidget(self.toplu_etiket_btn)
+        self.toplu_etiket_sil_btn = QPushButton("Etiketi kaldır")
+        self.toplu_etiket_sil_btn.setProperty("kucuk", True)
+        self.toplu_etiket_sil_btn.setToolTip("Seçili belgelerden etiketi tek işlemde kaldır")
+        self.toplu_etiket_sil_btn.clicked.connect(lambda: self._toplu_etiket(kaldir=True))
+        toplu.addWidget(self.toplu_etiket_sil_btn)
+        self.toplu_csv_btn = QPushButton("Seçimi CSV")
+        self.toplu_csv_btn.setProperty("kucuk", True)
+        self.toplu_csv_btn.setToolTip("Yalnız seçili sonuçları CSV olarak indir")
+        self.toplu_csv_btn.clicked.connect(self._toplu_csv)
+        toplu.addWidget(self.toplu_csv_btn)
+        self.toplu_bar.hide()
+        ok.addWidget(self.toplu_bar)
         self.sonuc_model = QStandardItemModel()
         self.sonuc_liste = QListView()
         self.sonuc_liste.setObjectName("cardList")
-        self.sonuc_liste.setItemDelegate(CardDelegate(self.sonuc_liste))
+        self.sonuc_liste.setItemDelegate(CardDelegate(self.sonuc_liste, thumb=True))
         self.sonuc_liste.setModel(self.sonuc_model)
         self.sonuc_liste.setSpacing(2)
+        self.sonuc_liste.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.sonuc_liste.clicked.connect(self._secim_guncelle)
         self.sonuc_liste.doubleClicked.connect(self._sec)
+        self.sonuc_izgara = QListView()
+        self.sonuc_izgara.setObjectName("gridList")
+        self.sonuc_izgara.setViewMode(QListView.IconMode)
+        self.sonuc_izgara.setResizeMode(QListView.Adjust)
+        self.sonuc_izgara.setWrapping(True)
+        self.sonuc_izgara.setMovement(QListView.Static)
+        self.sonuc_izgara.setGridSize(QSize(184, 220))
+        self.sonuc_izgara.setItemDelegate(GridDelegate(self.sonuc_izgara))
+        self.sonuc_izgara.setModel(self.sonuc_model)
+        self.sonuc_izgara.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.sonuc_izgara.clicked.connect(self._secim_guncelle)
+        self.sonuc_izgara.doubleClicked.connect(self._sec)
+        for gorunum in (self.sonuc_liste, self.sonuc_izgara):
+            gorunum.selectionModel().selectionChanged.connect(
+                lambda *_a: self._secim_guncelle_bulk())
         self.sonuc_panel = QStackedWidget()
-        self.sonuc_panel.addWidget(self.sonuc_liste)
+        self.sonuc_panel.addWidget(self.sonuc_liste)   # 0: satır/kompakt
+        self.sonuc_panel.addWidget(self.sonuc_izgara)  # 1: ızgara
         self.search_empty = EmptyState("Aradığınız belgeye ulaşın", "Dosya adı veya içerikte geçen birkaç kelime yazın.\nSonuçlar burada listelenir.")
-        self.sonuc_panel.addWidget(self.search_empty)
-        self.sonuc_panel.setCurrentIndex(1)
+        self.sonuc_panel.addWidget(self.search_empty)  # 2: boş durum
+        self._bos_index = 2
+        self.sonuc_panel.setCurrentIndex(self._bos_index)
         ok.addWidget(self.sonuc_panel, 1)
         self.oneri = QLabel("")
         self.oneri.setProperty("ikincil", True)
@@ -1245,6 +1406,8 @@ class AnaPencere(QMainWindow):
         al.setContentsMargins(16, 14, 16, 16)
         al.setSpacing(10)
         al.addWidget(bolum("Seçili evrak"))
+        self.secim_gorsel = GorselKutusu()
+        al.addWidget(self.secim_gorsel, 1)
         self.secim_ad = label("Henüz seçim yok", "subheading")
         self.secim_ad.setWordWrap(True)
         al.addWidget(self.secim_ad)
@@ -1260,10 +1423,9 @@ class AnaPencere(QMainWindow):
         self.secim_etiket = label("", "ikincil")
         self.secim_etiket.setWordWrap(True)
         al.addWidget(self.secim_etiket)
-        al.addStretch(1)
         self.secim_onizle = QPushButton("Ön izle")
         self.secim_onizle.setProperty("birincil", True)
-        self.secim_onizle.clicked.connect(lambda: self._sec(self.sonuc_liste.currentIndex()))
+        self.secim_onizle.clicked.connect(lambda: self._sec(self._aktif_gosterim().currentIndex()))
         al.addWidget(self.secim_onizle)
         self.secim_kopyala = QPushButton("Yol kopyala")
         self.secim_kopyala.clicked.connect(self._copy_result_path)
@@ -1277,6 +1439,10 @@ class AnaPencere(QMainWindow):
         yuzey_layout.addWidget(islik)
         k.addWidget(yuzey, 1)
         self._secim_guncelle()
+        self._gorunum = "satir"
+        self._gorunum_uygula()
+        self._goster_menu_tazele()
+        self._filtre_cipleri()
         self.yigin.addWidget(w)
 
     def _secim_guncelle(self, _idx=None):
@@ -1288,6 +1454,7 @@ class AnaPencere(QMainWindow):
             self.secim_etiket.clear()
             self.secim_onizle.setEnabled(False)
             self.secim_kopyala.setEnabled(False)
+            self._buyuk_gorsel_yukle(None)
             return
         try:
             etiketler = rank.file_tags(self.con, secili["file_id"])
@@ -1300,13 +1467,426 @@ class AnaPencere(QMainWindow):
         self.secim_etiket.setText("Etiket: " + ", ".join(etiketler) if etiketler else "Etiket yok")
         self.secim_onizle.setEnabled(True)
         self.secim_kopyala.setEnabled(True)
+        self._buyuk_gorsel_yukle(secili.get("path"))
+
+    # -- çoklu seçim ve toplu işlem --
+
+    def _secim_satirlari(self):
+        """Etkin görünümde seçili satır numaraları."""
+        secim = self._aktif_gosterim().selectionModel()
+        return {i.row() for i in secim.selectedIndexes() if i.isValid()}
+
+    def _secili_idler(self):
+        """Seçili sonuçların file_id'leri (satıra göre sıralı)."""
+        return [self.sonuclar[s]["file_id"] for s in sorted(self._secim_satirlari())
+                if 0 <= s < len(self.sonuclar)]
+
+    def _secim_ayarla(self, adet):
+        """Seçim denetimi: 0 temizler, pozitif ilk n sonucu, -1 tümünü seçer."""
+        gorunum = self._aktif_gosterim()
+        model = self.sonuc_model
+        secim = gorunum.selectionModel()
+        secim.clearSelection()
+        if adet != 0 and model.rowCount() > 0:
+            son = model.rowCount() if adet < 0 else min(model.rowCount(), adet)
+            blok = QItemSelection(model.index(0, 0), model.index(son - 1, 0))
+            secim.select(blok, QItemSelectionModel.ClearAndSelect)
+        self._secim_guncelle_bulk()
+
+    def _secim_guncelle_bulk(self):
+        """Toplu işlem çubuğunu ve tek belge panelini seçime göre tazeler."""
+        adet = len(self._secim_satirlari())
+        self.secim_sayac.setText(f"{adet} seçili" if adet else "")
+        self.secim_sayac.setVisible(bool(adet))
+        for dugme in (self.toplu_etiket_btn, self.toplu_etiket_sil_btn, self.toplu_csv_btn):
+            dugme.setEnabled(bool(adet))
+        self.toplu_bar.setVisible(bool(self.sonuclar))
+        if self.sonuclar:
+            self._secim_guncelle()
+
+    def _toplu_etiket(self, kaldir=False):
+        """Seçili belgelere tek işlemde etiket ekler/kaldırır (hatada geri alınır)."""
+        from PySide6.QtWidgets import QInputDialog
+        idler = self._secili_idler()
+        if not idler:
+            self.durum.showMessage("Önce sonuç seçin.")
+            return
+        etiket, tamam = QInputDialog.getText(
+            self, "Etiketi kaldır" if kaldir else "Etiketle",
+            f"{len(idler)} belge için etiket adı:")
+        etiket = (etiket or "").strip().lower()
+        if not tamam or not etiket:
+            return
+
+        def islem(con):
+            return rank.tags_many(con, idler, etiket, remove=kaldir)
+
+        def bitti(sayi):
+            self._toast_goster(f"{sayi} belge için '{etiket}' etiketi "
+                               + ("kaldırıldı." if kaldir else "eklendi."))
+            self._ara_simdi()
+
+        def hata(mesaj):
+            QMessageBox.warning(self, "Etiket", f"Toplu işlem geri alındı: {mesaj}")
+
+        archive_ui.job(self, "toplu_etiket", islem, bitti, writable=True, failed=hata)
+
+    def _toplu_csv(self):
+        """Yalnız seçili sonuçları CSV olarak indirir."""
+        secilenler = [self.sonuclar[s] for s in sorted(self._secim_satirlari())
+                      if 0 <= s < len(self.sonuclar)]
+        if not secilenler:
+            QMessageBox.information(self, "CSV", "Önce sonuç seçin.")
+            return
+        yol, _ = QFileDialog.getSaveFileName(self, "Seçimi indir", "secili-sonuclar.csv",
+                                             "CSV (*.csv)")
+        if not yol:
+            return
+        try:
+            from pathlib import Path
+            Path(yol).write_bytes(rank.results_csv(self.con, secilenler).encode("utf-8-sig"))
+        except OSError as e:
+            QMessageBox.warning(self, "CSV", f"Yazılamadı: {e}")
+            return
+        QMessageBox.information(self, "CSV", f"{len(secilenler)} seçili sonuç kaydedildi.")
+
+    # -- küçük resimler --
+
+    def _thumblari_durdur(self):
+        """Koşan küçük resim yükleyicilerini durdur (arama/kilit geçişleri)."""
+        for ad in ("_thumb_loader", "_buyuk_loader", "_dosya_thumb_loader"):
+            yukleyici = getattr(self, ad, None)
+            if yukleyici is not None:
+                yukleyici.durdur()
+                yukleyici.wait(3000)
+                setattr(self, ad, None)
+
+    # -- filtre çipleri --
+
+    ALANLAR = ("yol", "tur", "ozet", "etiket")
+    GORUNUMLER = ("kompakt", "satir", "izgara")
+
+    def _filtre_degerleri(self):
+        """(etiket, değer, temizleme işlevi) üçlüleri — yalnız dolu olanlar çip olur."""
+        return (
+            ("Yıl", self.yil_filtre.text().strip(), self.yil_filtre.clear),
+            ("Tür", "" if self.tur_filtre.currentText() == "tümü" else self.tur_filtre.currentText(),
+             lambda: self.tur_filtre.setCurrentIndex(max(0, self.tur_filtre.findText("tümü")))),
+            ("Klasör", self.sirket_filtre.text().strip(), self.sirket_filtre.clear),
+            ("Etiket", self.etiket_filtre.text().strip(), self.etiket_filtre.clear),
+        )
+
+    def _filtre_cipleri(self):
+        """Aktif filtreleri kaldırılabilir çip olarak gösterir; sayaç ve sıfırlama."""
+        while self.filtre_cipleri.count():
+            oge = self.filtre_cipleri.takeAt(0)
+            widget = oge.widget()
+            if widget is not None:
+                # deleteLater tek başına yetmez: widget layout'tan çıksa da
+                # görünür kalır; önce gizlenip ebeveyninden ayrılır.
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        aktif = 0
+        for etiket, deger, temizle in self._filtre_degerleri():
+            if not deger:
+                continue
+            aktif += 1
+            cip = Cip(f"{etiket}: {deger}")
+            cip.silindi.connect(temizle)
+            cip.silindi.connect(self._ara_simdi)
+            self.filtre_cipleri.addWidget(cip)
+        self.filtre_sayi.setText(str(aktif))
+        self.filtre_sayi.setVisible(bool(aktif))
+        self.filtre_sifirla.setVisible(bool(aktif))
+
+    def _filtre_temizle(self):
+        """Tüm arama filtrelerini temizler ve aramayı yeniler."""
+        self.yil_filtre.clear()
+        self.tur_filtre.setCurrentIndex(max(0, self.tur_filtre.findText("tümü")))
+        self.sirket_filtre.clear()
+        self.etiket_filtre.clear()
+        self._sorgu_alanlari = set()
+        self._ara_simdi()
+
+    # -- görünüm modları ve gösterilecek alanlar --
+
+    def _alanlar(self):
+        """Satırlarda gösterilecek alanlar (ayar yoksa tümü; boşsa yalnız ad)."""
+        varsayilan = ",".join(self.ALANLAR)
+        ham = (migrate.get_setting(self.con, "goster_alanlari", varsayilan)
+               if self.con is not None else varsayilan)
+        return {a for a in ham.split(",") if a}
+
+    def _goster_menu_tazele(self):
+        """Gösterilecek alanlar menüsünü mevcut seçimle kurar."""
+        self.goster_menu.clear()
+        alanlar = self._alanlar()
+        for etiket, anahtar in (("Yol", "yol"), ("Tür ve etiket", "tur"),
+                                ("İçerik özeti", "ozet"), ("Etiketler", "etiket")):
+            eylem = self.goster_menu.addAction(etiket)
+            eylem.setCheckable(True)
+            eylem.setChecked(anahtar in alanlar)
+            eylem.toggled.connect(lambda acik, a=anahtar: self._alan_degistir(a, acik))
+
+    def _alan_degistir(self, anahtar, acik):
+        """Bir alanı aç/kapat; ayarı sakla ve satırları yeniden yaz."""
+        alanlar = self._alanlar()
+        if acik:
+            alanlar.add(anahtar)
+        else:
+            alanlar.discard(anahtar)
+        sira = [a for a in self.ALANLAR if a in alanlar]
+        if self.con is not None:
+            migrate.set_setting(self.con, "goster_alanlari", ",".join(sira))
+        self._goster_menu_tazele()
+        self._satirlari_yaz()
+        self._thumblari_baslat()
+
+    def _gorunum_yukle(self):
+        """Kayıtlı görünüm modunu ve alan seçimini uygular (kasa açılışında)."""
+        mod = (migrate.get_setting(self.con, "gorunum_modu", "satir")
+               if self.con is not None else "satir")
+        if mod not in self.GORUNUMLER:
+            mod = "satir"
+        self._gorunum = mod
+        self._gorunum_uygula()
+        self._goster_menu_tazele()
+
+    def _gorunum_ayarla(self, mod):
+        if mod not in self.GORUNUMLER:
+            return
+        self._gorunum = mod
+        if self.con is not None:
+            migrate.set_setting(self.con, "gorunum_modu", mod)
+        self._gorunum_uygula()
+
+    def _gorunum_uygula(self):
+        """Görünüm moduna göre delege ve panel seçimi."""
+        mod = getattr(self, "_gorunum", "satir")
+        self.sonuc_liste.setItemDelegate(
+            CardDelegate(self.sonuc_liste, thumb=True, compact=(mod == "kompakt")))
+        for anahtar, dugme in self.gorunum_btnleri.items():
+            dugme.setChecked(anahtar == mod)
+        self.goster_btn.setEnabled(mod != "izgara")
+        # Etkin olmayan yüzeyin seçimi temizlenir (iki görünüm ayrı seçim tutar).
+        for gorunum in (self.sonuc_liste, self.sonuc_izgara):
+            if gorunum is not self._aktif_gosterim():
+                gorunum.selectionModel().clearSelection()
+        self._secim_guncelle_bulk()
+        self._sonuc_gorunumu(bool(self.sonuclar))
+        self.sonuc_liste.doItemsLayout()
+        self.sonuc_izgara.doItemsLayout()
+
+    def _sonuc_gorunumu(self, dolu):
+        """Sonuç yüzeyi: dolu değilse boş durum, doluysa seçili görünüm."""
+        if not dolu:
+            self.sonuc_panel.setCurrentIndex(self._bos_index)
+            return
+        self.sonuc_panel.setCurrentIndex(1 if getattr(self, "_gorunum", "satir") == "izgara" else 0)
+
+    # -- satır içeriği --
+
+    @staticmethod
+    def _durum_notu(sonuc):
+        if sonuc.get('index_status') != 'ok' or not sonuc.get('content_available', True):
+            return (archive_ui.STATUS.get(sonuc.get('index_status'), sonuc.get('index_status', ''))
+                    + ' • ' + (sonuc.get('error_code') or '')
+                    + (' • Yalnız ad/yol eşleşmesi' if not sonuc.get('content_available', True) else ''))
+        return ""
+
+    def _satir_metni(self, sonuc, etiketler, ozet):
+        """Seçili alanlara göre satır metni (ad her zaman ilk satırdır)."""
+        alanlar = self._alanlar()
+        tur = sonuc.get("ext", "").lstrip(".").upper()
+        durum = self._durum_notu(sonuc)
+        satirlar = [sonuc["name"]]
+        if "yol" in alanlar:
+            satirlar.append(sonuc["path"])
+        if "tur" in alanlar:
+            satirlar.append(f"{tur}  •  {sonuc.get('label','')}" + (f"  •  {durum}" if durum else ""))
+        if "ozet" in alanlar:
+            satirlar.append(ozet[:150])
+        if "etiket" in alanlar and etiketler:
+            satirlar.append("Etiket: " + ", ".join(etiketler))
+        if durum and "tur" not in alanlar:
+            satirlar.append(durum)
+        return "\n".join(satirlar)
+
+    def _satirlari_yaz(self):
+        """`sonuclar` listesini gösterilecek alanlara göre modele yeniden yazar."""
+        from PySide6.QtGui import QTextDocument
+        self.sonuc_model.clear()
+        for sonuc in self.sonuclar:
+            try:
+                etiketler = rank.file_tags(self.con, sonuc["file_id"])
+            except Exception:
+                etiketler = []
+            belge = QTextDocument()
+            belge.setHtml(sonuc.get("snippet", ""))
+            ozet = belge.toPlainText()
+            item = QStandardItem(self._satir_metni(sonuc, etiketler, ozet))
+            item.setEditable(False)
+            item.setToolTip(sonuc['path'] + '\n' + ozet)
+            self.sonuc_model.appendRow(item)
+    @staticmethod
+    def _gorsel_tur(ext):
+        """Küçük resmi üretilebilen uzantılar (PDF + görseller)."""
+        ext = (ext or "").lower()
+        return ext == ".pdf" or ext in (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp")
+
+    def _list_gorselleri(self, model, esleme, slot):
+        """Bir QStandardItemModel için küçük resim yükleyicisi kurar.
+
+        `esleme`: {kaynak yol: satır}. Yükleyici `slot` adlı öznitelikte
+        tutulur; yenisi kurulmadan önce var olan durdurulur. Sinyaller bağlı
+        metoda bağlanır: iş parçacıkları arası kuyruklu bağlantı sayesinde
+        QPixmap yalnızca GUI iş parçacığında kurulur.
+        """
+        onceki = getattr(self, slot, None)
+        if onceki is not None:
+            onceki.durdur()
+            onceki.wait(3000)
+            setattr(self, slot, None)
+        isler = [(yol, "s") for yol in list(esleme)[:40]
+                 if self._gorsel_tur(os.path.splitext(yol)[1])]
+        if not isler:
+            return
+        yukleyici = thumbs.OnbellekYukleyici(isler, self)
+        yukleyici.model = model
+        yukleyici.esleme = esleme
+        yukleyici.tamam.connect(self._thumb_sinyali)
+        yukleyici.finished.connect(self._gorsel_yukleyici_bitti)
+        setattr(self, slot, yukleyici)
+        yukleyici.start()
+
+    def _thumb_sinyali(self, yol, tur, dosya):
+        """Küçük resim hazır: satırı günceller (GUI iş parçacığında)."""
+        if self.con is None or self._locked:
+            return
+        yukleyici = self.sender()
+        model = getattr(yukleyici, "model", None)
+        if model is None:
+            return
+        self._model_gorsel_guncelle(model, getattr(yukleyici, "esleme", None) or {}, yol, dosya)
+
+    def _model_gorsel_guncelle(self, model, esleme, yol, dosya):
+        satir = esleme.get(yol)
+        if satir is None or satir >= model.rowCount():
+            return
+        pixmap = QPixmap(dosya) if dosya else QPixmap()
+        if pixmap.isNull():
+            return  # üretilemedi: satır simge yer tutucusunda kalır
+        model.setData(model.index(satir, 0), pixmap, Qt.DecorationRole)
+
+    def _gorsel_yukleyici_bitti(self):
+        yukleyici = self.sender()
+        for ad in ("_thumb_loader", "_buyuk_loader", "_dosya_thumb_loader"):
+            if getattr(self, ad, None) is yukleyici:
+                setattr(self, ad, None)
+        yukleyici.deleteLater()
+        thumbs.buda()
+
+    def _thumblari_baslat(self):
+        """Görüntülenebilir ilk sonuçlar için küçük resimleri sırayla üret."""
+        self._thumb_items = {sonuc["path"]: satir for satir, sonuc in enumerate(self.sonuclar[:40])}
+        self._list_gorselleri(self.sonuc_model, self._thumb_items, "_thumb_loader")
+
+    def _buyuk_gorsel_yukle(self, path):
+        """Seçili evrak panelindeki büyük önizlemeyi hazırla (aynı dosya ise bekle)."""
+        if path == getattr(self, "_buyuk_path", None):
+            return
+        onceki = getattr(self, "_buyuk_loader", None)
+        if onceki is not None:
+            onceki.durdur()
+            self._buyuk_loader = None
+        self._buyuk_path = path
+        self._buyuk_pixmap = None
+        self.secim_gorsel.gorsel_ata(None)
+        if not path or self.con is None or self._locked:
+            return
+        if not self._gorsel_tur(os.path.splitext(path)[1]):
+            return
+        yukleyici = thumbs.OnbellekYukleyici([(path, "l")], self)
+        yukleyici.tamam.connect(self._buyuk_tamam)
+        yukleyici.finished.connect(self._gorsel_yukleyici_bitti)
+        self._buyuk_loader = yukleyici
+        yukleyici.start()
+
+    def _buyuk_tamam(self, path, tur, dosya):
+        if tur != "l" or self.con is None or self._locked:
+            return
+        secili = self._secili_dosya()
+        if secili is None or secili.get("path") != path:
+            return
+        pixmap = QPixmap(dosya) if dosya else QPixmap()
+        if pixmap.isNull():
+            return
+        self._buyuk_pixmap = pixmap
+        self.secim_gorsel.gorsel_ata(pixmap)
+
+    # -- sorgu sözdizimi --
+
+    def _tur_secenekleri(self):
+        return [self.tur_filtre.itemText(i) for i in range(self.tur_filtre.count())]
+
+    def _sorgu_uyari_goster(self, ham, cozum):
+        """Hatalı sorguda imleçli uyarı gösterir; arama çalıştırılmaz."""
+        satir = sorgu.imlec_satiri(ham, cozum.imlec)
+        self.sorgu_uyari.setText(f"Sorgu hatası: {cozum.hata}\n{ham}\n{satir}")
+        self.sorgu_uyari.show()
+
+    def _sorgu_alanlarini_uygula(self, alanlar):
+        """Sorgudaki alanları filtre denetimlerine yazar (sinyaller kapatılarak).
+
+        Kural: sorgu **yalnızca kendi kurduğu** alanı temizler. Kullanıcının elle
+        girdiği filtre, sorgu metni değişti diye silinmez; sorgudan çıkarılan
+        alan (`yil:2024` silindiyse) ise geri alınır.
+        """
+        onceki = getattr(self, "_sorgu_alanlari", set())
+        for anahtar, denetim in (("yil", self.yil_filtre),
+                                 ("klasor", self.sirket_filtre),
+                                 ("etiket", self.etiket_filtre)):
+            deger = alanlar.get(anahtar)
+            if deger:
+                if denetim.text().strip() != deger:
+                    denetim.blockSignals(True)
+                    denetim.setText(deger)
+                    denetim.blockSignals(False)
+            elif anahtar in onceki and denetim.text().strip():
+                denetim.blockSignals(True)
+                denetim.clear()
+                denetim.blockSignals(False)
+        tur = alanlar.get("tur")
+        if tur:
+            sira = self.tur_filtre.findText(tur)
+            if sira >= 0 and self.tur_filtre.currentIndex() != sira:
+                self.tur_filtre.blockSignals(True)
+                self.tur_filtre.setCurrentIndex(sira)
+                self.tur_filtre.blockSignals(False)
+        elif "tur" in onceki and self.tur_filtre.currentText() != "tümü":
+            self.tur_filtre.blockSignals(True)
+            self.tur_filtre.setCurrentIndex(max(0, self.tur_filtre.findText("tümü")))
+            self.tur_filtre.blockSignals(False)
+        self._sorgu_alanlari = set(alanlar)
 
     def _ara_simdi(self, reset=True):
         if reset: self._search_offset=0
         self._debounce.stop()
+        if reset:
+            self._thumblari_durdur()
         if self.con is None:
             return
-        q = self.arama_kutu.text()
+        ham = self.arama_kutu.text()
+        cozum = sorgu.cozumle(ham, self._tur_secenekleri())
+        if cozum.hata:
+            self._sorgu_uyari_goster(ham, cozum)
+            return
+        self.sorgu_uyari.hide()
+        self._sorgu_alanlarini_uygula(cozum.alanlar)
+        self._filtre_cipleri()  # filtre durumu arama sonucundan bağımsız görünür
+        q = cozum.serbest
+        self._sorgu_serbest = q  # sonuç eşleştirmesi ham kutu metniyle değil, çözülen metinle
         self._pending_search = None
         if self._search_thread is not None:
             self._search_thread.stop.set()
@@ -1317,10 +1897,13 @@ class AnaPencere(QMainWindow):
             self.sonuc_sayi.clear()
             self.sonuc_sayi.hide()
             self._secim_guncelle()
-            self.sonuc_panel.setCurrentIndex(1)
+            self._sonuc_gorunumu(False)
+            self.toplu_bar.hide()
             self.search_empty.title.setText("Aradığınız belgeye ulaşın")
             self.search_empty.text.setText("Dosya adı veya içerikte geçen birkaç kelime yazın.\nSonuçlar burada listelenir.")
-            self.oneri.setText("Son aramalar Geçmiş ekranında; aramak için yazın.")
+            self.oneri.setText("Filtreler ayarlandı; aramak için bir sözcük de yazın."
+                               if cozum.alanlar else
+                               "Son aramalar Geçmiş ekranında; aramak için yazın.")
             return
         yil = self.yil_filtre.text().strip() or None
         tur = self.tur_filtre.currentText()
@@ -1355,7 +1938,8 @@ class AnaPencere(QMainWindow):
         if self._locked or self.con is None:
             return
         q, yil, tur, kokf, etiket = message["request"]
-        current = (self.arama_kutu.text(), self.yil_filtre.text().strip() or None,
+        current = (getattr(self, "_sorgu_serbest", self.arama_kutu.text()),
+                   self.yil_filtre.text().strip() or None,
                    None if self.tur_filtre.currentText() == "tümü" else self.tur_filtre.currentText(),
                    self.sirket_filtre.text().strip().lower(),
                    self.etiket_filtre.text().strip().lower() or None)
@@ -1376,47 +1960,35 @@ class AnaPencere(QMainWindow):
         self.sonuc_sayi.setText(f"{len(res)} sonuç" if res else "")
         self.sonuc_sayi.setVisible(bool(res))
         self._secim_guncelle()
-        self.sonuc_panel.setCurrentIndex(0 if res else 1)
+        self._sonuc_gorunumu(bool(res))
+        self.sonuc_liste.selectionModel().clearSelection()
+        self.sonuc_izgara.selectionModel().clearSelection()
         if not res:
             self.search_empty.title.setText("Eşleşen belge bulunamadı")
             self.search_empty.text.setText("Farklı bir kelime deneyin veya arama filtrelerini genişletin.")
-        for r in res:
-            from PySide6.QtGui import QTextDocument
-            snippet = QTextDocument()
-            snippet.setHtml(r.get("snippet", ""))
-            try:
-                etiketler = rank.file_tags(self.con, r["file_id"])
-            except Exception:
-                etiketler = []
-            item = QStandardItem(f"{r['name']}\n{r['path']}\n{r.get('ext', '').lstrip('.').upper()}  •  {r['label']}\n"
-                                 + snippet.toPlainText()[:150]
-                                 + (f"\nEtiket: {', '.join(etiketler)}" if etiketler else ""))
-            if r.get('index_status')!='ok' or not r.get('content_available',True):
-                lines=item.text().splitlines()
-                lines[2]+=' • '+archive_ui.STATUS.get(r.get('index_status'),r.get('index_status',''))+' • '+(r.get('error_code') or '')+(' • Yalnız ad/yol eşleşmesi' if not r.get('content_available',True) else '')
-                item.setText('\n'.join(lines))
-            item.setEditable(False)
-            item.setToolTip(r['path']+'\n'+snippet.toPlainText())
-            self.sonuc_model.appendRow(item)
+        self._satirlari_yaz()
+        self._secim_guncelle_bulk()
         if not res:
             self.oneri.setText("Sonuç yok." + (f" Yakın: {', '.join(out['suggestions'])}"
                                                if out["suggestions"] else ""))
         else:
             self.oneri.setText(f"{len(res)} sonuç" +
                                (f" • {', '.join(out['suggestions'][:3])}" if out["suggestions"] else ""))
-        self.aktif_filtre.setText(" ".join(x for x in
-                                           [f"yıl:{yil}" if yil else "",
-                                            f"tür:{tur}" if tur else "",
-                                            f"klasör:{kokf}" if kokf else "",
-                                            f"etiket:{etiket}" if etiket else ""] if x))
+        self._filtre_cipleri()
         try:
             import json
             hist_mod.save(self.con, q, json.dumps({"yil": yil or "", "tur": tur or "tümü", "klasor": kokf, "etiket": etiket or ""}, ensure_ascii=False))
         except Exception:
             pass
+        self._thumblari_baslat()
+
+    def _aktif_gosterim(self):
+        """Etkin sonuç görünümü (ızgara ya da satır listesi)."""
+        return (self.sonuc_izgara if getattr(self, "_gorunum", "satir") == "izgara"
+                else self.sonuc_liste)
 
     def _secili_dosya(self):
-        idx = self.sonuc_liste.currentIndex()
+        idx = self._aktif_gosterim().currentIndex()
         if not idx.isValid() or idx.row() >= len(self.sonuclar):
             return None
         return self.sonuclar[idx.row()]
@@ -3513,6 +4085,8 @@ class AnaPencere(QMainWindow):
         for worker in self._jobs: worker.stop.set()
         from .vocab import clear_cache
         clear_cache()
+        self._thumblari_durdur()
+        self._buyuk_gorsel_yukle(None)
         self.preview_dialog.hide()
         self.preview_path.clear(); self.file_rows=[]; self.file_model.clear(); self.file_filter.clear()
         self.file_notice.clear(); self.file_notice.hide(); self.search_progress.hide()
@@ -3537,6 +4111,10 @@ class AnaPencere(QMainWindow):
         self.tuketim_klasoru.clear()
         self.tuketim_hedefi.clear()
         self.sonuc_model.clear()
+        self.sonuc_liste.selectionModel().clearSelection()
+        self.sonuc_izgara.selectionModel().clearSelection()
+        self.toplu_bar.hide()
+        self.secim_sayac.clear()
         self.gecmis_model.clear()
         self.gecmis_sayi.clear()
         self.kok_model.clear()
@@ -3570,7 +4148,7 @@ class AnaPencere(QMainWindow):
         self.scope_sources.clear()
         self.retry_scan.hide()
         self.haric_kutu.clear()
-        self.aktif_filtre.clear()
+        self._filtre_cipleri()  # M3: aktif filtre çipleri ve sayacı temizlenir
         self.oneri.clear()
         self.sonuc_sayi.clear()
         self.secim_ad.setText("Henüz seçim yok")
@@ -3683,6 +4261,7 @@ class AnaPencere(QMainWindow):
         self._kural_tazele()
         self._scan_history_refresh()
         self._scope_changed()
+        self._gorunum_yukle()
         self.ai_key_input.setPlaceholderText("API anahtarı kayıtlı" if migrate.get_setting(self.con, "gemini_api_key") else "Gemini API anahtarı")
         self.show()
         self._durum_yaz()
@@ -3728,6 +4307,11 @@ class AnaPencere(QMainWindow):
         if self._haric_thread is not None:
             self._haric_thread.finished.connect(self._cikis)
             return
+        if any(getattr(self, ad, None) is not None
+               for ad in ("_thumb_loader", "_buyuk_loader", "_dosya_thumb_loader")):
+            self._thumblari_durdur()
+            QTimer.singleShot(100, self._cikis)
+            return
         if self.onizleme.busy():
             self.onizleme.temizle()
             QTimer.singleShot(100, self._cikis)
@@ -3739,6 +4323,10 @@ class AnaPencere(QMainWindow):
         QApplication.instance().quit()
 
     def closeEvent(self, ev):
+        # Küçük resim yükleyicileri hafiftir: kapanışı geciktirmeden burada
+        # bitirilirler. Koşan bir QThread nesnesi pencereyle birlikte yok
+        # edilirse Qt süreci düşürür (0xC0000409).
+        self._thumblari_durdur()
         try:
             tepsiye = self.con is not None and \
                 migrate.get_setting(self.con, "tepsiye", "1") == "1"
@@ -3751,8 +4339,13 @@ class AnaPencere(QMainWindow):
             self.scan_dialog.hide()
             self.hide()
             return
+        # Önizleme nesnesi yok edilmeden önce kendi yükleyicileri (sayfa rayı)
+        # durdurulur; koşan QThread pencereyle birlikte yok edilirse Qt düşer.
+        self.onizleme.temizle()
         if (self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy()
-                or self._jobs or self._kaldir_thread is not None or self._haric_thread is not None):
+                or self._jobs or self._kaldir_thread is not None or self._haric_thread is not None
+                or self._thumb_loader is not None or self._buyuk_loader is not None
+                or self._dosya_thumb_loader is not None):
             ev.ignore()
             self._cikis()
             return

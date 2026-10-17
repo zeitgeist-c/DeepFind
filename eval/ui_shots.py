@@ -72,8 +72,23 @@ def main():
         app.processEvents()
         time.sleep(0.01)
     if pen.sonuc_model.rowCount():
+        # M1 kanıtı: küçük resimler ve seçili evrak paneli dolana kadar bekle.
+        deadline = time.monotonic() + 90
+        while pen._thumb_loader is not None and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        pen.sonuc_liste.setCurrentIndex(pen.sonuc_model.index(0, 0))
+        pen._secim_guncelle()
+        while pen._buyuk_loader is not None and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
         pen._sec(pen.sonuc_model.index(0, 0))
     while pen.onizleme.busy():
+        app.processEvents()
+        time.sleep(0.01)
+    # M2 kanıtı: sayfa rayı küçük resimleri de hazır olsun.
+    deadline = time.monotonic() + 60
+    while pen.onizleme._ray_loader is not None and time.monotonic() < deadline:
         app.processEvents()
         time.sleep(0.01)
     app.processEvents()
@@ -82,6 +97,11 @@ def main():
         pen.nav.setCurrentRow(0)
         app.processEvents()
         pen.grab().save(os.path.join(output, f"ana-{mod}.png"))
+        # M2 kanıtı: önizleme penceresi (sayfa rayı + yakınlaştırma kademeleri).
+        if pen.preview_dialog.isVisible():
+            app.processEvents()
+            pen.preview_dialog.grab().save(os.path.join(output, f"onizleme-{mod}.png"))
+            print(f"kaydedildi: onizleme-{mod}.png", flush=True)
         pen._nav_toggle()
         app.processEvents()
         pen.grab().save(os.path.join(output, f"dar-menu-{mod}.png"))
@@ -93,6 +113,61 @@ def main():
         app.processEvents()
         pen.grab().save(os.path.join(output, f"ai-{mod}.png"))
         print(f"kaydedildi: ai-{mod}.png", flush=True)
+        # M3 kanıtı: filtre çipleri ve ızgara görünümü.
+        pen.nav.setCurrentRow(0)
+        pen.yil_filtre.setText("2024")
+        while pen._search_thread is not None:
+            app.processEvents()
+            time.sleep(0.01)
+        app.processEvents()
+        pen.grab().save(os.path.join(output, f"ara-filtre-{mod}.png"))
+        print(f"kaydedildi: ara-filtre-{mod}.png", flush=True)
+        pen._gorunum_ayarla("izgara")
+        app.processEvents()
+        pen.grab().save(os.path.join(output, f"ara-izgara-{mod}.png"))
+        print(f"kaydedildi: ara-izgara-{mod}.png", flush=True)
+        pen._gorunum_ayarla("satir")
+        pen.yil_filtre.clear()
+        deadline = time.monotonic() + 20
+        while (pen._debounce.isActive() or pen._search_thread is not None) \
+                and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        app.processEvents()
+        # M4 kanıtı: çoklu seçim ve toplu işlem çubuğu.
+        pen._secim_ayarla(-1)
+        app.processEvents()
+        pen.grab().save(os.path.join(output, f"ara-secim-{mod}.png"))
+        print(f"kaydedildi: ara-secim-{mod}.png", flush=True)
+        pen._secim_ayarla(0)
+        app.processEvents()
+        # M5 kanıtı: sorgu sözdizimi ve satır içi doğrulama (docspell deseni).
+        pen.arama_kutu.setText("Ankara yil:2024")
+        deadline = time.monotonic() + 20
+        while (pen._debounce.isActive() or pen._search_thread is not None) \
+                and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        app.processEvents()
+        pen.grab().save(os.path.join(output, f"ara-sorgu-{mod}.png"))
+        print(f"kaydedildi: ara-sorgu-{mod}.png", flush=True)
+        pen.arama_kutu.setText("Ankara turl:pdf")
+        pen._ara_simdi()
+        app.processEvents()
+        pen.grab().save(os.path.join(output, f"ara-sorgu-hata-{mod}.png"))
+        print(f"kaydedildi: ara-sorgu-hata-{mod}.png", flush=True)
+        pen._filtre_temizle()
+        while (pen._debounce.isActive() or pen._search_thread is not None) \
+                and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        pen.arama_kutu.setText("Ankara Ayşe vergi")
+        pen._ara_simdi()
+        while (pen._debounce.isActive() or pen._search_thread is not None) \
+                and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        app.processEvents()
         from evrakci.auth import ParolaDialog
         login = ParolaDialog()
         login.show()
@@ -108,6 +183,8 @@ def main():
             pen.nav.setCurrentRow(index)
             app.processEvents()
             pen.grab().save(os.path.join(output, f"{name}-{mod}.png"))
+    pen._thumblari_durdur()
+    app.processEvents()
     pen._exiting = True
     pen.close()
 

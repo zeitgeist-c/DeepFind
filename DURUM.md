@@ -1,5 +1,190 @@
 # Evrakçı — DURUM
 
+## 0.8.1 sürüm kaydı: DMS arayüz desenleri (M1–M5) — 17.10.2026
+
+Sürüm yükseltmesi: `0.8.0 → 0.8.1` (yalnız yama hanesi; `src/evrakci/version.py`
+tek kanonik kaynak). İçerik: açık kaynak DMS'lerin tersine mühendislik analizi
+(`REA-DMS-Analizi.md`) sonucu uyarlanan beş arayüz çalışması:
+
+| Milestone | İçerik | Test katkısı |
+|---|---|---|
+| M1 | Küçük resim hattı: yerel önbellek + üretim işi + liste/detay görselleri | +13 |
+| M2 | Görüntüleyici: yakınlaştırma kademeleri, sayfa rayı, klavye, belge gezinmesi | +4 |
+| M3 | Filtre çipleri, görünüm modları (kompakt/satır/ızgara), gösterilecek alanlar | +3 |
+| M4 | Çoklu seçim + toplu etiket (tek işlem) + seçim CSV'si | +3 |
+| M5 | Sorgu sözdizimi (`yil:`/`tur:`/`etiket:`/`klasor:`) + satır içi doğrulama | +12 |
+
+Doğrulama: **272 test** (237 → 272), tam paket çıkış kodu 0; iki temada ekran
+görüntüsü kanıtı (`build/review-ui-0.8.1/`). Bu turda beş gerçek kusur bulunup
+kapatıldı: Qt iş parçacığı yok etme çökmesi, sığdırma kutusu taşması, görünür
+kalan filtre çipleri, alan sözdiziminde sonuç eşleştirme hatası, küçük resim
+yükleyicisinin pencere kapanışında yok edilmesi.
+
+Sınırlar/notlar:
+- Paket (ZIP) üretilmedi; sürüm kapısı (paket + lisans + temiz makine) ayrı iş.
+- `eval/ui_shots.py` kapanışta 0xC0000409 ile düşüyor; temel çizgide de aynı,
+  görüntüler sorunsuz üretiliyor.
+- `LISANSLAR.md` bağımlılık değişmediği için 0.8.0 içeriğiyle geçerli.
+
+## M5 sorgu sözdizimi + satır içi doğrulama (REA/DMS deseni) — 17.10.2026
+
+Desen kaynağı: docspell `PowerSearchInput` — yazarken çözümle, hatalı girdide
+konumu (şapka) göster, geçersiz sorguda aramayı çalıştırma.
+
+- **Yeni `sorgu.py`** (saf işlev): `alan:değer` çözümleyicisi. Alanlar arayüzdeki
+  filtrelerle aynı: `yil:` (4 hane), `tur:` (`pdf` → `.pdf`), `etiket:`
+  (tırnak boşluk taşır: `etiket:"vergi 2024"`), `klasor:`. Alan adları Türkçe
+  harf katlamasına dayanıklı (`yıl` = `yil`). Alan dışı sözcükler serbest metin
+  olur; hata → mesaj + imleç konumu.
+- **Arayüz:** arama kutusunun altında satır içi uyarı (`Sorgu hatası: …` + sorgu
+  satırı + `^`); hatalı sorguda **arama koşmaz, önceki sonuçlar korunur**.
+  Geçerli alanlar filtre denetimlerini besler ve mevcut çip/sayaç akışında
+  görünür; kutu ipucu sözdizimini tanıtır.
+- **Sahiplik kuralı:** sorgu yalnız **kendi kurduğu** alanı temizler — kullanıcının
+  elle girdiği filtre, sorgu metni değişti diye silinmez; sorgudan çıkarılan alan
+  geri alınır.
+- **Bulunan ve düzeltilen gerçek hata (test kanıtı):** sonuç eşleştirmesi ham kutu
+  metniyle karşılaştırıldığı için alan sözdizimi kullanan aramaların sonucu
+  düşürülüyordu (0 sonuç). Eşleştirme artık çözülen serbest metinle yapılıyor.
+- **Sınır (bilinçli):** yalnız alan verilen sorguda (ör. `yil:2024`) liste boş
+  kalır; kullanıcı "bir sözcük de yazın" diye yönlendirilir (mevcut "boş sorgu
+  listelemez" kuralı korunur).
+- Doğrulama: **272 test** (12 yeni: 10 çözümleyici + 2 arayüz akışı; tam paket
+  çıkış kodu 0). Görsel kanıt: `ara-sorgu-{acik,koyu}.png` (geçerli alan sorgusu)
+  ve `ara-sorgu-hata-{acik,koyu}.png` (imleçli hata, eski sonuçlar duruyor).
+- REA planı (M1–M5) tamamlandı. Sonraki adım: sürüm kapısı (paket + lisans +
+  temiz makine) ve kullanıcı onayıyla commit. Commit/push yok.
+
+## M4 çoklu seçim + toplu işlem (REA/DMS deseni) — 17.10.2026
+
+Desen kaynakları: paperless-ngx seçim denetimleri (None / Select page / Select
+all + seçim rozeti) ve toplu düzenleme; docspell çoklu düzenleme menüsü.
+
+- **Çoklu seçim:** sonuç listesi ve ızgara `ExtendedSelection` (Ctrl/Shift tık);
+  "Hiçbiri / Sayfa (ilk 50) / Tümü" düğmeleri ve "N seçili" rozeti. İki görünüm
+  ayrı seçim tuttuğu için görünüm değişiminde etkin olmayan yüzeyin seçimi
+  temizlenir; panel/önizleme etkin yüzeyin geçerli satırını izler.
+- **Toplu etiket:** `rank.tags_many` tek işlemde tüm satırları yazar, hata olursa
+  `rollback` (yarı uygulanmış toplu işlem kalmaz). Arayüz akışı `archive_ui.job`
+  ile yazılabilir bağlantıda koşar; başarıda toast + arama tazeleme, hatada
+  "işlem geri alındı" uyarısı.
+- **Seçimi CSV:** yalnız seçili sonuçlar indirilir (tüm sonuçlar için mevcut
+  "CSV indir" korunur).
+- **Bulunan ve düzeltilen gerçek kusur (görsel kanıtla):** çip listesi
+  yeniden kurulurken eski `Cip` widget'ları `deleteLater` ile bekletiliyor ve
+  layout'tan çıksa da görünür kalıp altındaki filtre alanının üzerine biniyordu;
+  artık gizlenip ebeveyninden ayrılıyor. Regresyon testi: pencere altındaki
+  `Cip` örnekleri ile aktif çip sayısı eşit olmalı.
+- Doğrulama: **260 test** (3 yeni: toplu etiket ekle/kaldır + boş etiket
+  sözleşmesi, hata sözleşmesi (tek commit + rollback), arayüzde seçim/toplu
+  etiket/seçim CSV'si). Görsel kanıt: `ara-secim-{acik,koyu}.png` (seçim
+  denetimleri + toplu işlem çubuğu) ve düzeltilmiş `ara-filtre-*.png`.
+- Sıradaki: M5 sorgu sözdizimi. Commit/push yok (kullanıcı onayı beklenir).
+
+## M3 filtre çipleri + görünüm modları (REA/DMS deseni) — 17.10.2026
+
+Desen kaynakları: paperless-ngx filtre çubuğu (kaldırılabilir filtre rozetleri,
+tek tuşla "Filtreleri sıfırla", etkin filtre sayısı), görünüm anahtarı
+(tablo/kart) ve "Göster" (display fields) menüsü.
+
+- **Filtre çipleri:** aktif filtreler "Filtreler" başlığının altında
+  kaldırılabilir çip olur (`ui.Cip`); `×` yalnız o filtreyi düşürüp aramayı
+  yeniler. Etkin filtre sayısı rozeti ve "Filtreleri sıfırla" düğmesi yalnız
+  filtre varken görünür. Çipler arama sonucundan bağımsız olarak filtre
+  değişiminde tazelenir (boş sorguda da görünür).
+- **Görünüm modları:** Kompakt / Satırlar / Izgara düğmeleri; mod kasada
+  saklanır (`gorunum_modu`) ve kasa açılışında geri yüklenir. Izgara, aynı
+  modeli paylaşan `QListView.IconMode` yüzeyi + `ui.GridDelegate` (üstte
+  küçük resim, altta ad + tek satır) kullanır; seçim/çift tık/önizleme her iki
+  yüzeyde de çalışır (`_aktif_gosterim`).
+- **Gösterilecek alanlar:** "Göster" menüsünde Yol / Tür ve etiket / İçerik
+  özeti / Etiketler anahtarları; satır metni seçime göre yazılır, ayar
+  `goster_alanlari` olarak saklanır (boş ayar = yalnız ad). İpucunda yol ve
+  özet korunur; ızgarada alan seçimi kapatılır.
+- Doğrulama: **257 test** (3 yeni: çip kaldırma + yeniden arama + sıfırlama,
+  görünüm modu kalıcılığı + kompakt/ızgara yüzeyi, gösterilecek alanların
+  satır/ayar etkisi). Görsel kanıt: `ara-filtre-{acik,koyu}.png` (çip + sayaç +
+  sıfırla) ve `ara-izgara-{acik,koyu}.png` (ızgara kartı).
+- Not: satır metni üretimi tek yerde (`_satirlari_yaz`) toplandı; durum notu
+  (kısmi/erişilemiyor) alan seçiminden bağımsız olarak korunur.
+- Sıradaki: M4 toplu işlem (seçim + toplu etiket/CSV), M5 sorgu sözdizimi.
+  Commit/push yok (kullanıcı onayı beklenir).
+
+## M2 görüntüleyici derinleştirme (REA/DMS deseni) — 17.10.2026
+
+Desen kaynakları: paperless-ngx yakınlaştırma kademeleri ("Sayfaya sığdır" +
+yüzde kademeleri) ve belge görüntüleyici; papermerge `PageList` (sayfa küçük
+resmi rayı); paperless "önceki/sonraki belge".
+
+- **Yakınlaştırma kademeleri:** Genişliğe sığdır (varsayılan), Sayfaya sığdır,
+  %50–%200. İşçi, istenen yoğunlukta ya da sığdırma kutusuna göre **tek**
+  render yapar (çift render yok). `−/+` düğmeleri kademe adımlar; `0` tuşu
+  %100'e döner.
+- **Sayfa rayı:** solda dikey küçük resim şeridi; 12'lik gruplarla **tembel**
+  üretim (kaydırdıkça sonraki grup), tıklayınca sayfaya gidiş, geçerli sayfa
+  vurgusu. Küçük resimler M1 önbellek hattını `pN` anahtarıyla kullanır.
+- **Klavye:** ←/→, ↑/↓, PageUp/PageDown sayfa; `+/-` kademe; `0` %100; Esc
+  pencereyi kapatır (QDialog).
+- **Belge gezinmesi:** önizleme penceresinde "‹ Önceki belge / N / M / Sonraki
+  belge ›" — arama sonuçlarındaki sıraya göre.
+- **İndeks metni:** düğme artık sayfa görüntüsü ↔ OCR/indeks metni arasında
+  gidip gelir (metin görünümünden geri dönüş eklendi).
+- **Sığdırma tazeleme:** tuval görüntü alanı değişince (ray görünmesi, pencere
+  boyutu, kaydırma çubuğu) sığdırma kutusu **yalnız gerçekten değiştiyse**
+  yeniden render edilir — naif "her boyut değişiminde render" döngüsü engellendi.
+- **Bulunan ve kapatılan gerçek kusur (test kanıtı):** koşan bir `QThread`
+  nesnesi pencereyle birlikte yok edilirse Qt süreci düşürüyordu
+  (0xC0000409). `AnaPencere.closeEvent` küçük resim yükleyicilerini senkron
+  durduruyor ve önizlemeyi kapatıyor; `Onizleme.closeEvent` render iş
+  parçacıklarını bekliyor; test fixture'ı da yükleyiciyi durduruyor.
+- Doğrulama: **254 test** (4 yeni: zoom kademeleri, sayfa rayı + klavye, indeks
+  metni gidiş-dönüş, önceki/sonraki belge; tam paket çıkış kodu 0). Görsel
+  kanıt: `build/review-ui-0.8.0/onizleme-{acik,koyu}.png` (sayfa rayı, kademe
+  seçici, sayfa render'ı); `eval/ui_shots.py` artık önizleme penceresini de
+  yakalıyor.
+- Bilinen sınır: her ray grubu kendi kalıcı işçi oturumunu açar (12 sayfa);
+  sığdırma render'ı 8 MP ile sınırlı.
+- Süren not: `eval/ui_shots.py` kapanışta 0xC0000409 ile düşüyor; değişiklik
+  öncesi temel çizgide de aynı (M1/M2 kaynaklı değil), görüntüler üretiliyor.
+- Sıradaki: M3 filtre çipleri + görünüm modları, M4 toplu işlem, M5 sorgu
+  sözdizimi. Commit/push yok (kullanıcı onayı beklenir).
+
+## M1 küçük resim hattı (REA/DMS deseni) — 17.10.2026
+
+Üç açık kaynak DMS'in (paperless-ngx, papermerge-core, docspell) tersine
+mühendislik analizi yapıldı; desen envanteri, kanıt referansları ve uyarlama
+planı `REA-DMS-Analizi.md` dosyasında (M1–M5). Kaynak öncelikli REA kuralı
+uygulandı: hedefler açık kaynak olduğu için binary/REA CLI analizi yerine depo
+kaynağı okundu (`doctor` çıktısı kanıt olarak kayıtlı; native motorlar kurulu
+değil ve gerekmedi).
+
+**M1 — görsel katalog deneyimi (tamamlandı):**
+- `thumbs.py`: (yol, boyut, mtime) anahtarlı yerel önbellek
+  (`%LOCALAPPDATA%\Evrakçı\thumbs`), Qt+Pillow yeteneğine göre biçim seçimi
+  (webp → jpg geri düşüş), 4000 dosya sınırında yaşlandırma (`buda`), arka
+  planda sıralı üretim (`OnbellekYukleyici`).
+- `workers.py`: `thumb` işi (pypdfium2 ile ilk sayfa ~2x render + Pillow
+  küçültme; görsellerde EXIF yönü) ve tekrarlı işler için kalıcı işçi
+  (`WorkerSession`). Hedef dizin yoksa oluşturulur.
+- Arayüz: sonuç satırlarında (`CardDelegate(thumb=True)`) ve "Taranmış
+  Evraklar" listesinde küçük resim; "Seçili evrak" panelinde kutuya uyan ve
+  ölçeklenen büyük önizleme (`ui.GorselKutusu`, `QLabel#thumbBox` jetonu).
+  Üretim başarısızsa satır simge yer tutucusunda kalır (akış bozulmaz).
+  Sinyaller bağlı metoda bağlı: `QPixmap` yalnız GUI iş parçacığında kurulur.
+- Doğrulama: **250 test** (13 yeni: önbellek anahtarı/biçim/buda/temizleme,
+  worker üretimi ve hata yolu, yükleyici önbellek ve eksik dosya yolu, UI'da
+  satır+panel görseli ve düzen çakışmasızlığı, kaynak dizine dokunmama).
+  Görsel kanıt: `eval/ui_shots.py` açık/koyu — satır küçük resmi, panel
+  önizlemesi ve taşma düzeltmesi ekran görüntüleriyle doğrulandı
+  (`build/review-ui-0.8.0/`).
+- Not: `eval/ui_shots.py` bu ortamda kapanışta `0xC0000409` ile düşüyor;
+  aynı kod **değişiklik öncesi temel çizgide de** aynı kodla düştü (stash ile
+  ölçüldü) — M1 kaynaklı değil, ekran görüntüleri sorunsuz üretiliyor.
+  Paket kapısında (bir sonraki sürüm) donmuş EXE'de bir küçük resmin
+  üretildiği ayrıca doğrulanmalı (Pillow WebP eklentisi).
+- Sıradaki: M3 filtre çipleri + görünüm modları, M4 toplu işlem, M5 sorgu
+  sözdizimi. Commit/push yok (kullanıcı onayı beklenir).
+
 ## 0.8.0 OCR motoru: RapidOCR — 17.10.2026
 
 Tesseract 5 zinciri tamamen kaldırıldı; yerini RapidOCR 3.10 (PP-OCRv6

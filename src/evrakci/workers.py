@@ -23,17 +23,26 @@ def _perform(kind, args):
     if kind == "ocr":
         from .ocr import ocr_document
         return ocr_document(*args)
+    if kind == "thumb":
+        return _thumb(*args)
     if kind == "pdf":
-        path, number, zoom = args
+        path, number, zoom, fit = (list(args) + [None])[:4]
         import pypdfium2 as pdfium
         with pdfium.PdfDocument(path) as doc:
             number = max(1, min(number, len(doc)))
             page = doc[number - 1]
             width, height = page.get_size()
-            scale = min(2.0 * zoom, (8_000_000 / max(1, width * height)) ** 0.5)
+            if fit:
+                # fit: (en fazla genişlik px, en fazla yükseklik px); None = sınır yok
+                sinirlar = [x / y for x, y in zip(fit, (width, height)) if x]
+                olcek = min(sinirlar) if sinirlar else 2.0 * zoom
+            else:
+                olcek = 2.0 * zoom
+            scale = min(olcek, (8_000_000 / max(1, width * height)) ** 0.5)
             image = page.render(scale=scale).to_pil().convert("RGB")
             return {"number": number, "total": len(doc), "width": image.width,
-                    "height": image.height, "data": image.tobytes()}
+                    "height": image.height, "data": image.tobytes(),
+                    "sheet_width": width, "sheet_height": height, "scale": scale}
     if kind == "excel":
         path, sheet = args
         from .extract import _zip_guard
@@ -58,6 +67,46 @@ def _perform(kind, args):
         finally:
             wb.release_resources()
     raise ValueError("bilinmeyen iş")
+
+
+def _thumb(kaynak, hedef, olcu, sayfa=1):
+    """Kaynağın istenen sayfasını/kadrajını küçük resme indirgeyip dosyaya yazar.
+
+    PDF sayfası pypdfium2 ile ~2x çözünürlükte render edilir, ardından
+    Pillow ile hedef ölçüye küçültülür (küçültme, doğrudan düşük ölçekli
+    render'dan daha okunur sonuç verir). Görsellerde EXIF yönü uygulanır;
+    çok kareli görsellerde (TIFF) `sayfa` karesi seçilir.
+    """
+    from PIL import Image, ImageOps
+    import os
+    hedef_dizin = os.path.dirname(hedef)
+    if hedef_dizin:
+        os.makedirs(hedef_dizin, exist_ok=True)
+    ext = os.path.splitext(kaynak)[1].lower()
+    if ext == ".pdf":
+        import pypdfium2 as pdfium
+        with pdfium.PdfDocument(kaynak) as doc:
+            if len(doc) < 1:
+                raise ValueError("EMPTY_PDF")
+            page = doc[max(0, min(int(sayfa) - 1, len(doc) - 1))]
+            width, height = page.get_size()
+            scale = min(4.0, max(0.2, (olcu * 2.0) / max(1.0, max(width, height))))
+            image = page.render(scale=scale).to_pil().convert("RGB")
+    else:
+        with Image.open(kaynak) as ham:
+            total = getattr(ham, "n_frames", 1)
+            if total > 1:
+                ham.seek(max(0, min(int(sayfa) - 1, total - 1)))
+            ham.draft("RGB", (olcu * 2, olcu * 2))
+            image = ImageOps.exif_transpose(ham).convert("RGB")
+    image.thumbnail((olcu, olcu), Image.LANCZOS)
+    if hedef.lower().endswith(".webp"):
+        image.save(hedef, "WEBP", quality=82, method=4)
+    elif hedef.lower().endswith(".png"):
+        image.save(hedef, "PNG", optimize=True)
+    else:
+        image.save(hedef, "JPEG", quality=85, optimize=True)
+    return {"file": hedef, "width": image.width, "height": image.height}
 
 
 def _child(sender, kind, args):
@@ -192,3 +241,11 @@ class OcrSession:
                 pipe.close()
             except OSError:
                 pass
+
+
+class WorkerSession(OcrSession):
+    """Kalıcı genel işçi oturumu: tekrarlı kaynak işleri tek süreçte koşar.
+
+    `OcrSession` ile aynı sözleşmeyi kullanır (`call(kind, args)`); adı işin
+    türünü değil, yaşam döngüsünü anlatır (ör. thumbnail üretimi).
+    """

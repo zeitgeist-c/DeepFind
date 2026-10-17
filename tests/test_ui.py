@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from evrakci import coordinator, migrate, schema, theme, vault  # noqa: E402
+from evrakci import coordinator, migrate, rank, schema, theme, vault  # noqa: E402
 from evrakci.preview import Onizleme  # noqa: E402
 from evrakci.vocab import ensure_v5  # noqa: E402
 from evrakci.migrate import ensure_v7  # noqa: E402
@@ -41,7 +41,7 @@ def _wait_preview(preview):
         time.sleep(0.01)
         assert time.monotonic() < deadline
 
-def _pdf(kok, ad, metin):
+def _pdf(kok, ad, metin, sayfalar=1):
     from reportlab.pdfgen import canvas
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
@@ -52,7 +52,11 @@ def _pdf(kok, ad, metin):
     p = os.path.join(kok, ad)
     c = canvas.Canvas(p)
     c.setFont("TR", 13)
-    c.drawString(72, 750, metin)
+    for i in range(max(1, sayfalar)):
+        if i:
+            c.showPage()
+            c.setFont("TR", 13)
+        c.drawString(72, 750, f"{metin} {i + 1}")
     c.save()
     return p
 
@@ -82,6 +86,7 @@ def pencere(tmp_path):
             vault.lock(pen.con, os.path.dirname(db))
     except Exception:
         pass
+    pen._thumblari_durdur()
     pen._exiting = True
     pen.close()
     deadline = time.monotonic() + 20
@@ -155,6 +160,432 @@ def test_bos_sorgu_tum_arsivi_listelemez(pencere):
     pencere._ara_simdi()
     _wait_search(pencere)
     assert pencere.sonuc_model.rowCount() == 0
+
+
+def _wait_thumbs(pencere):
+    deadline = time.monotonic() + 60
+    while pencere._thumb_loader is not None or pencere._buyuk_loader is not None:
+        _app().processEvents()
+        time.sleep(0.01)
+        assert time.monotonic() < deadline, "küçük resim zaman aşımı"
+
+
+def test_kucuk_resim_liste_ve_detay_panelinde(pencere, tmp_path, monkeypatch):
+    """Arama sonucu satırında ve seçili evrak panelinde küçük resim oluşur."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QPixmap
+    from evrakci import thumbs
+    dizin = str(tmp_path / "thumbs")
+    monkeypatch.setattr(thumbs, "onbellek_dizini", lambda: dizin)
+    os.makedirs(dizin, exist_ok=True)
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara vergi levhası")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() >= 1
+    _wait_thumbs(pencere)
+    veri = pencere.sonuc_model.index(0, 0).data(Qt.DecorationRole)
+    assert isinstance(veri, QPixmap) and not veri.isNull()
+    assert os.listdir(dizin), "önbellek dizini boş kaldı"
+
+    # Seçim değişince büyük önizleme de dolmalı.
+    pencere.sonuc_liste.setCurrentIndex(pencere.sonuc_model.index(0, 0))
+    pencere._secim_guncelle()
+    _wait_thumbs(pencere)
+    goruntu = pencere.secim_gorsel.pixmap()
+    assert goruntu is not None and not goruntu.isNull()
+    # Düzen kuralı: kutu alttaki başlıkla çakışmaz (sabit yükseklik taşması yok).
+    assert pencere.secim_gorsel.geometry().bottom() <= pencere.secim_ad.geometry().top()
+    assert pencere.secim_gorsel.geometry().width() > 0
+
+
+def _onizleme_pencere(pencere, tmp_path, monkeypatch, sayfalar=1, ad="cok-sayfali.pdf"):
+    """Kasa köküne çok sayfalı PDF ekler, tarar ve bağımsız Onizleme açar."""
+    from evrakci import thumbs
+    kok = os.path.join(os.path.dirname(pencere.kasa_yolu), "arsiv")
+    yol = _pdf(kok, ad, "Ankara çok sayfa", sayfalar=sayfalar)
+    time.sleep(3.0)
+    coordinator.run_scan(pencere.con, pencere.kasa_yolu, kok)
+    dizin = str(tmp_path / "thumbs")
+    os.makedirs(dizin, exist_ok=True)
+    monkeypatch.setattr(thumbs, "onbellek_dizini", lambda: dizin)
+    con = vault.open_vault(pencere.kasa_yolu, PW)
+    o = Onizleme()
+    o.resize(900, 700)
+    o.show()
+    _app().processEvents()
+    o.goster(con, {"path": yol, "name": ad, "ext": ".pdf", "label": "Sayfa 1",
+                   "page": 1, "snippet": "Arama özeti", "why": ["ad"]})
+    _wait_preview(o)
+    _app().processEvents()
+    return o, con
+
+
+def _ikinci_belge(pencere):
+    """Kasa köküne ikinci PDF'yi ekler ve indekslenene kadar tarar."""
+    kok = os.path.join(os.path.dirname(pencere.kasa_yolu), "arsiv")
+    yol = _pdf(kok, "ikinci-belge.pdf", "Ankara ikinci evrak 2024")
+    time.sleep(3.0)
+    # Tarayıcı yeni dosyayı kararlılık penceresi geçene kadar "pending" tutar.
+    for _ in range(4):
+        coordinator.run_scan(pencere.con, pencere.kasa_yolu, kok)
+        if pencere.con.execute(
+                "SELECT count(*) FROM files WHERE index_status='ok'").fetchone()[0] >= 2:
+            break
+        time.sleep(1.0)
+    return yol
+
+
+def _onizleme_kapat(o, con):
+    o.temizle()
+    deadline = time.monotonic() + 20
+    while o.busy() and time.monotonic() < deadline:
+        _app().processEvents()
+        time.sleep(0.01)
+    con.close()
+    o.close()
+    o.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def test_onizleme_zoom_kademeleri(pencere, tmp_path, monkeypatch):
+    """Sığdırma kademeleri sayfayı görünür alana oturtur, yüzde kademesi büyütür."""
+    o, con = _onizleme_pencere(pencere, tmp_path, monkeypatch, sayfalar=1)
+    try:
+        def otur():
+            """Sığdırma yeniden hesapları bitene kadar olay çevrimini işle."""
+            son = time.monotonic() + 30
+            while (o.busy() or o._fit_timer.isActive()) and time.monotonic() < son:
+                _app().processEvents()
+                time.sleep(0.01)
+            _app().processEvents()
+
+        assert o.zoom_sec.count() == 8
+        assert o.zoom_sec.currentData() == "genislik"
+        otur()
+        vp = o.canvas.viewport().size()
+        pm = o.goruntu.pixmap()
+        assert pm is not None and not pm.isNull()
+        # Genişliğe sığdır: sayfa genişliği görünür alana oturur (ray görününce
+        # tuval daralır ve sığdırma tazelenir).
+        assert vp.width() - 34 <= pm.width() <= vp.width() + 4
+        # Sayfaya sığdır: yükseklik de görünür alana oturur.
+        o._zoom_ayarla("sayfa")
+        otur()
+        pm2 = o.goruntu.pixmap()
+        assert pm2.height() <= vp.height() and pm2.height() >= vp.height() - 30
+        # %200: sığdırmadan belirgin biçimde büyük.
+        o._zoom_ayarla(2.0)
+        otur()
+        pm3 = o.goruntu.pixmap()
+        assert pm3.width() > pm2.width() * 2
+        # + düğmesi kademe adımlar: sığdırma modundan %100'e geçer.
+        o._zoom_ayarla("genislik")
+        o._zoom_adim(1)
+        assert o.zoom_sec.currentData() == 1.0
+        o._zoom_adim(1)
+        assert o.zoom_sec.currentData() == 1.25
+        o._zoom_adim(-1)
+        assert o.zoom_sec.currentData() == 1.0
+    finally:
+        _onizleme_kapat(o, con)
+
+
+def test_onizleme_sayfa_rayi_ve_klavye(pencere, tmp_path, monkeypatch):
+    """Sayfa rayı küçük resimleri tembel üretir; ray ve klavye sayfa değiştirir."""
+    o, con = _onizleme_pencere(pencere, tmp_path, monkeypatch, sayfalar=5)
+    try:
+        from PySide6.QtCore import QEvent, Qt
+        from PySide6.QtGui import QKeyEvent
+        assert o.ray.isVisible() and o.ray.count() == 5
+        deadline = time.monotonic() + 90
+        while o._ray_loader is not None and time.monotonic() < deadline:
+            _app().processEvents(); time.sleep(0.01)
+        _app().processEvents()
+        assert all(not o.ray.item(i).icon().isNull() for i in range(5))
+        # Raydan sayfa seçimi.
+        o._ray_secildi(o.ray.item(2))
+        _wait_preview(o)
+        assert o.sayfa_no.value() == 3 and o.ray.currentRow() == 2
+        # Klavye: sağ ok ilerler, sol ok geri döner.
+        o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Right, Qt.NoModifier))
+        _wait_preview(o)
+        assert o.sayfa_no.value() == 4
+        o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Left, Qt.NoModifier))
+        _wait_preview(o)
+        assert o.sayfa_no.value() == 3
+        # Klavye: +/- kademe adımları, 0 %100'e döner.
+        o._zoom_ayarla(2.0)
+        _wait_preview(o)
+        o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Minus, Qt.NoModifier))
+        assert o.zoom_sec.currentData() == 1.5
+        o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Plus, Qt.NoModifier))
+        assert o.zoom_sec.currentData() == 2.0
+        o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_0, Qt.NoModifier))
+        assert o.zoom_sec.currentData() == 1.0
+        # Son sayfada ileri gitmek taşmaz.
+        o._git(99)
+        _wait_preview(o)
+        assert o.sayfa_no.value() == 5
+    finally:
+        _onizleme_kapat(o, con)
+
+
+def test_onizleme_indeks_metni_geri_doner(pencere, tmp_path, monkeypatch):
+    """İndeks metni görünümü aynı düğmeyle sayfa görüntüsüne döner."""
+    o, con = _onizleme_pencere(pencere, tmp_path, monkeypatch, sayfalar=1)
+    try:
+        o._show_index()
+        assert o._index_view and o.metin.isVisible() and not o.canvas.isVisible()
+        assert o.index_button.text() == "Sayfa görüntüsüne dön"
+        o._show_index()
+        assert not o._index_view and o.canvas.isVisible() and not o.metin.isVisible()
+        assert o.index_button.text() == "İndeks metnini göster"
+    finally:
+        _onizleme_kapat(o, con)
+
+
+def _cipler(pencere):
+    return [pencere.filtre_cipleri.itemAt(i).widget()
+            for i in range(pencere.filtre_cipleri.count())]
+
+
+def test_filtre_cipleri_kaldirir_ve_yeniden_arar(pencere):
+    """Aktif filtreler çip olur; çipin × düğmesi filtreyi düşürüp aramayı yeniler."""
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara vergi levhası")
+    pencere.yil_filtre.setText("2024")
+    pencere.tur_filtre.setCurrentIndex(pencere.tur_filtre.findText(".pdf"))
+    _wait_search(pencere)
+    assert pencere.filtre_sayi.text() == "2"
+    cipler = _cipler(pencere)
+    assert len(cipler) == 2
+    assert "Yıl: 2024" in cipler[0].etiket.text()
+    # Eski çipler görünür kalmamalı: pencere altında yalnız aktif çipler bulunur.
+    from evrakci.ui import Cip
+    assert len(pencere.findChildren(Cip)) == len(cipler)
+    # Yıl çipini kaldır: filtre düşer, arama yeniden koşar.
+    cipler = _cipler(pencere)
+    # Yıl çipini kaldır: filtre düşer, arama yeniden koşar.
+    cipler[0].kaldir.click()
+    _wait_search(pencere)
+    assert pencere.yil_filtre.text() == ""
+    assert len(_cipler(pencere)) == 1
+    assert len(pencere.findChildren(Cip)) == 1
+    assert pencere.filtre_sayi.text() == "1"
+    assert pencere.sonuc_model.rowCount() >= 1
+    # Sıfırlama tüm filtreleri temizler.
+    pencere._filtre_temizle()
+    _wait_search(pencere)
+    assert pencere.tur_filtre.currentText() == "tümü"
+    assert _cipler(pencere) == []
+    assert not pencere.filtre_sifirla.isVisible()
+
+
+def test_gorunum_modu_kalicidir_ve_izgara(pencere):
+    """Görünüm modu kalıcıdır; ızgara modunda ızgara yüzeyi etkinleşir."""
+    from evrakci.ui import CardDelegate
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara vergi levhası")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() >= 1
+    assert pencere.sonuc_panel.currentIndex() == 0
+    assert pencere.gorunum_btnleri["satir"].isChecked()
+    pencere._gorunum_ayarla("izgara")
+    assert migrate.get_setting(pencere.con, "gorunum_modu") == "izgara"
+    assert pencere.sonuc_panel.currentIndex() == 1
+    _app().processEvents()
+    assert pencere.sonuc_izgara.isVisible()
+    assert not pencere.goster_btn.isEnabled()  # alan seçimi ızgarada anlamlı değil
+    # Kayıtlı ayar yeniden yüklendiğinde mod korunur.
+    migrate.set_setting(pencere.con, "gorunum_modu", "izgara")
+    pencere._gorunum = "satir"
+    pencere._gorunum_uygula()
+    assert pencere.sonuc_panel.currentIndex() == 0
+    pencere._gorunum_yukle()
+    assert pencere._gorunum == "izgara" and pencere.sonuc_panel.currentIndex() == 1
+    assert pencere.gorunum_btnleri["izgara"].isChecked()
+    # Kompakt mod kısa satır kullanır; satır modu daha yüksek.
+    pencere._gorunum_ayarla("kompakt")
+    assert pencere.sonuc_liste.itemDelegate().compact
+    assert pencere.sonuc_panel.currentIndex() == 0
+    assert pencere.sonuc_liste.itemDelegate()._satir_yuksekligi() == 56
+    assert (pencere.sonuc_liste.itemDelegate()._satir_yuksekligi()
+            < CardDelegate(pencere.sonuc_liste, thumb=True)._satir_yuksekligi())
+
+
+def test_goster_alanlari_satiri_ve_ayari_etkiler(pencere):
+    """Gösterilecek alanlar satır metnini değiştirir ve kasada saklanır."""
+    from PySide6.QtCore import Qt
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara vergi levhası")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() >= 1
+    tam = pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
+    assert len(tam.splitlines()) >= 3
+    assert "AppData" in tam  # yol satırı görünür
+    assert all(a.isChecked() for a in pencere.goster_menu.actions())
+    # Yolu kapat: satırdan düşer, ayar saklanır, ipucunda yol kalır.
+    pencere._alan_degistir("yol", False)
+    assert migrate.get_setting(pencere.con, "goster_alanlari") == "tur,ozet,etiket"
+    kisa = pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
+    assert "AppData" not in kisa
+    assert len(kisa.splitlines()) == len(tam.splitlines()) - 1
+    assert "AppData" in pencere.sonuc_model.index(0, 0).data(Qt.ToolTipRole)
+    durum = {a.text(): a.isChecked() for a in pencere.goster_menu.actions()}
+    assert durum == {"Yol": False, "Tür ve etiket": True,
+                     "İçerik özeti": True, "Etiketler": True}
+    # Tümü kapanırsa yalnız ad kalır (boş ayar "hepsi" sayılmaz).
+    for anahtar in ("tur", "ozet", "etiket"):
+        pencere._alan_degistir(anahtar, False)
+    assert migrate.get_setting(pencere.con, "goster_alanlari") == ""
+    assert pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole).splitlines() == \
+        [pencere.sonuclar[0]["name"]]
+    assert not any(a.isChecked() for a in pencere.goster_menu.actions())
+    # Alan geri açıldığında satıra döner.
+    pencere._alan_degistir("yol", True)
+    assert migrate.get_setting(pencere.con, "goster_alanlari") == "yol"
+    assert "AppData" in pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
+
+
+def test_toplu_secim_etiket_ve_csv(pencere, tmp_path, monkeypatch):
+    """Seçim denetimleri, toplu etiket (tek işlem) ve seçim CSV'si çalışır."""
+    from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+    _ikinci_belge(pencere)
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() == 2
+    assert not pencere.toplu_etiket_btn.isEnabled()  # seçim yokken kapalı
+    # Tümünü seç: sayaç ve toplu düğmeler etkinleşir.
+    pencere._secim_ayarla(-1)
+    assert pencere.secim_sayac.text() == "2 seçili"
+    assert pencere.toplu_etiket_btn.isEnabled() and pencere.toplu_csv_btn.isEnabled()
+    assert len(pencere._secili_idler()) == 2
+    # Sayfa seçimi ilk 50 sonuçla sınırlıdır.
+    pencere._secim_ayarla(50)
+    assert pencere.secim_sayac.text() == "2 seçili"
+    # Hiçbiri: seçim ve düğmeler kapanır.
+    pencere._secim_ayarla(0)
+    assert pencere.secim_sayac.text() == "" and not pencere.toplu_csv_btn.isEnabled()
+    # Toplu etiket ekleme: tek işlem, iki belgeye de yazılır.
+    pencere._secim_ayarla(-1)
+    uyarilar = []
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Vergi 2024", True))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: uyarilar.append(a))
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    pencere._toplu_etiket()
+    _wait_jobs(pencere)
+    _wait_search(pencere)
+    assert uyarilar == []
+    for satir in pencere.sonuclar:
+        assert "vergi 2024" in rank.file_tags(pencere.con, satir["file_id"])
+    # Toplu etiket kaldırma.
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("vergi 2024", True))
+    pencere._secim_ayarla(-1)
+    pencere._toplu_etiket(kaldir=True)
+    _wait_jobs(pencere)
+    _wait_search(pencere)
+    assert uyarilar == []
+    for satir in pencere.sonuclar:
+        assert "vergi 2024" not in rank.file_tags(pencere.con, satir["file_id"])
+    # Seçim CSV'si: yalnız seçili satır yazılır.
+    hedef = tmp_path / "secili.csv"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                        lambda *a, **k: (str(hedef), "CSV (*.csv)"))
+    pencere._secim_ayarla(1)
+    pencere._toplu_csv()
+    satirlar = hedef.read_text(encoding="utf-8-sig").strip().splitlines()
+    assert len(satirlar) == 2  # başlık + 1 seçili sonuç
+    assert pencere.sonuclar[0]["name"] in satirlar[1]
+
+
+def test_sorgu_sozdizimi_alanlari_uygular(pencere):
+    """`alan:değer` sorgusu filtre denetimlerini besler ve çip olur."""
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara yil:2024 tur:pdf")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert not pencere.sorgu_uyari.isVisible()
+    assert pencere.yil_filtre.text() == "2024"
+    assert pencere.tur_filtre.currentText() == ".pdf"
+    assert pencere.sonuc_model.rowCount() >= 1
+    assert len(_cipler(pencere)) == 2
+    # Alan adı içermeyen sorgu eskisi gibi serbest metin arar.
+    pencere.yil_filtre.clear()
+    pencere.tur_filtre.setCurrentIndex(pencere.tur_filtre.findText("tümü"))
+    pencere.arama_kutu.setText("Ankara vergi levhası")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() >= 1
+    assert _cipler(pencere) == []
+    # Yalnız alan verilirse liste boş kalır, kullanıcı yönlendirilir.
+    pencere.arama_kutu.setText("etiket:vergi")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() == 0
+    assert "bir sözcük de yazın" in pencere.oneri.text()
+    assert len(_cipler(pencere)) == 1
+
+
+def test_sorgu_hatasi_arama_calistirmaz_ve_imlec_gosterir(pencere):
+    """Hatalı alanda arama koşmaz; eski sonuçlar korunur, imleç gösterilir."""
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara vergi levhası")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() >= 1
+    onceki = pencere.sonuc_model.rowCount()
+    pencere.arama_kutu.setText("Ankara turl:pdf")
+    pencere._ara_simdi()
+    _app().processEvents()
+    assert pencere.sorgu_uyari.isVisible()
+    assert "bilinmeyen alan" in pencere.sorgu_uyari.text()
+    assert "^" in pencere.sorgu_uyari.text()
+    assert pencere._search_thread is None
+    assert pencere.sonuc_model.rowCount() == onceki
+    # Düzeltilince uyarı kaybolur ve arama yeniden koşar.
+    pencere.arama_kutu.setText("Ankara tur:pdf")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert not pencere.sorgu_uyari.isVisible()
+    assert pencere.tur_filtre.currentText() == ".pdf"
+    assert pencere.sonuc_model.rowCount() >= 1
+
+
+def test_onizleme_onceki_sonraki_belge(pencere, tmp_path, monkeypatch):
+    """Önizlemedeki belge gezinmesi arama sonuçları içinde sıralı ilerler."""
+    from evrakci import thumbs
+    _ikinci_belge(pencere)
+    dizin = str(tmp_path / "thumbs")
+    os.makedirs(dizin, exist_ok=True)
+    monkeypatch.setattr(thumbs, "onbellek_dizini", lambda: dizin)
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara")
+    pencere._ara_simdi()
+    _wait_search(pencere)
+    assert pencere.sonuc_model.rowCount() >= 2
+    pencere.sonuc_liste.setCurrentIndex(pencere.sonuc_model.index(0, 0))
+    pencere._secim_guncelle()
+    pencere._open_preview(pencere.sonuclar[0])
+    _wait_preview(pencere.onizleme)
+    assert pencere.preview_konum.text() == f"1 / {pencere.sonuc_model.rowCount()}"
+    assert not pencere.preview_once.isEnabled() and pencere.preview_sonra.isEnabled()
+    pencere._onizleme_komsu(1)
+    _wait_preview(pencere.onizleme)
+    assert pencere.onizleme.baslik.text() == pencere.sonuclar[1]["name"]
+    assert pencere.preview_konum.text().startswith("2 /")
+    assert pencere.preview_once.isEnabled()
+    pencere._onizleme_komsu(-1)
+    _wait_preview(pencere.onizleme)
+    assert pencere.preview_konum.text().startswith("1 /")
+    _wait_thumbs(pencere)
+    pencere.preview_dialog.close()
+
 
 
 def test_sihirbaz_sayfa_ve_sifre_kurali():

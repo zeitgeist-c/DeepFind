@@ -91,7 +91,7 @@ def install(w):
     split=QSplitter(Qt.Horizontal); split.setChildrenCollapsible(False)
     w.file_model=QStandardItemModel(); w.file_list=QListView(); w.file_list.setModel(w.file_model)
     w.file_list.setObjectName("cardList"); w.file_list.setWordWrap(True)
-    w.file_list.setItemDelegate(CardDelegate(w.file_list))
+    w.file_list.setItemDelegate(CardDelegate(w.file_list, thumb=True))
     w.file_list.setSpacing(2)
     w.file_list.clicked.connect(w._dosya_ayrinti)
     split.addWidget(w.file_list)
@@ -157,6 +157,8 @@ def files_refresh(w,reset=False):
             item=QStandardItem(f'{name}\n{path}\n{STATUS.get(state,state)} • {error or ""} • Kaynak: {source}')
             item.setEditable(False); item.setData(path,Qt.UserRole+1); w.file_model.appendRow(item)
         w._dosya_ayrinti()
+        esleme={row[1]: i for i,row in enumerate(w.file_rows)}
+        w._list_gorselleri(w.file_model,esleme,'_dosya_thumb_loader')
         w.file_next.setEnabled(len(rows)>100); w.file_notice.setText(f'{offset+1}–{offset+len(w.file_rows)} kayıt' if rows else 'Kayıt bulunamadı.'); w.file_notice.show()
     job(w,'files',lambda con:list_files(con,text,status,offset),ready)
 

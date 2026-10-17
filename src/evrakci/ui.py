@@ -3,9 +3,9 @@
 Tasarım kuralı: tek yüzey + kıl payı ayırıcı. Kutu içinde kutu yok; renkler
 her zaman `theme.pal()` üzerinden gelir, sabit renk kullanılmaz.
 """
-from PySide6.QtCore import Qt, QSize, QRectF, QTimer
-from PySide6.QtGui import QColor, QFont, QPainter, QFontMetrics
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget,
+from PySide6.QtCore import Qt, QSize, QRect, QRectF, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QFontMetrics, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
                                QStyledItemDelegate, QStyle, QSizePolicy)
 from . import theme
 
@@ -140,6 +140,40 @@ def ayar_satiri(baslik, ipucu, denetim):
     return kutu
 
 
+class GorselKutusu(QLabel):
+    """Küçük resmi kutusuna sığdıran, kutu ölçüsü değişince yeniden ölçekleyen görsel.
+
+    Sabit yükseklik kulllanılmaz: sütun kısaldığında sabit kutu taşar ve
+    alttaki metinlerle çakışır. Bu bileşen en-boy oranını korur; kutu minimum
+    ölçünün altına inmez, fazla alanı kendisi alır.
+    """
+
+    def __init__(self, parent=None, minimum=(180, 200), maximum_height=420):
+        super().__init__(parent)
+        self.setObjectName("thumbBox")
+        self.setAlignment(Qt.AlignCenter)
+        self.setAccessibleName("Seçili evrak önizlemesi")
+        self.setMinimumSize(*minimum)
+        self.setMaximumHeight(maximum_height)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._kaynak = None
+
+    def gorsel_ata(self, pixmap):
+        self._kaynak = pixmap if (pixmap is not None and not pixmap.isNull()) else None
+        self._yerlestir()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._yerlestir()
+
+    def _yerlestir(self):
+        if self._kaynak is None:
+            self.clear()
+            return
+        self.setPixmap(self._kaynak.scaled(self.size(), Qt.KeepAspectRatio,
+                                           Qt.SmoothTransformation))
+
+
 class Toast(QWidget):
     """Pencere içi onay şeridi: kendiliğinden kaybolur, yerleşimi kaydırmaz."""
 
@@ -249,14 +283,20 @@ class EmptyState(QWidget):
 
 
 class CardDelegate(QStyledItemDelegate):
-    """Düz liste satırı: başlık + ikincil satırlar; seçimde sol vurgu çubuğu."""
+    """Düz liste satırı: başlık + ikincil satırlar; seçimde sol vurgu çubuğu.
+
+    `thumb=True` iken satır başında küçük resim kutusu çizilir. Görsel
+    `Qt.DecorationRole`'den gelir (QPixmap); yoksa nötr zeminde simge düşer,
+    böylece yükleme gecikmesi düzeni zıplatıp yeniden akıtmaz.
+    """
 
     _ONBELLEK = {}
 
-    def __init__(self, parent, kind="document", *, compact=False):
+    def __init__(self, parent, kind="document", *, compact=False, thumb=False):
         super().__init__(parent)
         self.kind = kind
         self.compact = compact
+        self.thumb = thumb
 
     def _ikon(self, renk):
         anahtar = (self.kind, renk)
@@ -266,13 +306,34 @@ class CardDelegate(QStyledItemDelegate):
 
     def _satir_yuksekligi(self):
         if self.compact:
-            return 54
+            return 56
         if self.kind == "document":
             return 104
         return 78
 
     def sizeHint(self, option, index):
         return QSize(240, self._satir_yuksekligi())
+
+    def _gorsel_ciz(self, painter, index, kutu: QRectF, p):
+        """Küçük resim kutusunu çizer; görsel yoksa nötr zeminde simge koyar."""
+        pixmap = index.data(Qt.DecorationRole)
+        if isinstance(pixmap, QPixmap) and not pixmap.isNull():
+            gorsel = pixmap.scaled(int(kutu.width()), int(kutu.height()),
+                                   Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            kirp = QPainterPath()
+            kirp.addRoundedRect(kutu, 7, 7)
+            painter.save()
+            painter.setClipPath(kirp)
+            painter.drawPixmap(int(kutu.left() + (kutu.width() - gorsel.width()) / 2),
+                               int(kutu.top() + (kutu.height() - gorsel.height()) / 2),
+                               gorsel)
+            painter.restore()
+            return
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(p["yuzey2"]))
+        painter.drawRoundedRect(kutu, 7, 7)
+        ikon = self._ikon(p["ikincil"]).pixmap(20, 20)
+        painter.drawPixmap(int(kutu.center().x() - 10), int(kutu.center().y() - 10), ikon)
 
     def paint(self, painter, option, index):
         p = theme.pal()
@@ -289,17 +350,23 @@ class CardDelegate(QStyledItemDelegate):
             painter.setBrush(QColor(p["marka"]))
             painter.drawRoundedRect(QRectF(rect.left(), rect.top() + 7, 3, rect.height() - 14), 2, 2)
         lines = str(index.data(Qt.DisplayRole) or "").splitlines()
-        sol = int(rect.left() + 14)
-        genislik = max(20, int(rect.width() - 26))
         ust = int(rect.top())
+        gorsel_genislik = 0
+        if self.thumb:
+            kutu = (QRectF(rect.left() + 8, ust + 5, 36, 46) if self.compact
+                    else QRectF(rect.left() + 10, ust + 9, 66, 86))
+            self._gorsel_ciz(painter, index, kutu, p)
+            gorsel_genislik = int(kutu.width()) + 10
+        sol = int(rect.left() + 14 + gorsel_genislik)
+        genislik = max(20, int(rect.width() - 26 - gorsel_genislik))
         if self.compact:
-            satirlar = (14, 11.5)
-            yukseklikler = (22, 18)
-            from PySide6.QtCore import QRect
-            onbellek = self._ikon(p["marka"] if selected else p["ikincil"])
-            onbellek.paint(painter, QRect(int(rect.left() + 12), int(rect.top() + 13), 20, 20))
-            sol = int(rect.left() + 44)
-            genislik = max(20, int(rect.width() - 56))
+            satirlar = (13, 11) if self.thumb else (14, 11.5)
+            yukseklikler = (28, 20) if self.thumb else (22, 18)
+            if not self.thumb:
+                onbellek = self._ikon(p["marka"] if selected else p["ikincil"])
+                onbellek.paint(painter, QRect(int(rect.left() + 12), int(rect.top() + 13), 20, 20))
+                sol = int(rect.left() + 44)
+                genislik = max(20, int(rect.width() - 56))
         else:
             satirlar = (14, 11.5, 11.5, 12.5, 11.5)
             yukseklikler = (24, 18, 18, 20, 18)
@@ -317,4 +384,92 @@ class CardDelegate(QStyledItemDelegate):
                 painter.setPen(QColor(p["ikincil"]))
             painter.drawText(sol, ust + yukseklikler[i] * (i + 1) - 4,
                              QFontMetrics(font).elidedText(metin, Qt.ElideRight, genislik))
+        painter.restore()
+
+
+class Cip(QFrame):
+    """Kaldırılabilir filtre çipi: etiket + × düğmesi (paperless filtre rozeti deseni)."""
+
+    silindi = Signal()
+
+    def __init__(self, metin, parent=None):
+        super().__init__(parent)
+        self.setObjectName("cip")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(9, 3, 5, 3)
+        row.setSpacing(6)
+        self.etiket = QLabel(metin)
+        self.etiket.setProperty("cipMetin", True)
+        row.addWidget(self.etiket)
+        self.kaldir = QPushButton("×")
+        self.kaldir.setObjectName("cipKaldir")
+        self.kaldir.setFixedSize(17, 17)
+        self.kaldir.setCursor(Qt.PointingHandCursor)
+        self.kaldir.setToolTip("Bu filtreyi kaldır")
+        self.kaldir.setAccessibleName(f"{metin} filtresini kaldır")
+        self.kaldir.clicked.connect(self.silindi.emit)
+        row.addWidget(self.kaldir)
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+
+
+class GridDelegate(QStyledItemDelegate):
+    """Izgara görünümü: üstte küçük resim, altta ad ve tek satır bilgi."""
+
+    def __init__(self, parent, hucre=(176, 212)):
+        super().__init__(parent)
+        self.hucre = hucre
+
+    def sizeHint(self, option, index):
+        return QSize(*self.hucre)
+
+    def paint(self, painter, option, index):
+        p = theme.pal()
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(option.rect.adjusted(5, 5, -5, -5))
+        selected = bool(option.state & QStyle.State_Selected)
+        hovered = bool(option.state & QStyle.State_MouseOver)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(p["secili"] if selected else
+                                (p["yuzey2"] if hovered else p["panel"])))
+        painter.drawRoundedRect(rect, 10, 10)
+        if selected:
+            painter.setPen(QPen(QColor(p["marka"]), 1.4))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(rect, 10, 10)
+        kutu = QRectF(rect.left() + 9, rect.top() + 9, rect.width() - 18, rect.height() - 66)
+        pixmap = index.data(Qt.DecorationRole)
+        if isinstance(pixmap, QPixmap) and not pixmap.isNull():
+            gorsel = pixmap.scaled(int(kutu.width()), int(kutu.height()),
+                                   Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            kirp = QPainterPath()
+            kirp.addRoundedRect(kutu, 7, 7)
+            painter.save()
+            painter.setClipPath(kirp)
+            painter.drawPixmap(int(kutu.left() + (kutu.width() - gorsel.width()) / 2),
+                               int(kutu.top() + (kutu.height() - gorsel.height()) / 2),
+                               gorsel)
+            painter.restore()
+        else:
+            painter.setBrush(QColor(p["yuzey2"]))
+            painter.drawRoundedRect(kutu, 7, 7)
+            ikon = theme.symbol_icon("document", p["ikincil"]).pixmap(24, 24)
+            painter.drawPixmap(int(kutu.center().x() - 12), int(kutu.center().y() - 12), ikon)
+        lines = str(index.data(Qt.DisplayRole) or "").splitlines()
+        ad = QFont(option.font)
+        ad.setPixelSize(12)
+        ad.setWeight(QFont.DemiBold)
+        painter.setFont(ad)
+        painter.setPen(QColor(p["metin"]))
+        genislik = int(rect.width() - 18)
+        painter.drawText(int(rect.left() + 9), int(kutu.bottom() + 20),
+                         QFontMetrics(ad).elidedText(lines[0] if lines else "", Qt.ElideMiddle, genislik))
+        if len(lines) > 1:
+            alt = QFont(option.font)
+            alt.setPixelSize(10)
+            painter.setFont(alt)
+            painter.setPen(QColor(p["ikincil"]))
+            painter.drawText(int(rect.left() + 9), int(kutu.bottom() + 36),
+                             QFontMetrics(alt).elidedText(" • ".join(lines[1:3]),
+                                                          Qt.ElideRight, genislik))
         painter.restore()
