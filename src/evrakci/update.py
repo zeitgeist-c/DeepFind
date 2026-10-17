@@ -179,7 +179,11 @@ def _zip_guvenli_mi(archive: zipfile.ZipFile) -> bool:
 
 
 def extract_zip(zip_path: Path, hedef_ust: Path, beklenen_surum: str) -> Path:
-    """ZIP'i hedef üst dizine aç; kök klasörü, EXE'yi ve manifest'i doğrula."""
+    """ZIP'i hedef üst dizine aç; kök klasörü, EXE'yi ve manifest'i doğrula.
+
+    Herhangi bir adım başarısız olursa açılmış yarım klasör de silinir:
+    doğrulanmamış paket diskte kalmaz.
+    """
     zip_path = Path(zip_path)
     hedef_ust = Path(hedef_ust)
     kok = hedef_ust / _KLASOR_KALIBI.format(s=beklenen_surum)
@@ -190,31 +194,43 @@ def extract_zip(zip_path: Path, hedef_ust: Path, beklenen_surum: str) -> Path:
             if not _zip_guvenli_mi(archive):
                 raise UpdateError("Paket beklenmeyen dosya yolları içeriyor.")
             archive.extractall(hedef_ust)
+        if not kok.is_dir():
+            raise UpdateError("Paket yapısı beklenenden farklı.")
+        exe = kok / f"{kok.name}.exe"
+        if not exe.is_file():
+            raise UpdateError("Paket içinde uygulama dosyası bulunamadı.")
+        if not (kok / "_internal").is_dir():
+            raise UpdateError("Paket eksik görünüyor.")
+        manifest_yolu = kok / "manifest.json"
+        try:
+            manifest = json.loads(manifest_yolu.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise UpdateError("Paket sürüm bilgisi okunamadı.") from exc
+        if manifest.get("program") != PROGRAM or manifest.get("version") != beklenen_surum:
+            raise UpdateError("Paket sürüm bilgisi beklenenden farklı.")
+        return kok
+    except UpdateError:
+        shutil.rmtree(kok, ignore_errors=True)
+        raise
     except (zipfile.BadZipFile, OSError) as exc:
+        shutil.rmtree(kok, ignore_errors=True)
         raise UpdateError("Paket açılamadı.") from exc
-    if not kok.is_dir():
-        raise UpdateError("Paket yapısı beklenenden farklı.")
-    exe = kok / f"{kok.name}.exe"
-    if not exe.is_file():
-        raise UpdateError("Paket içinde uygulama dosyası bulunamadı.")
-    if not (kok / "_internal").is_dir():
-        raise UpdateError("Paket eksik görünüyor.")
-    manifest_yolu = kok / "manifest.json"
-    try:
-        manifest = json.loads(manifest_yolu.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise UpdateError("Paket sürüm bilgisi okunamadı.") from exc
-    if manifest.get("program") != PROGRAM or manifest.get("version") != beklenen_surum:
-        raise UpdateError("Paket sürüm bilgisi beklenenden farklı.")
-    return kok
 
 
 def prepare(info: UpdateInfo, progress=None, cancel=None) -> Path:
-    """İndir + aç + doğrula; yerleşmeye hazır klasörü döndür."""
+    """İndir + aç + doğrula; yerleşmeye hazır klasörü döndür.
+
+    Açma/doğrulama başarısızsa indirilen ZIP de silinir: yarıda kalan ya da
+    bozuk bir paket diskte artık bırakmaz.
+    """
     klasor = updates_dir()
     zip_yolu = klasor / f"{_KLASOR_KALIBI.format(s=info.version)}.zip"
     download(info, zip_yolu, progress=progress, cancel=cancel)
-    return extract_zip(zip_yolu, klasor, info.version)
+    try:
+        return extract_zip(zip_yolu, klasor, info.version)
+    except UpdateError:
+        zip_yolu.unlink(missing_ok=True)
+        raise
 
 
 def spawn_swap(old_pid: int, hazir_klasor: Path, calisan_exe: Path,

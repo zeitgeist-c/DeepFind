@@ -173,6 +173,23 @@ class AcmaTestleri(unittest.TestCase):
             klasor = update.extract_zip(zip_yolu, hedef, "9.9.9")
             self.assertFalse((klasor / "eski.txt").exists())
 
+    def test_basarisiz_acma_kalinti_birakmaz(self):
+        """Manifest bozuksa ne yarım klasör ne ZIP diskte kalır."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kok = Path(tmp)
+            zip_yolu = _zip_uret(kok, "9.9.9", program="Baska")
+            info = update.UpdateInfo(
+                version="9.9.9", asset_name="Evrakci-9.9.9.zip",
+                download_url=zip_yolu.as_uri(),
+                sha256=update._sha256_of(zip_yolu),
+                size=zip_yolu.stat().st_size, page_url="")
+            with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(kok / "lad")}):
+                hedef = update.updates_dir()
+                with self.assertRaises(update.UpdateError):
+                    update.prepare(info)
+                kalanlar = [p.name for p in hedef.iterdir()]
+            self.assertEqual(kalanlar, [])
+
 
 class HazirlamaTestleri(unittest.TestCase):
     def test_hazirla_indirir_acar_dogrular(self):
@@ -275,6 +292,7 @@ class AkisTestleri(unittest.TestCase):
         pencere._guncelleme_thread = None
         pencere._guncelleme_info = None
         pencere.con = mock.Mock()
+        pencere.kasa_yolu = "C:\\sentetik\\kasa.db"
         pencere._locked = False
         from PySide6.QtWidgets import (QApplication, QPushButton, QLabel,
                                        QProgressBar)
@@ -299,24 +317,40 @@ class AkisTestleri(unittest.TestCase):
 
     def test_denetim_sonucu_dugmelere_yansir(self):
         app_module, pencere = self._pencere()
+        pencere._guncelleme_sessiz = False
         info = update.UpdateInfo("9.9.9", "Evrakci-9.9.9.zip", "u", "s",
                                  169624127, "p")
-        app_module.AnaPencere._guncelleme_denetlendi(pencere, info, False)
+        app_module.AnaPencere._guncelleme_denetlendi(pencere, info)
         self.assertFalse(pencere.update_denetle_btn.isVisible())
         self.assertIn("9.9.9", pencere.update_durum.text())
         self.assertIn("MB", pencere.update_durum.text())
 
     def test_guncel_sonucu_mesaji(self):
         app_module, pencere = self._pencere()
-        app_module.AnaPencere._guncelleme_denetlendi(pencere, None, False)
+        pencere._guncelleme_sessiz = False
+        app_module.AnaPencere._guncelleme_denetlendi(pencere, None)
         self.assertIn("En güncel", pencere.update_durum.text())
 
     def test_sessiz_hata_gorunur_mesaj_vermez(self):
         app_module, pencere = self._pencere()
-        app_module.AnaPencere._guncelleme_hata(pencere, "ağ yok", True)
+        pencere._guncelleme_sessiz = True
+        app_module.AnaPencere._guncelleme_denetleme_hatasi(pencere, "ağ yok")
         self.assertNotIn("ağ yok", pencere.update_durum.text())
-        app_module.AnaPencere._guncelleme_hata(pencere, "ağ yok", False)
+        pencere._guncelleme_sessiz = False
+        app_module.AnaPencere._guncelleme_denetleme_hatasi(pencere, "ağ yok")
         self.assertIn("ağ yok", pencere.update_durum.text())
+
+    def test_kurulamayan_swap_uygulamayi_kapatmaz(self):
+        """Bekçi betik kurulamazsa hata görünür ve düğmeler geri gelir."""
+        app_module, pencere = self._pencere()
+        pencere._cikis = mock.Mock()
+        with mock.patch.object(app_module.update_mod, "spawn_swap",
+                               side_effect=OSError("izin yok")):
+            app_module.AnaPencere._guncelleme_hazir(pencere, "9.9.9",
+                                                    "C:\\hazir\\klasor")
+        pencere._cikis.assert_not_called()
+        self.assertIn("kurulamadı", pencere.update_durum.text())
+        self.assertFalse(pencere.update_indir_btn.isHidden())
 
 
 if __name__ == "__main__":

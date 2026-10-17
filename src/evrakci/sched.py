@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import os
 
 DEFAULT_HOUR = 12
 DEFAULT_MINUTE = 30
@@ -113,3 +114,27 @@ def autostart_get(app_name: str) -> str | None:
         return None
     finally:
         winreg.CloseKey(key)
+
+
+def autostart_guncelle(app_name: str, exe_path: str, vault_path: str | None = None) -> bool:
+    """Açılış kaydı varsa çalışan EXE yolunu güncelle; yoksa dokunma.
+
+    Güncelleme programı yeni bir klasöre taşıdığından eski kayıt eski klasörü
+    gösterir; kaydı tazelemezsek makine bir sonraki açılışta eski sürümü
+    başlatır. Kapalı (silinmiş) kayıt kendiliğinden açılmaz.
+    """
+    mevcut = autostart_get(app_name)
+    if mevcut is None:
+        return False
+    try:
+        import subprocess
+        command = [exe_path, "--tray"]
+        if vault_path:
+            command.extend(["--kasa", vault_path])
+        beklenen = subprocess.list2cmdline(command)
+        if os.path.normcase(mevcut.strip()) == os.path.normcase(beklenen):
+            return False
+        autostart_set(app_name, exe_path, vault_path)
+        return True
+    except OSError:
+        return False

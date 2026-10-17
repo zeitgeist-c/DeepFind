@@ -56,3 +56,21 @@ def test_otomatik_baslatma_yaz_sil():
     finally:
         assert sched.autostart_clear(ad) is True
     assert sched.autostart_get(ad) is None
+
+
+def test_otomatik_baslatma_guncelle_yalniz_kayit_varsa():
+    """Güncelleme yeni klasöre taşıyınca kayıt tazelenir; kapalı kayıt açılmaz."""
+    ad = "Evrakci-Test-0001"
+    sched.autostart_clear(ad)
+    # Kayıt yokken: dokunulmaz, kayıt oluşturulmaz (kapalı kalır).
+    assert sched.autostart_guncelle(ad, "C:\\yeni\\evrakci.exe") is False
+    assert sched.autostart_get(ad) is None
+    # Kayıt varken eski yolu gösteriyorsa tazelenir.
+    sched.autostart_set(ad, "C:\\eski\\evrakci.exe")
+    try:
+        assert sched.autostart_guncelle(ad, "C:\\yeni\\evrakci.exe") is True
+        assert "yeni" in (sched.autostart_get(ad) or "")
+        # Zaten güncelken ikinci kez yazılmaz.
+        assert sched.autostart_guncelle(ad, "C:\\yeni\\evrakci.exe") is False
+    finally:
+        sched.autostart_clear(ad)

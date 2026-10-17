@@ -1,5 +1,21 @@
 # Evrakçı — DURUM
 
+## 0.7.0 kendi kendini güncelleme — 17.10.2026
+
+WordArc'ın çalışan güncelleme modeli Evrakçı'ya uyarlandı. Kaynak depo özel
+kalır; paketler herkese açık `zeitgeist-c/Evrakci-Releases` deposunda
+yayınlanır. Ayarlar → Güncellemeler: durum, denetle, indir ve kur, iptal,
+ilerleme. Açılıştan 30 sn sonra günde bir sessiz denetim. İndirme boyut +
+SHA-256 ile doğrulanır; ZIP açılışı Zip Slip + manifest sürüm kontrolünden
+geçer; bekçi BAT eski sürecin çıkışını bekleyip yeni sürümü `--restarted`
+ile açar ve kendini siler. Doğrulamayı geçemeyen paket asla çalışmaz.
+Eski klasör/kasa silinmez. Ayrıntı: `DENETIM-0.7.0.md`, `TESLIM-0.7.0.md`.
+
+Doğrulama: **234 test** (26 yeni), paketli EXE smoke 25/25, eval kapısı
+geçti (holdout top1=1.0), swap mekaniği gerçek Windows süreçleriyle
+kanıtlandı, canlı yayına karşı uçtan uca denetle→indir→doğrula→aç kanıtı
+alındı. İlk gerçek otomatik güncelleme bir sonraki sürümde yaşanacak.
+
 ## 0.6.4 temizlik + v9 denetim turu — 16.10.2026
 
 0.6.3 sonrası kapanış: kanıtlı gereksizler temizlendi (0.1.0 A8 tanı betikleri,

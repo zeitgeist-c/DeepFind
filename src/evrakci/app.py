@@ -408,6 +408,7 @@ class AnaPencere(QMainWindow):
         self._guncelleme_isci = None
         self._guncelleme_thread = None
         self._guncelleme_info = None
+        self._guncelleme_sessiz = False
         self._jobs=[]
         self._job_keys={}
         self._job_pending={}
@@ -468,6 +469,14 @@ class AnaPencere(QMainWindow):
             pass
         QTimer.singleShot(1200, self._guncelleme_sonuc_bildir)
         QTimer.singleShot(30_000, self._guncelleme_zamanli)
+        # Güncelleme yeni klasöre taşındıysa açılış kaydı eski yolu gösteriyor
+        # olabilir; kayıt varsa çalışan yola tazele (kapalı kayıt açılmaz).
+        if self._guncelleme_yapilabilir():
+            try:
+                if sched.autostart_guncelle("Evrakci", sys.executable, self.kasa_yolu):
+                    diagnostics.record("autostart_refreshed")
+            except Exception:
+                pass
 
     def _guncelleme_sonuc_bildir(self):
         """Bekçi betiğin bıraktığı güncelleme sonucunu bir kez duyur."""
@@ -523,9 +532,12 @@ class AnaPencere(QMainWindow):
         if not sessiz:
             self._guncelleme_durum_yaz("Güncelleme denetleniyor…")
             self.update_denetle_btn.setEnabled(False)
-        isci = GuncellemeIsci("denetle", current=__version__, parent=self)
-        isci.denetlendi.connect(lambda info: self._guncelleme_denetlendi(info, sessiz))
-        isci.hata.connect(lambda mesaj: self._guncelleme_hata(mesaj, sessiz))
+        self._guncelleme_sessiz = sessiz
+        # Ebeveynsiz işçi: QObject ebeveynliyken moveToThread çalışmaz ve ağ
+        # işi GUI thread'inde donar. Yaşam süresi _guncelleme_isci referansıyla.
+        isci = GuncellemeIsci("denetle", current=__version__)
+        isci.denetlendi.connect(self._guncelleme_denetlendi)
+        isci.hata.connect(self._guncelleme_denetleme_hatasi)
         self._guncelleme_isci = isci
         self._guncelleme_thread = QThread(self)
         isci.moveToThread(self._guncelleme_thread)
@@ -534,6 +546,7 @@ class AnaPencere(QMainWindow):
         isci.hata.connect(self._guncelleme_thread.quit)
         isci.denetlendi.connect(isci.deleteLater)
         isci.hata.connect(isci.deleteLater)
+        self._guncelleme_thread.finished.connect(isci.deleteLater)
         self._guncelleme_thread.finished.connect(self._guncelleme_temizle)
         self._guncelleme_thread.start()
 
@@ -541,7 +554,8 @@ class AnaPencere(QMainWindow):
         self._guncelleme_isci = None
         self._guncelleme_thread = None
 
-    def _guncelleme_denetlendi(self, info, sessiz):
+    def _guncelleme_denetlendi(self, info):
+        sessiz = self._guncelleme_sessiz
         if self.con is not None:
             try:
                 migrate.set_setting(self.con, "update_son_kontrol", update_mod.now_stamp())
@@ -569,9 +583,9 @@ class AnaPencere(QMainWindow):
         self.durum.showMessage(
             f"Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.", 10000)
 
-    def _guncelleme_hata(self, mesaj, sessiz=False):
+    def _guncelleme_denetleme_hatasi(self, mesaj):
         self.update_denetle_btn.setEnabled(True)
-        if sessiz:
+        if self._guncelleme_sessiz:
             # Sessiz denetim hatası kullanıcıya gösterilmez; bir sonraki
             # açılışta yeniden denenir.
             self._guncelleme_durum_yaz("Sessiz denetim başarısız; sonraki açılışta yeniden denenecek.")
@@ -588,10 +602,10 @@ class AnaPencere(QMainWindow):
         self.update_bar.setVisible(True)
         self.update_bar.setRange(0, 100 if info.size else 0)
         self._guncelleme_durum_yaz("Güncelleme indiriliyor…")
-        isci = GuncellemeIsci("indir", info=info, parent=self)
+        isci = GuncellemeIsci("indir", info=info)
         isci.ilerleme.connect(self._guncelleme_ilerleme)
         isci.hazir.connect(self._guncelleme_hazir)
-        isci.hata.connect(lambda mesaj: self._guncelleme_indirme_hatasi(mesaj))
+        isci.hata.connect(self._guncelleme_indirme_hatasi)
         self._guncelleme_isci = isci
         self._guncelleme_thread = QThread(self)
         isci.moveToThread(self._guncelleme_thread)
@@ -600,6 +614,7 @@ class AnaPencere(QMainWindow):
         isci.hata.connect(self._guncelleme_thread.quit)
         isci.hazir.connect(isci.deleteLater)
         isci.hata.connect(isci.deleteLater)
+        self._guncelleme_thread.finished.connect(isci.deleteLater)
         self._guncelleme_thread.finished.connect(self._guncelleme_temizle)
         self._guncelleme_thread.start()
 
@@ -611,11 +626,21 @@ class AnaPencere(QMainWindow):
             f"{round(total / (1024 * 1024))} MB")
 
     def _guncelleme_hazir(self, surum, klasor):
+        # Bekçi betik önce bu sürecin çıkmasını bekler, sonra yeni EXE'yi açar.
+        # Betik kurulamazsa uygulama kapanmamalı: hata göster, indirme geri gel.
+        try:
+            update_mod.spawn_swap(os.getpid(), Path(klasor), Path(sys.executable),
+                                  self.kasa_yolu)
+        except OSError as error:
+            diagnostics.record("update_spawn_failed", type(error).__name__)
+            self.update_indir_btn.setVisible(True)
+            self.update_iptal_btn.setVisible(False)
+            self.update_bar.setVisible(False)
+            self._guncelleme_durum_yaz(
+                "Güncelleme kurulamadı; “İndir ve kur” ile yeniden deneyin.")
+            return
         self.update_bar.setRange(0, 0)
         self._guncelleme_durum_yaz(f"Sürüm {surum} hazır. Evrakçı yeniden başlatılıyor…")
-        # Bekçi betik önce bu sürecin çıkmasını bekler, sonra yeni EXE'yi açar.
-        update_mod.spawn_swap(os.getpid(), Path(klasor), Path(sys.executable),
-                              self.kasa_yolu)
         diagnostics.record("update_installing", surum)
         QTimer.singleShot(250, self._cikis)
 
@@ -628,6 +653,11 @@ class AnaPencere(QMainWindow):
     def _guncelleme_iptal(self):
         if self._guncelleme_isci is not None:
             self._guncelleme_isci.iptal_et()
+            # İndirme döngüsü iptali bir sonraki parçada görür; işçi sinyal
+            # göndermeden döner, bu yüzden thread'i burada kapatıyoruz —
+            # yoksa temizlik hiç çalışmaz ve düğmeler kalıcı kilitlenir.
+            if self._guncelleme_thread is not None:
+                self._guncelleme_thread.quit()
         self.update_iptal_btn.setVisible(False)
         self.update_bar.setVisible(False)
         self.update_indir_btn.setVisible(True)
@@ -3524,6 +3554,8 @@ class AnaPencere(QMainWindow):
         self.popup_status.setText("Kasa kilitli.")
         if self._guncelleme_isci is not None:
             self._guncelleme_isci.iptal_et()
+            if self._guncelleme_thread is not None:
+                self._guncelleme_thread.quit()
         self._guncelleme_sifirla()
         self.source_title.clear()
         self.source_path.clear()
