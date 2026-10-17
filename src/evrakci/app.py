@@ -559,7 +559,6 @@ class AnaPencere(QMainWindow):
         self._guncelleme_thread = None
 
     def _guncelleme_denetlendi(self, info):
-        sessiz = self._guncelleme_sessiz
         if self.con is not None:
             try:
                 migrate.set_setting(self.con, "update_son_kontrol", update_mod.now_stamp())
@@ -568,9 +567,10 @@ class AnaPencere(QMainWindow):
         self.update_denetle_btn.setEnabled(True)
         if info is None:
             self._guncelleme_info = None
+            # Tek geri bildirim: Ayarlar sayfasındaki satır içi durum.
+            # Toast aynı metni sayfanın altından perdeleyip çift gösterim
+            # üretiyordu; kaldırılandı (sade UI, bilgi tek yerde).
             self._guncelleme_durum_yaz(f"En güncel sürümü kullanıyorsunuz ({__version__}).")
-            if not sessiz:
-                self._toast_goster("En güncel sürümü kullanıyorsunuz.")
             return
         self._guncelleme_info = info
         boyut = max(1, round(info.size / (1024 * 1024)))
