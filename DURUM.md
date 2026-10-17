@@ -21,7 +21,13 @@ kalan filtre çipleri, alan sözdiziminde sonuç eşleştirme hatası, küçük 
 yükleyicisinin pencere kapanışında yok edilmesi.
 
 Sınırlar/notlar:
-- Paket (ZIP) üretilmedi; sürüm kapısı (paket + lisans + temiz makine) ayrı iş.
+- Paket kapısı: `eval/package_check.py` **25/25 GEÇTİ** (gerçek EXE ile açılış +
+  tarama akışı); `Evrakçı-0.8.1.zip` = 154.520.305 bayt, SHA-256
+  `15f8f938…722fe`. Ayrıntı: `TESLIM-0.8.1.md`.
+- **Halka açık yayın (indirme linki):** `zeitgeist-c/Evrakci-Releases` → v0.8.1
+  (Latest) → https://github.com/zeitgeist-c/Evrakci-Releases/releases/tag/v0.8.1
+  · Kurulu 0.7.0/0.8.0 sürümleri güncelleyiciyle doğrudan bu sürüme atlar;
+  `/releases/latest` doğrulaması sürüm/boyut/özeti birebir gördü.
 - `eval/ui_shots.py` kapanışta 0xC0000409 ile düşüyor; temel çizgide de aynı,
   görüntüler sorunsuz üretiliyor.
 - `LISANSLAR.md` bağımlılık değişmediği için 0.8.0 içeriğiyle geçerli.
