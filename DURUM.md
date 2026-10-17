@@ -11,7 +11,7 @@ geçer; bekçi BAT eski sürecin çıkışını bekleyip yeni sürümü `--resta
 ile açar ve kendini siler. Doğrulamayı geçemeyen paket asla çalışmaz.
 Eski klasör/kasa silinmez. Ayrıntı: `DENETIM-0.7.0.md`, `TESLIM-0.7.0.md`.
 
-Doğrulama: **234 test** (26 yeni), paketli EXE smoke 25/25, eval kapısı
+Doğrulama: **237 test** (29 yeni), paketli EXE smoke 25/25, eval kapısı
 geçti (holdout top1=1.0), swap mekaniği gerçek Windows süreçleriyle
 kanıtlandı, canlı yayına karşı uçtan uca denetle→indir→doğrula→aç kanıtı
 alındı. İlk gerçek otomatik güncelleme bir sonraki sürümde yaşanacak.

@@ -19,9 +19,10 @@ uyarlandı. Kaynak depo özel kalır; paketler herkese açık
 
 ## Doğrulamalar
 
-- **234 test geçti** (26 yeni: sürüm karşılaştırma, yayın çözümleme iki
+- **237 test geçti** (29 yeni: sürüm karşılaştırma, yayın çözümleme iki
   varlık yazımı, indirme özet/boyut/iptal, ZIP açma + Zip Slip + manifest,
-  hazırlama uçtan uca, bekçi betik içeriği, temizleme eşiği, UI akışı).
+  hazırlama uçtan uca + hata temizliği, bekçi betik içeriği, temizleme
+  eşiği, UI akışı, açılış kaydı tazeleme).
 - **Paketli EXE smoke 25/25** (kaynak + paket; güncelleme bölümü
   kontrolleriyle). Eval kapısı: holdout top1=1.0 / top3=1.0.
 - **Swap mekaniği gerçek süreçlerle kanıtlandı:** kurban süreç 6 sn yaşadı;
@@ -29,16 +30,26 @@ uyarlandı. Kaynak depo özel kalır; paketler herkese açık
   sildi (CREATE_NO_WINDOW; unicode yollar; System32 tam yolları).
 - **Canlı yayına karşı uçtan uca:** `check_for_update("0.6.4")` gerçek
   GitHub API'sinden 0.7.0'ı buldu; paket indirildi, SHA-256 özeti tuttu,
-  ZIP açıldı, manifest sürümü doğrulandı (aşağıda).
+  ZIP açıldı, manifest sürümü doğrulandı; indirilen EXE'nin ProductVersion
+  alanı 0.7.0 okundu.
+- **Gerçek iptal akışı (offscreen Qt + yerel yavaş HTTP):** 2 MB inerken
+  iptal → worker thread kapandı, yarım dosya silindi, düğmeler geri geldi.
+- **Kapanış denetimi 7–11:** işçi ebeveynsizliği (moveToThread), iptal
+  thread kapanışı, spawn hatasında açık kalma, açma kalıntı temizliği,
+  açılış kaydı tazeleme — hepsi düzeltildi ve testli (bkz. DENETIM-0.7.0.md).
 
 ## Paket
 
-- `Evrakçı-0.7.0.zip`: **169.642.249 bayt**. SHA-256:
-  `1d8101ea242514e1ff4c93e8acd2786bc40dffe17dd3f290c43b1771cd8b79e3`.
+- `Evrakçı-0.7.0.zip`: **169.643.680 bayt**. SHA-256:
+  `517733428b28b5aff7378149f714f133b6efe357254ec8c57ee4323e4e471584`.
   ZIP CRC doğrulanmış.
-- Sürüm kaynağı commit `9546783` + `v0.7.0` etiketi; `origin/master`'a
-  push edildi. GitHub Release hem özel kaynak depoda hem herkese açık
-  `Evrakci-Releases` deposunda açılır (bu teslimin kapanışı).
+- Tek kaynaktan üretildi: tüm denetim düzeltmeleri alındıktan sonra paket
+  bir kez yeniden üretildi (ilk deneme yayına açılmıştı ama kimse
+  indirmeden geri çekildi); etiket ve iki depodaki yayın varlıkları bu son
+  pakete göre yenilendi.
+- Sürüm kaynağı `master` + `v0.7.0` etiketi; `origin/master`'a push edildi.
+  GitHub Release hem özel kaynak depoda hem herkese açık `Evrakci-Releases`
+  deposunda açıktır.
 - Eski EXE'ler/sürümler silinmez; güncelleme yalnız yeni klasör açar.
 
 ## İlk gerçek otomatik güncelleme

@@ -55,13 +55,37 @@ onedir (EXE + `_internal`) paket yapısına uyarlandı.
    eklendi: yalnız yönetilen yerel hedefe (`%LOCALAPPDATA%/Evrakci/Updates`)
    yazar; davranış kanıtı test_update.py runtime testleri.
 
-## Kalan risk
+## Kapanış denetimi ek bulguları (build sonrası tur, aynı sürümde yayın yenilendi)
 
-- İlk GERÇEK otomatik güncelleme, 0.7.0'dan SONRAKİ sürüm yayınlanınca
-  yaşanır; bu turda canlı uçtan uca akış kanıtı olarak gerçek yayına karşı
-  denetleme + indirme + açma + doğrulama kanıtlandı, swap mekaniği gerçek
-  Windows süreçlerle ayrıca kanıtlandı (bkz. TESLIM-0.7.0.md).
-- Program klasörü salt-okunur konumdaysa (Program Files'a elle kopya) taşıma
-  başarısız olur; fallback devreye girer ve kullanıcı bilgilendirilir.
+7. **Worker ebeveynsiz olmalıydı (P1).** `GuncellemeIsci(parent=self)` ile
+   üretilince Qt `moveToThread` çağrısı etkisiz kalır ve ağ işi GUI
+   thread'inde donar. Çözüm: işçi ebeveynsiz; yaşam süresi pencere
+   referansıyla yönetilir ve `thread.finished` ile `deleteLater` bağlanır.
+   (offscreen Qt ile gerçek iptal akışı kanıtı alındı.)
+8. **İptal edilen indirme thread'i kapatmıyordu (P1).** İşçi "iptal"
+   durumunda sinyal göndermeden döner; thread hiç durmaz ve `temizle`
+   çalışmaz → düğmeler kalıcı kilitlenir. Çözüm: iptal yolunda
+   `thread.quit()` çağrılır. Gerçek yavaş indirme (yerel HTTP, ~1,7 MB/sn)
+   üzerinde kanıtlandı: 2 MB inerken iptal → thread kapandı, yarım dosya
+   silindi, mesaj düğmelere döndü.
+9. **Swap kurulamazsa uygulama yine kapanıyordu (P2).** `spawn_swap`
+   OSError atarsa pencere yine de kapanıyordu → güncelleme yok, program
+   kapalı. Çözüm: hata yakalanır, kullanıcıya gösterilir, uygulama açık
+   kalır; testli.
+10. **Başarısız açma kalıntı bırakıyordu (P2).** Manifest/ZIP doğrulaması
+    düşünce yarım klasör ve ZIP diskte kalıyordu. Çözüm: `extract_zip` ve
+    `prepare` her hata yolunda açılmış klasörü ve ZIP'i temizler; testli.
+11. **Açılış kaydı eski klasörü gösteriyordu (P2).** Güncelleme yeni
+    klasöre taşındıktan sonra HKCU Run kaydı eski yolu gösterir; makine bir
+    sonraki açılışta eski sürümü başlatırdı. Çözüm:
+    `sched.autostart_guncelle` — kayıt varsa çalışan yola tazeler, kapalı
+    kaydı açmaz; testli.
 
-Durum: Uygulama tamam; davranış testleri 234/234, eval kapısı geçti.
+**Yayın notu:** İlk paket (SHA `1d8101ea…`) build sonrası eklenen 7–11
+düzeltmelerini içermiyordu; yayın açıldıktan sonra, kimse indirmeden önce
+fark edildi. Tüm düzeltmeler alındıktan sonra paket aynı sürümde yeniden
+üretildi; güncel paket özeti `TESLIM-0.7.0.md`'de. Etiket ve her iki
+depodaki yayın varlıkları bu son pakete göre güncellendi.
+
+Durum: Uygulama tamam; davranış testleri 237/237, eval kapısı geçti,
+paketli EXE smoke 25/25.
