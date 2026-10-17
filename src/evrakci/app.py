@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import sys
 import threading
 import time
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter, QTime, QEvent, QSettings, QRect
 from PySide6.QtCore import QUrl
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
 from . import ai, migrate, rank, sched, theme, vault, remember, diagnostics, recovery
+from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
 from .vocab import rebuild_vocab
@@ -339,6 +342,51 @@ class HaricIsci(QObject):
             self._sifre = "x" * 32
 
 
+class GuncellemeIsci(QObject):
+    """Arka planda güncelleme denetimi/indirmesi; ağ GUI'yi meşgul etmez.
+
+    Denetim ve indirme ayrı çağrılır; sinyaller ana thread'e kuyruklanır.
+    İptal bir threading.Event'tir: indirme döngüsü her parçada yoklar,
+    yarım dosya silinir.
+    """
+    denetlendi = Signal(object)      # UpdateInfo ya da None (güncel)
+    ilerleme = Signal(int, int)      # inen bayt, toplam bayt
+    hazir = Signal(str, str)         # sürüm, yerleşmeye hazır klasör
+    hata = Signal(str)
+
+    def __init__(self, gorev, current="", info=None, parent=None):
+        super().__init__(parent)
+        self.gorev = gorev
+        self.current = current
+        self.info = info
+        self.iptal = threading.Event()
+
+    def iptal_et(self):
+        self.iptal.set()
+
+    def kos(self):
+        try:
+            if self.gorev == "denetle":
+                self.denetlendi.emit(update_mod.check_for_update(self.current))
+            else:
+                klasor = update_mod.prepare(self.info, progress=self._ilerleme,
+                                            cancel=self.iptal)
+                self.hazir.emit(self.info.version, str(klasor))
+        except update_mod.UpdateError as error:
+            if str(error) == "cancelled":
+                return
+            diagnostics.record("update_error", type(error).__name__)
+            self.hata.emit(str(error))
+        except Exception as error:  # noqa: BLE001 - beklenmeyen hata kullanıcıya tasinir
+            diagnostics.record("update_error", type(error).__name__)
+            self.hata.emit("Güncelleme tamamlanamadı.")
+
+    def _ilerleme(self, done, total):
+        # Birleştirme: megabayt başına tek sinyal GUI thread'ini serbest tutar.
+        if done % (1024 * 1024) < 256 * 1024 or done == total:
+            self.ilerleme.emit(done, total)
+
+
 class AnaPencere(QMainWindow):
     def __init__(self, kasa_yolu, sifre, prepared=False):
         super().__init__()
@@ -357,6 +405,9 @@ class AnaPencere(QMainWindow):
         self._kaldir_yol = None
         self._haric_isci = None
         self._haric_thread = None
+        self._guncelleme_isci = None
+        self._guncelleme_thread = None
+        self._guncelleme_info = None
         self._jobs=[]
         self._job_keys={}
         self._job_pending={}
@@ -409,6 +460,23 @@ class AnaPencere(QMainWindow):
         except Exception as error:  # noqa: BLE001
             diagnostics.record("recovery_setup_failed", type(error).__name__)
         QTimer.singleShot(1500, self._kurtarma_bildirim_goster)
+        # Güncelleme artıklarını topla (çalışılan klasör hariç) ve ilk sessiz
+        # denetimi 30 sn sonra yap: program açılışı gecikmesin.
+        try:
+            update_mod.temizle(aktif_klasor=os.path.dirname(os.path.abspath(sys.executable)))
+        except Exception:
+            pass
+        QTimer.singleShot(1200, self._guncelleme_sonuc_bildir)
+        QTimer.singleShot(30_000, self._guncelleme_zamanli)
+
+    def _guncelleme_sonuc_bildir(self):
+        """Bekçi betiğin bıraktığı güncelleme sonucunu bir kez duyur."""
+        sonuc = update_mod.son_sonuc()
+        if sonuc == "ok":
+            self._toast_goster(f"Güncelleme tamamlandı: Evrakçı {__version__}.")
+            self.durum.showMessage(f"Evrakçı {__version__} güncellendi.", 8000)
+        elif sonuc == "fallback":
+            self._toast_goster("Güncelleme taşınamadı; geçici klasörden çalışıyorsunuz.")
 
     def _kurtarma_ilk_kurulum(self):
         """Kurtarma anahtarı yoksa üret; sonucu tek seferlik bildirime hazırla."""
@@ -429,6 +497,159 @@ class AnaPencere(QMainWindow):
         self._toast_goster("Kurtarma anahtarı hazır: Ayarlar → Kurtarma anahtarı.")
         self.durum.showMessage(
             "Şifrenizi unutursanız kurtarma anahtarınızla kasayı açabilirsiniz.", 10000)
+
+    # -- güncelleme: herkese açık yayın deposundan, kullanıcı denetimiyle --
+    def _guncelleme_yapilabilir(self):
+        """Güncelleme akışı gerçek kurulum ister; kaynak koddan çalışmaz."""
+        return bool(getattr(sys, "frozen", False))
+
+    def _guncelleme_zamanli(self):
+        # İlk sessiz denetim açılıştan 30 sn sonra; sonra günde bir.
+        if not self._guncelleme_yapilabilir() or self._locked or self.con is None:
+            return
+        stamp = migrate.get_setting(self.con, "update_son_kontrol", "")
+        if not update_mod.last_check_is_old(stamp):
+            return
+        self._guncelleme_denetle(sessiz=True)
+
+    def _guncelleme_denetle(self, sessiz=False):
+        if self._guncelleme_isci is not None:
+            return
+        if not self._guncelleme_yapilabilir():
+            if not sessiz:
+                self._guncelleme_durum_yaz(
+                    "Güncellemeler yalnız kurulu programda denetlenir.")
+            return
+        if not sessiz:
+            self._guncelleme_durum_yaz("Güncelleme denetleniyor…")
+            self.update_denetle_btn.setEnabled(False)
+        isci = GuncellemeIsci("denetle", current=__version__, parent=self)
+        isci.denetlendi.connect(lambda info: self._guncelleme_denetlendi(info, sessiz))
+        isci.hata.connect(lambda mesaj: self._guncelleme_hata(mesaj, sessiz))
+        self._guncelleme_isci = isci
+        self._guncelleme_thread = QThread(self)
+        isci.moveToThread(self._guncelleme_thread)
+        self._guncelleme_thread.started.connect(isci.kos)
+        isci.denetlendi.connect(self._guncelleme_thread.quit)
+        isci.hata.connect(self._guncelleme_thread.quit)
+        isci.denetlendi.connect(isci.deleteLater)
+        isci.hata.connect(isci.deleteLater)
+        self._guncelleme_thread.finished.connect(self._guncelleme_temizle)
+        self._guncelleme_thread.start()
+
+    def _guncelleme_temizle(self):
+        self._guncelleme_isci = None
+        self._guncelleme_thread = None
+
+    def _guncelleme_denetlendi(self, info, sessiz):
+        if self.con is not None:
+            try:
+                migrate.set_setting(self.con, "update_son_kontrol", update_mod.now_stamp())
+            except Exception:
+                pass
+        self.update_denetle_btn.setEnabled(True)
+        if info is None:
+            self._guncelleme_info = None
+            self._guncelleme_durum_yaz(f"En güncel sürümü kullanıyorsunuz ({__version__}).")
+            if not sessiz:
+                self._toast_goster("En güncel sürümü kullanıyorsunuz.")
+            return
+        self._guncelleme_info = info
+        boyut = max(1, round(info.size / (1024 * 1024)))
+        self._guncelleme_durum_yaz(
+            f"Yeni sürüm {info.version} hazır ({boyut} MB). "
+            "İndirmek için “İndir ve kur” düğmesini kullanın.")
+        self.update_denetle_btn.setVisible(False)
+        self.update_indir_btn.setVisible(True)
+        self.update_iptal_btn.setVisible(True)
+        if getattr(self, "tepsi", None) is not None:
+            self.tepsi.showMessage(
+                "Evrakçı", f"Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.",
+                QSystemTrayIcon.MessageIcon.Information, 10000)
+        self.durum.showMessage(
+            f"Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.", 10000)
+
+    def _guncelleme_hata(self, mesaj, sessiz=False):
+        self.update_denetle_btn.setEnabled(True)
+        if sessiz:
+            # Sessiz denetim hatası kullanıcıya gösterilmez; bir sonraki
+            # açılışta yeniden denenir.
+            self._guncelleme_durum_yaz("Sessiz denetim başarısız; sonraki açılışta yeniden denenecek.")
+            return
+        self._guncelleme_durum_yaz(mesaj)
+
+    def _guncelleme_indir(self):
+        info = self._guncelleme_info
+        if info is None or self._guncelleme_isci is not None:
+            return
+        self.update_indir_btn.setVisible(False)
+        self.update_iptal_btn.setVisible(True)
+        self.update_iptal_btn.setEnabled(True)
+        self.update_bar.setVisible(True)
+        self.update_bar.setRange(0, 100 if info.size else 0)
+        self._guncelleme_durum_yaz("Güncelleme indiriliyor…")
+        isci = GuncellemeIsci("indir", info=info, parent=self)
+        isci.ilerleme.connect(self._guncelleme_ilerleme)
+        isci.hazir.connect(self._guncelleme_hazir)
+        isci.hata.connect(lambda mesaj: self._guncelleme_indirme_hatasi(mesaj))
+        self._guncelleme_isci = isci
+        self._guncelleme_thread = QThread(self)
+        isci.moveToThread(self._guncelleme_thread)
+        self._guncelleme_thread.started.connect(isci.kos)
+        isci.hazir.connect(self._guncelleme_thread.quit)
+        isci.hata.connect(self._guncelleme_thread.quit)
+        isci.hazir.connect(isci.deleteLater)
+        isci.hata.connect(isci.deleteLater)
+        self._guncelleme_thread.finished.connect(self._guncelleme_temizle)
+        self._guncelleme_thread.start()
+
+    def _guncelleme_ilerleme(self, done, total):
+        if total:
+            self.update_bar.setValue(round(done * 100 / total))
+        self._guncelleme_durum_yaz(
+            f"Güncelleme indiriliyor… {round(done / (1024 * 1024))} / "
+            f"{round(total / (1024 * 1024))} MB")
+
+    def _guncelleme_hazir(self, surum, klasor):
+        self.update_bar.setRange(0, 0)
+        self._guncelleme_durum_yaz(f"Sürüm {surum} hazır. Evrakçı yeniden başlatılıyor…")
+        # Bekçi betik önce bu sürecin çıkmasını bekler, sonra yeni EXE'yi açar.
+        update_mod.spawn_swap(os.getpid(), Path(klasor), Path(sys.executable),
+                              self.kasa_yolu)
+        diagnostics.record("update_installing", surum)
+        QTimer.singleShot(250, self._cikis)
+
+    def _guncelleme_indirme_hatasi(self, mesaj):
+        self.update_indir_btn.setVisible(True)
+        self.update_iptal_btn.setVisible(False)
+        self.update_bar.setVisible(False)
+        self._guncelleme_durum_yaz(mesaj)
+
+    def _guncelleme_iptal(self):
+        if self._guncelleme_isci is not None:
+            self._guncelleme_isci.iptal_et()
+        self.update_iptal_btn.setVisible(False)
+        self.update_bar.setVisible(False)
+        self.update_indir_btn.setVisible(True)
+        if self._guncelleme_info is not None:
+            boyut = max(1, round(self._guncelleme_info.size / (1024 * 1024)))
+            self._guncelleme_durum_yaz(
+                f"Yeni sürüm {self._guncelleme_info.version} hazır ({boyut} MB). "
+                "İndirmek için “İndir ve kur” düğmesini kullanın.")
+
+    def _guncelleme_durum_yaz(self, metin):
+        self.update_durum.setText(metin)
+
+    def _guncelleme_sifirla(self):
+        """Kilit/çıkışta güncelleme satırını başlangıç durumuna döndür."""
+        self._guncelleme_info = None
+        if self._guncelleme_yapilabilir():
+            self.update_durum.setText(f"Sürüm {__version__} kurulu.")
+            self.update_denetle_btn.setVisible(True)
+            self.update_denetle_btn.setEnabled(True)
+        self.update_indir_btn.setVisible(False)
+        self.update_iptal_btn.setVisible(False)
+        self.update_bar.setVisible(False)
 
     # -- kurulum --
     def _kasa_ac(self):
@@ -2416,6 +2637,37 @@ class AnaPencere(QMainWindow):
         k.addWidget(self.yedek_bilgi)
         self._yedek_tazele()
 
+    def _guncelleme_bolumu(self, k):
+        """Güncellemeler: durum satırı + denetle/indir/iptal ve ilerleme."""
+        bas = QHBoxLayout()
+        bas.setSpacing(9)
+        bas.addWidget(bolum("Güncellemeler"))
+        k.addLayout(bas)
+        self.update_durum = label("", "ikincil")
+        self.update_durum.setWordWrap(True)
+        self.update_denetle_btn = QPushButton("Güncellemeyi denetle")
+        self.update_denetle_btn.clicked.connect(lambda: self._guncelleme_denetle())
+        self.update_indir_btn = QPushButton("İndir ve kur")
+        self.update_indir_btn.setProperty("birincil", True)
+        self.update_indir_btn.clicked.connect(self._guncelleme_indir)
+        self.update_iptal_btn = QPushButton("İptal")
+        self.update_iptal_btn.clicked.connect(self._guncelleme_iptal)
+        if not self._guncelleme_yapilabilir():
+            self.update_denetle_btn.setVisible(False)
+            self.update_durum.setText(
+                "Bu kopya kaynak koddan çalışıyor; güncelleme denetimi kurulu sürümde kullanılabilir.")
+        else:
+            self.update_durum.setText(f"Sürüm {__version__} kurulu.")
+        self.update_indir_btn.setVisible(False)
+        self.update_iptal_btn.setVisible(False)
+        self.update_bar = QProgressBar()
+        self.update_bar.setVisible(False)
+        k.addWidget(ayar_satiri(
+            "Sürüm", "Yeni sürüm çıktığında buradan indirilir; kurulum kendiliğinden tamamlanır.",
+            self._denetim_satiri(self.update_durum, self.update_denetle_btn,
+                                 self.update_indir_btn, self.update_iptal_btn)))
+        k.addWidget(self.update_bar)
+
     def _yedek_dizin(self):
         d = os.path.join(os.path.dirname(os.path.abspath(self.kasa_yolu)), "..", "Backups")
         return os.path.abspath(d)
@@ -2595,6 +2847,7 @@ class AnaPencere(QMainWindow):
                                 self._denetim_satiri(self.sifre_btn, self.forget_btn)))
         self._kurtarma_bolumu(k)
         self._yedek_bolumu(k)
+        self._guncelleme_bolumu(k)
         alt = "Yerel ve şifreli çalışır" if not self.sifresiz else "Yerel çalışır; şifre eklenebilir"
         self.surum_bilgi = QLabel(f"Evrakçı {__version__} · {alt}")
         self.surum_bilgi.setProperty("ikincil", True)
@@ -3269,6 +3522,9 @@ class AnaPencere(QMainWindow):
         self.scan_dialog.hide()
         self.popup_scope.clear()
         self.popup_status.setText("Kasa kilitli.")
+        if self._guncelleme_isci is not None:
+            self._guncelleme_isci.iptal_et()
+        self._guncelleme_sifirla()
         self.source_title.clear()
         self.source_path.clear()
         self.source_status.clear()
@@ -3414,6 +3670,12 @@ class AnaPencere(QMainWindow):
         diagnostics.record("exit")
         self._exiting = True
         self._izleme_durdur()
+        if self._guncelleme_isci is not None:
+            # Bekleyen güncelleme işi kapanışı geciktirmesin.
+            self._guncelleme_isci.iptal_et()
+            if self._guncelleme_thread is not None:
+                self._guncelleme_thread.quit()
+                self._guncelleme_thread.wait(2000)
         self._job_generation+=1
         self._job_pending.clear()
         for worker in self._jobs: worker.stop.set()
@@ -3549,6 +3811,11 @@ def main(kasa_yolu=None, sifre=None):
     ap.add_argument("--kasa", default=kasa_yolu)
     ap.add_argument("--tray", action="store_true")
     args, _bilinmeyen = ap.parse_known_args()
+    if "--restarted" in _bilinmeyen:
+        # Güncelleme bekçi betiğinden gelen normal açılış: tek seferlik
+        # komut yok, taze sürüm sadece açılır.
+        diagnostics.install()
+        diagnostics.record("update_restarted")
     app = QApplication.instance() or QApplication([])
     diagnostics.install()
     app.setApplicationName("Evrakçı")

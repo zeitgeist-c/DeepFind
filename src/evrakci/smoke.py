@@ -83,6 +83,10 @@ def run(report_path):
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
             assert pen.ai_page.isAncestorOf(pen.ai_key_input) and pen.ai_page.isAncestorOf(pen.ai_question)
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
+            assert pen.settings_page.isAncestorOf(pen.update_durum)
+            assert not pen.update_denetle_btn.isHidden()   # paketli: denetim açık
+            assert pen.update_indir_btn.isHidden()
+            assert pen.update_bar.isHidden()
             assert [pen.ai_model.itemData(i) for i in range(pen.ai_model.count())] == [
                 "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
                 "gemma-4-26b-a4b-it"]

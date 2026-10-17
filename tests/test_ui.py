@@ -107,6 +107,19 @@ def _wait_jobs(window):
     assert not window._jobs
 
 
+def test_guncelleme_bolumu_kaynak_kopyada(pencere):
+    """Kaynak koddan çalışırken güncelleme denetimi kapalı, açıklama görünür."""
+    assert pencere.settings_page.isAncestorOf(pencere.update_durum)
+    assert pencere.settings_page.isAncestorOf(pencere.update_bar)
+    assert pencere.update_denetle_btn.isHidden()          # kaynak kopya: denetim yok
+    assert pencere.update_indir_btn.isHidden()
+    assert pencere.update_iptal_btn.isHidden()
+    assert pencere.update_bar.isHidden()
+    assert "kaynak koddan" in pencere.update_durum.text()
+    # Tehlikeli iş yapılmadı: sessiz/kendiliğinden indirme yok.
+    assert pencere._guncelleme_info is None
+
+
 def test_tema_uc_mod(pencere):
     _app()
     assert [pencere.ai_model.itemText(i) for i in range(pencere.ai_model.count())] == [

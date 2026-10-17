@@ -152,11 +152,14 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
     src = pathlib.Path(os.path.dirname(__file__), "..", "src", "evrakci")
     yazan = []
     for f in src.glob("*.py"):
-        if f.name in ("cli.py", "backup.py", "recovery.py"):
+        if f.name in ("cli.py", "backup.py", "recovery.py", "update.py"):
             # backup.py / recovery.py: yalniz yonetilen yerel hedeflere yazar
             # (dest/staging/manifest ve kasa klasorundeki evrakci-kurtarma.*);
             # kaynak-dizin kaniti test_backup.py::test_bak_kaynaga_dokunmaz ve
             # test_recovery.py::test_kurtarma_islem_kaynaga_dokunmaz (runtime).
+            # update.py: yalniz %LOCALAPPDATA%/Evrakci/Updates altina yazar
+            # (indirme/acma/artik toplama); kaynak-dizin kaniti
+            # test_update.py::AcmaTestleri + temizle testleri (runtime).
             continue
         in_guard = False  # _rmtree_tmp: tek korumali silme noktasi (ocr-tmp alti)
         for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):

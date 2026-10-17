@@ -1,6 +1,10 @@
-# Evrakçı 0.3.3
+# Evrakçı
 
 Windows için yerel, şifreli belge arama uygulaması. Kaynak belgeler PDF/XLSX/XLS/DOCX olarak okunur; arama indeksi bu bilgisayarda tutulur.
+
+## Güncelleme
+
+Kurulu sürüm yeni bir yayın çıktığını denetler: program açıldıktan sonra günde bir kez sessizce, ayrıca **Ayarlar → Güncellemeler → Güncellemeyi denetle** ile istenildiği zaman. Yeni sürüm bulununca **İndir ve kur** ile paket indirilir; SHA-256 özeti ve sürüm bilgisi doğrulanır, ardından Evrakçı kendini yeniden başlatır. İndirme iptal edilebilir; doğrulamayı geçemeyen paket asla çalıştırılmaz. Eski program klasörü ve kasanız silinmez; güncelleme yalnız yeni sürüm klasörünü açar. Güncelleme yalnız kurulu programda çalışır (kaynak koddan çalıştırmada denetim görünmez). Yayınlar herkese açık `zeitgeist-c/Evrakci-Releases` deposundan gelir; kaynak kod ayrı ve özeldir.
 
 0.3.3, AI Yardımcısı model listesini Gemini 3.6 Flash, Gemini 3.5 Flash-Lite, Gemini 3.1 Flash-Lite ve Gemma 4 26B A4B olarak günceller. Eski 3.8 Flash ve 3.5 Flash seçimleri ilk açılışta karşılıklarına taşınır. 0.3.2'nin PDF ön izleme düzeltmesi ve önceki işlevler korunur.
 
