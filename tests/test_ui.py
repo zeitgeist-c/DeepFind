@@ -8,10 +8,6 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-_TD = "C:/Users/user/AppData/Local/hermes/cache/scratch/evrakci-a1/tessdata"
-if os.path.isdir(_TD):
-    os.environ["EVRAKCI_TESSDATA"] = _TD
-
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from evrakci import coordinator, migrate, schema, theme, vault  # noqa: E402
@@ -639,7 +635,7 @@ def test_015_time_source_and_layout(pencere, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     monkeypatch.setattr(QMessageBox, "information", lambda *a: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a: None)
-    from evrakci import sched
+    from evrakci import scheduler as sched
     monkeypatch.setattr(sched, "autostart_clear", lambda *a: None)
     from PySide6.QtCore import QTime, Qt
     from PySide6.QtWidgets import QPushButton

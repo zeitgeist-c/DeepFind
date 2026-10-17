@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
-from . import ai, migrate, rank, sched, theme, vault, remember, diagnostics, recovery
+from . import ai, migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery
 from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
@@ -428,6 +428,10 @@ class AnaPencere(QMainWindow):
             self._kasa_ac()
         from . import ocr_setup
         diagnostics.record("ocr_jobs_begin")
+        try:
+            ocr_setup.engine_backfill(self.con)  # Tesseract→RapidOCR: bir kez
+        except Exception:
+            pass
         ocr_setup.reopen_deferred(self.con)
         diagnostics.record("ui_begin")
         self._arayuz()
@@ -2784,11 +2788,6 @@ class AnaPencere(QMainWindow):
         ocr_repair.setProperty("kucuk", True)
         ocr_repair.clicked.connect(self._ocr_repair)
         k.addWidget(ayar_satiri("OCR bileşenleri", "Türkçe metin tanıma durumu", self._denetim_satiri(self.ocr_status, ocr_repair)))
-        self.ocr_language = QComboBox()
-        self.ocr_language.addItem("Türkçe", "tur")
-        self.ocr_language.addItem("İngilizce", "eng")
-        self.ocr_language.setCurrentIndex(max(0, self.ocr_language.findData(migrate.get_setting(self.con, "ocr_dili", "tur"))))
-        k.addWidget(ayar_satiri("OCR dili", "Tanıma sırasında kullanılacak alfabe", self.ocr_language))
         self.scan_time_edit = QTimeEdit()
         self.scan_time_edit.setDisplayFormat("HH:mm")
         self.scan_time_edit.setAccessibleName("Günlük tarama saati")
@@ -3205,7 +3204,6 @@ class AnaPencere(QMainWindow):
         QMessageBox.information(self, "Giriş", "Hatırlanan giriş kaldırıldı. Sonraki açılışta şifre istenecek.")
 
     def _ayar_kaydet(self):
-        migrate.set_setting(self.con, "ocr_dili", self.ocr_language.currentData())
         migrate.set_setting(self.con, "saat", str(self.scan_time_edit.time().hour()))
         migrate.set_setting(self.con, "dakika", str(self.scan_time_edit.time().minute()))
         self.tarama_time.setText(f"{self.scan_time_edit.time().hour():02d}:{self.scan_time_edit.time().minute():02d}")

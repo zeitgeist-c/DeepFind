@@ -56,13 +56,9 @@ def cmd_tani(args) -> int:
     finally:
         con.close()
     try:
-        exe = _ocr.find_exe()
+        motor_hazir, motor_eksik = _ocr.engine_ok()
     except Exception:
-        exe = None
-    try:
-        diller = _ocr.langs_available()
-    except Exception:
-        diller = []
+        motor_hazir, motor_eksik = False, ["bilinmiyor"]
     try:
         ram_mb = _ocr.avail_ram()
     except Exception:
@@ -74,8 +70,8 @@ def cmd_tani(args) -> int:
           f"ocr={meta.get('ocr_version', '?')}", flush=True)
     print(f"belge={n_belge} segment={n_seg} bekleyen_is={bekleyen} kok={kokler}",
           flush=True)
-    print(f"tesseract={'yok' if not exe else exe} "
-          f"diller={','.join(diller or ['-'])}", flush=True)
+    print(f"rapidocr={'hazir' if motor_hazir else 'eksik:' + ','.join(motor_eksik)}",
+          flush=True)
     print(f"ram_kullanilabilir_mb={ram_mb if ram_mb is not None else '?'}", flush=True)
     return 0
 

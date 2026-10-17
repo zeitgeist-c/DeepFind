@@ -3,7 +3,7 @@ import os
 import sqlite3
 
 from evrakci import coordinator as C
-from evrakci import migrate, queue as q
+from evrakci import migrate, job_queue as q
 from evrakci import schema
 from evrakci.extract import ExtractResult, Segment
 from evrakci.scan import Entry

@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import sched  # noqa: E402
+from evrakci import scheduler as sched  # noqa: E402
 
 
 def _dt(gun, saat, dk=0):

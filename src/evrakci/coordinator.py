@@ -8,7 +8,7 @@ from . import exclusions as exc
 from . import extract as ex
 from . import normalize as nz
 from . import ocr as ocr_mod
-from . import queue as q
+from . import job_queue as q
 from . import scan as scan_mod
 from .migrate import EXTRACTOR_VERSION
 from . import migrate
@@ -340,8 +340,11 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
     return "done"
 
 
-def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -> str:
-    """Agir OCR fazi: ince sayfalari oku, ayni revizyona ocr_page segmentleri ekle."""
+def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, session=None) -> str:
+    """Agir OCR fazi: ince sayfalari oku, ayni revizyona ocr_page segmentleri ekle.
+
+    session: guarded modda tarama turu boyunca yeniden kullanilan isci (motoru
+    bir kez yukler); None ise taze surec acilir."""
     from . import normalize as nz
     fid, sig = job["file_id"], job["signature"]
     if active_signature(con, fid) != sig:
@@ -370,26 +373,30 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
         con.commit()
         return "deferred"
     pages_0 = sorted({p - 1 for p, _t in thin if p})[:20]
-    from . import migrate
-    try:
-        language = migrate.get_setting(con, "ocr_dili", "tur")
-    except Exception:  # eski şema: OCR varsayılan Türkçe kalır
-        language = "tur"
-    if language not in ("tur", "eng"):
-        language = "tur"
     if ext != '.pdf':
         if guarded:
-            from .workers import run_work
-            results,_wd=run_work('image_ocr',(path,pages_0,vault_dir,language),timeout=max(60,len(pages_0)*90),stop=stop)
+            if session is not None:
+                results, _wd = session.call('image_ocr', (path, pages_0, vault_dir),
+                                            timeout=min(1800, max(180, len(pages_0) * 90)), stop=stop)
+            else:
+                from .workers import run_work
+                results, _wd = run_work('image_ocr', (path, pages_0, vault_dir),
+                                        timeout=min(1800, max(180, len(pages_0) * 90)), stop=stop)
         else:
             from .image_ocr import ocr_images
-            results,_wd=ocr_images(path,pages_0,vault_dir,language)
+            results, _wd = ocr_images(path, pages_0, vault_dir)
     elif guarded:
-        from .workers import run_work
-        results, _wd = run_work("ocr", (path, pages_0, vault_dir, language),
-                               timeout=min(1800, max(60, len(pages_0) * 180)), stop=stop)
+        # Sayfa render+OCR ~1-3 sn; butce sayfa basi 60 sn, tavan 30 dk.
+        # Motor yuklenmesi oturumda bir kez odenir (session) ya da run_work'te.
+        if session is not None:
+            results, _wd = session.call("ocr", (path, pages_0, vault_dir),
+                                        timeout=min(1800, max(120, len(pages_0) * 60)), stop=stop)
+        else:
+            from .workers import run_work
+            results, _wd = run_work("ocr", (path, pages_0, vault_dir),
+                                    timeout=min(1800, max(180, len(pages_0) * 60)), stop=stop)
     else:
-        results, _wd = ocr_mod.ocr_document(path, pages_0, vault_dir, language)
+        results, _wd = ocr_mod.ocr_document(path, pages_0, vault_dir)
     st = _stat_sig(path)
     if st is None or q.signature_of(*st) != sig:
         q.complete(con, job["job_id"])
@@ -406,9 +413,11 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
         for r in results:
             if r.method in ("deferred", "unavailable"):
                 continue  # klasik metin aramasi surer; dosya basarisiz sayilmaz
-            if r.method == "timeout":
-                raise TimeoutError("PROCESS_TIMEOUT")
             con.execute('INSERT OR REPLACE INTO ocr_coverage VALUES (?,?,?,?,?)',(fid,rev_id,r.page,r.method,r.error_code))
+            # ayni sayfanin eski OCR metni vardiysa (motor degisimi/yeniden deneme)
+            # once sil: iki kopya segment aramada duplication yaratir
+            con.execute("DELETE FROM segments WHERE file_id=? AND rev_id=? AND kind='ocr_page' AND page=?",
+                        (fid, rev_id, r.page))
             if r.words == 0 or not r.text.strip():
                 continue
             raw = r.text.strip()
@@ -419,12 +428,6 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
                  raw, r.method, round(r.mean_conf, 1)),
             )
         con.execute("COMMIT")
-    except TimeoutError:
-        try:
-            con.execute("ROLLBACK")
-        except Exception:
-            pass
-        return q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
     except Exception:
         try:
             con.execute("ROLLBACK")
@@ -440,8 +443,6 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False) -
     if not previous_low and results and all(r.words and not r.error_code and r.mean_conf>=40 for r in results):
         con.execute("UPDATE files SET index_status='ok',error_code=NULL WHERE file_id=? AND error_code='OCR_PENDING'",(fid,)); con.commit()
     # Tum sayfalar timeout/unavailable ise retry; aksi halde tamamla
-    if results and all(r.method in ("timeout",) for r in results):
-        return q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
     q.complete(con, job["job_id"])
     return "done"
 
@@ -613,6 +614,16 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         # --- kuyruk isleme ---
         process_batch()
         # --- agir OCR fazi (cikarma bitince; kaynagi paralel okumaz, UI/aramayi bekletmez) ---
+        # guarded modda tek isci oturumu: RapidOCR motoru turda bir kez yuklenir.
+        ocr_session = None
+
+        def _taze_ocr_oturumu():
+            from .workers import OcrSession
+            try:
+                return OcrSession()
+            except Exception:
+                return None
+
         while True:
             if stop and stop():
                 stats["result"] = "cancelled"
@@ -622,10 +633,13 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             job = q.claim(con, ("ocr",), scoped=True)
             if not job:
                 break
+            if guarded and ocr_session is None:
+                ocr_session = _taze_ocr_oturumu()
             path = con.execute("SELECT path FROM files WHERE file_id=?", (job["file_id"],)).fetchone()[0]
             report("OCR ile metin okunuyor", path, force=True)
             try:
-                r = _process_ocr_job(con, job, os.path.dirname(vault_path), stop, guarded)
+                r = _process_ocr_job(con, job, os.path.dirname(vault_path), stop, guarded,
+                                     ocr_session if guarded else None)
             except InterruptedError:
                 con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job["job_id"],))
                 con.commit()
@@ -633,13 +647,18 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 break
             except TimeoutError:
                 r = q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
+                ocr_session = None  # surec bekci tarafinda olduruldu; sonraki is taze alir
             except Exception:
                 r = q.fail(con, job["job_id"], "CORRUPT_DOCUMENT")
+                if guarded and ocr_session is not None:
+                    ocr_session = _taze_ocr_oturumu()  # suruolen olmus olabilir; yenile
             stats["ocr_done"] += 1 if r == "done" else 0
             stats["ocr_deferred"] += 1 if r == "deferred" else 0
             if r in ("retry", "dead"):
                 stats["ocr_failed"] += 1
             report("OCR işleniyor", path, r)
+        if ocr_session is not None:
+            ocr_session.kill()
         # --- kopya hash (arka plan; sinirli; kaynagi bir kez daha okur) ---
         try:
             from . import dup as dup_mod

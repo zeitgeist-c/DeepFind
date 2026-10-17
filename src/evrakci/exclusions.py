@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import time
 
-from . import queue as q
+from . import job_queue as q
 
 
 def normalize_rule(rule: str) -> str:

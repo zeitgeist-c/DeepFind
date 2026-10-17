@@ -6,10 +6,6 @@ import time
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-_TD = "C:/Users/user/AppData/Local/hermes/cache/scratch/evrakci-a1/tessdata"
-if os.path.isdir(_TD):
-    os.environ["EVRAKCI_TESSDATA"] = _TD
-
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from evrakci import coordinator, migrate, schema, theme, vault  # noqa: E402

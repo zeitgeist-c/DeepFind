@@ -96,16 +96,99 @@ def run_work(kind, args, timeout=60, stop=None):
         return result
     finally:
         receiver.close()
-        if process.is_alive():
-            import os
-            if os.name == "nt":
-                import subprocess
-                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
-            process.terminate()
-        process.join(3)
-        if process.is_alive():
-            process.kill()
-            process.join()
-        process.close()
+        _terminate(process)
+
+
+def _terminate(process) -> None:
+    """Alt süreci ağacıyla birlikte kapat (Windows: taskkill /T)."""
+    if process.is_alive():
+        import os
+        if os.name == "nt":
+            import subprocess
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
+        process.terminate()
+    process.join(3)
+    if process.is_alive():
+        process.kill()
+        process.join()
+    process.close()
+
+
+def _serve(req_reader, resp_writer):
+    """Kalıcı işçi döngüsü: (kind,args) isteği al, yürüt, sonucu geri yolla."""
+    import pickle
+    while True:
+        try:
+            kind, args = pickle.loads(req_reader.recv_bytes(40 * 1024 * 1024))
+        except (EOFError, OSError):
+            break
+        try:
+            payload = pickle.dumps((True, _perform(kind, args)))
+            if len(payload) > 40 * 1024 * 1024:
+                payload = pickle.dumps((False, "SIZE_LIMIT"))
+        except Exception as error:
+            payload = pickle.dumps((False, type(error).__name__))
+        try:
+            resp_writer.send_bytes(payload)
+        except OSError:
+            break
+    resp_writer.close()
+    req_reader.close()
+
+
+class OcrSession:
+    """Tarama turu boyunca yeniden kullanılan spawn işçisi.
+
+    RapidOCR+ONNX yükleme maliyeti (~5-10 sn) dosya başına değil tur başına
+    bir kez ödenir. Timeout/iptal/çökme sonrası süreç öldürülür; çağıran
+    bir sonraki iş için yeni oturum kurar.
+    """
+
+    def __init__(self):
+        import pickle
+        self._pickle = pickle
+        context = mp.get_context("spawn")
+        # iste: ebeveyn yazar (req_w), cocuk okur (req_r); cevap: cocuk yazar, ebeveyn okur.
+        req_r, req_w = context.Pipe(duplex=False)
+        resp_r, resp_w = context.Pipe(duplex=False)
+        self.process = context.Process(target=_serve, args=(req_r, resp_w), daemon=True)
+        self.process.start()
+        self._req_w = req_w
+        self._resp_r = resp_r
+        req_r.close()   # ebeveyn okuma ucunu tasimaz
+        resp_w.close()  # ebeveyn cocugun gonderme ucunu tasimaz
+
+    def alive(self) -> bool:
+        return self.process is not None and self.process.is_alive()
+
+    def call(self, kind, args, timeout=600, stop=None):
+        if not self.alive():
+            raise RuntimeError("çalışan beklenmedik biçimde kapandı")
+        self._req_w.send_bytes(self._pickle.dumps((kind, args)))
+        deadline = time.monotonic() + timeout
+        while not self._resp_r.poll(0.05):
+            if stop and stop():
+                self.kill()
+                raise InterruptedError("iş iptal edildi")
+            if time.monotonic() >= deadline:
+                self.kill()
+                raise TimeoutError("PROCESS_TIMEOUT")
+            if not self.process.is_alive():
+                self.kill()
+                raise RuntimeError("çalışan beklenmedik biçimde kapandı")
+        ok, result = self._pickle.loads(self._resp_r.recv_bytes(40 * 1024 * 1024))
+        if not ok:
+            raise RuntimeError(result)
+        return result
+
+    def kill(self) -> None:
+        if self.process is not None:
+            _terminate(self.process)
+            self.process = None
+        for pipe in (self._req_w, self._resp_r):
+            try:
+                pipe.close()
+            except OSError:
+                pass

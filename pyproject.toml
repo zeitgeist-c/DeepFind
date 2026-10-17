@@ -13,6 +13,9 @@ dependencies = [
   "rapidfuzz==3.14.6",
   "Pillow==12.3.0",
   "PySide6-Essentials==6.11.2",
+  "rapidocr==3.10.0",
+  "onnxruntime==1.30.0",
+  "opencv-python-headless==4.11.0.86",
 ]
 
 [project.optional-dependencies]

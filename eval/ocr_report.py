@@ -98,10 +98,8 @@ def main():
         "tepe_bellek_mb": peak_mb(),
         "butceler": {"dosya_MB": 200, "sayfa": 1000, "render_MP": 12, "metin_MB": 10,
                      "zip_MB": 256, "zip_entry": 10000, "zip_oran": 100,
-                     "hucre": 2000000, "ocr_sayfa": 200,
-                     "timeout_temel_sn": 60, "timeout_iyilestirme_sn": 120},
-        "dil": {"varsayilan": ocr.DEFAULT_LANGS,
-                "olcum": "eval/lang_compare: tur=1.000, tur+eng=0.820 (61 kelime)"},
+                     "hucre": 2000000, "ocr_sayfa": 200},
+        "motor": "RapidOCR 3.x (PP-OCRv6 small det/rec + cls, ONNX Runtime)",
     }
     rp = os.path.join(base, "a6_rapor.json")
     with open(rp, "w", encoding="utf-8") as f:

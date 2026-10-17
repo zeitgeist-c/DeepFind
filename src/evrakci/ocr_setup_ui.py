@@ -1,8 +1,12 @@
-"""Blocking first-run OCR component page; download itself runs off the UI thread."""
+"""Blocking first-run OCR readiness page; verification runs off the UI thread.
+
+RapidOCR modelleri paketle gelir: indirme yok, doğrulama + tek seferlik motor
+kurulumu (ısınma) yapılır. Hata olursa kullanıcıya onarım/çıkış seçenekleri kalır.
+"""
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar, QPushButton, QFileDialog
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar, QPushButton
 
 from . import ocr_setup
 
@@ -12,14 +16,10 @@ class _Installer(QObject):
     failed = Signal(str)
     progress = Signal(str, int, int, int, int)
 
-    def __init__(self, offline_dir=None):
-        super().__init__()
-        self.offline_dir = offline_dir
-
     @Slot()
     def run(self):
         try:
-            ocr_setup.ensure(lambda *args: self.progress.emit(*args), self.offline_dir)
+            ocr_setup.ensure(lambda *args: self.progress.emit(*args))
             self.done.emit()
         except Exception as error:
             self.failed.emit(str(error))
@@ -33,10 +33,9 @@ class OcrSetupDialog(QDialog):
         self.running = False
         self.completed = False
         self.failure_message = ""
-        self.offline_dir = None
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Gerekli bileşenler"))
-        self.status = QLabel("Türkçe OCR hazırlanıyor. Doğrulanınca Evrakçı açılacak.")
+        self.status = QLabel("Türkçe OCR doğrulanıyor. Hazır olunca Evrakçı açılacak.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.bar = QProgressBar()
@@ -46,24 +45,19 @@ class OcrSetupDialog(QDialog):
         self.retry.hide()
         self.retry.clicked.connect(self.start)
         layout.addWidget(self.retry)
-        self.offline = QPushButton("Çevrimdışı model klasörü seç")
-        self.offline.hide()
-        self.offline.clicked.connect(self.choose_offline)
-        layout.addWidget(self.offline)
         self.exit_button = QPushButton("Çıkış")
         self.exit_button.clicked.connect(self.reject)
         self.exit_button.hide()
         layout.addWidget(self.exit_button)
 
     @Slot(str, int, int, int, int)
-    def update_progress(self, lang, index, total, downloaded, expected):
-        if lang == "ready":
+    def update_progress(self, name, index, total, done_bytes, expected_bytes):
+        if name == "ready":
             self.status.setText("OCR kullanıma hazır.")
             self.bar.setValue(100)
             return
-        self.status.setText(f"{lang.upper()} modeli doğrulanıyor/indiriliyor • {index}/{total} • "
-                            f"{downloaded // 1024:,}/{expected // 1024:,} KB")
-        self.bar.setValue(int(((index - 1) + min(downloaded, expected) / expected) / total * 100))
+        self.status.setText("OCR motoru yükleniyor…")
+        self.bar.setValue(int(index / max(1, total) * 90))
 
     @Slot(str)
     def fail(self, message):
@@ -81,14 +75,7 @@ class OcrSetupDialog(QDialog):
         else:
             self.status.setText("OCR hazır değil: " + self.failure_message)
             self.retry.show()
-            self.offline.show()
             self.exit_button.show()
-
-    def choose_offline(self):
-        folder = QFileDialog.getExistingDirectory(self, "Doğrulanmış OCR model klasörü")
-        if folder:
-            self.offline_dir = folder
-            self.start()
 
     def start(self):
         if self.running:
@@ -97,11 +84,10 @@ class OcrSetupDialog(QDialog):
         self.completed = False
         self.failure_message = ""
         self.retry.hide()
-        self.offline.hide()
         self.exit_button.hide()
         self.bar.setValue(0)
         self.thread = QThread(self)
-        self.worker = _Installer(self.offline_dir)
+        self.worker = _Installer()
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self.update_progress)

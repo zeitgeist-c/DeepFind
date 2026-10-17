@@ -1,5 +1,32 @@
 # Evrakçı — DURUM
 
+## 0.8.0 OCR motoru: RapidOCR — 17.10.2026
+
+Tesseract 5 zinciri tamamen kaldırıldı; yerini RapidOCR 3.10 (PP-OCRv6
+det/rec + yön sınıflandırıcı, ONNX Runtime 1.30) aldı. Kanıt: WordArc'te
+4/4 tam isabet sonrası Evrakçı ölçümü — 7/7 satır hatasız, güven 0.991,
+yüklenme 0.65 sn, sayfa başına ~1-3 sn. Modeller rapidocr paketiyle gelir:
+indirme, tessdata, sistem kurulumu yok. Eski "OCR dili" ayarı kalktı
+(model Türkçe+İngilizce tek gövde). Kalite düzeltmeleri: içerik kırpma
+(PP-OCR dev boşlukta küçük metni kaçırıyordu — tek satır A4'te boş sonuç
+saptandı ve giderildi), tarama başına tek işçi oturumu (motor yükleme
+dosya başına değil bir kez), yeniden OCR'da eski segment temizliği (çift
+metin birikimi), düşük kaliteli eski Tesseract sayfaları için bir seferlik
+backfill (`engine_backfill`). Kalite denetiminde kritik bulgu:
+`evrakci/queue.py` donmuş pakette stdlib `queue` modülünü gölgeliyordu —
+urllib3/requests zinciri `queue.LifoQueue` hatasıyla patlıyor, hata lazy
+içeride `cannot import name 'RapidOCR'` olarak maskeleniyordu; `queue.py →
+job_queue.py`, `sched.py → scheduler.py` yeniden adlandırıldı. Eski dosyalar
+temizlendi: DENETIM/TESLIM 0.1.0–0.6.4 kayıtları ve kök ZIP'ler silindi
+(git geçmişinde duruyor).
+Aşağıdaki eski bölüm kayıtlarındaki `DENETIM-*` / `TESLIM-*` dosya
+adları artık ağaçta yoktur; içerikleri yalnız `git log`/`git show` ile
+görülebilir. Ayrıntı: `DENETIM-0.8.0.md`.
+
+Doğrulama: tam test paketi + oturum duman testi + PyInstaller paket kapısı
+(aşağıda). Canlı kasada ilk açılışta backfill eski düşük kaliteli OCR
+sayfalarını RapidOCR'a yeniden düşürür.
+
 ## 0.7.0 kendi kendini güncelleme — 17.10.2026
 
 WordArc'ın çalışan güncelleme modeli Evrakçı'ya uyarlandı. Kaynak depo özel

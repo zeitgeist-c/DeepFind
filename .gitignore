@@ -27,3 +27,7 @@ maket/*.png
 # OS
 Desktop.ini
 Thumbs.db
+# Oturum-yerel ajan planlari
+.hermes/
+# OCR kontrollu temp
+ocr-tmp/

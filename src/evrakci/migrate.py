@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS exclusions(
 
 SCHEMA_VERSION = "4"
 EXTRACTOR_VERSION = "archive-034"
-OCR_VERSION = "a6-1"
+OCR_VERSION = "rapid-1"  # Tesseract 5 → RapidOCR (PP-OCR/ONNX), 2026-10
 
 
 def ensure_v6(con) -> None:
@@ -66,7 +66,7 @@ def ensure_v6(con) -> None:
     )
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('ocr_version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        "ON CONFLICT(k) DO NOTHING",
         (OCR_VERSION,),
     )
     con.commit()

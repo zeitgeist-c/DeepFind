@@ -4,7 +4,7 @@ import os
 from test_scan_resume import database
 
 from evrakci import coordinator as C
-from evrakci import queue as q
+from evrakci import job_queue as q
 
 
 def test_manifest_counts_total_before_work(tmp_path):
@@ -52,7 +52,7 @@ def test_batch_limit_processes_at_most_n(tmp_path):
 
 def test_daily_quota_blocks_second_run(tmp_path):
     from evrakci import migrate as M
-    from evrakci import sched
+    from evrakci import scheduler as sched
     con = database(tmp_path / "kasa.db")
     try:
         assert sched.quota_left(con, "2026-10-12") is None  # ayar yoksa sinirsiz

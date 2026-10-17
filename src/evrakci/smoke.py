@@ -179,8 +179,8 @@ def run(report_path):
             ocr_image = str(Path(temp) / "ocr-probe.png")
             image.save(ocr_image)
             os.utime(ocr_image,(time.time()-10,time.time()-10))
-            tsv, _, error = ocr._run_tess(ocr_image, "tur", 6, 30, temp)
-            assert error is None and "Ankara" in ocr.parse_tsv(tsv)[0]
+            text, conf, words = ocr.recognize_png(ocr_image)
+            assert words > 0 and "Ankara" in text
             checkpoint("scan-popup")
             pen.con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", (temp, temp.lower()))
             pen.con.commit()
@@ -304,8 +304,10 @@ def run(report_path):
                                            'search-workbench-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration', 'root-remove-worker', 'exclusion-worker'])
     except Exception as error:
+        import traceback
         report["stage"] = current_stage
         report["error"] = repr(error)
+        report["traceback"] = traceback.format_exc()[-3000:]
         if 'pen' in locals():
             pen._cikis()
             deadline=time.monotonic()+30

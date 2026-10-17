@@ -23,7 +23,7 @@ def file_sha256(path: str, stop=None) -> str:
 
 def verify_pending(con, limit: int = 50, *, scoped=False, stop=None) -> dict:
     """Aktif imzali dosyalarin hash'ini cikar/dogrula. Donus: sayilar."""
-    from . import queue as q
+    from . import job_queue as q
     out = {"verified": 0, "skipped": 0}
     scope = " AND f.file_id IN (SELECT file_id FROM scan_selected)" if scoped else ""
     rows = con.execute(

@@ -6,7 +6,7 @@ from pathlib import Path
 import threading
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-from evrakci import coordinator, vault, schema, migrate, queue, remember
+from evrakci import coordinator, vault, schema, migrate, job_queue as queue, remember
 from evrakci.vocab import ensure_v5
 
 PW = "sentetik-surum-test-1234"

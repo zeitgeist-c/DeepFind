@@ -1,6 +1,10 @@
-"""A6 testleri: OCR triyaj/kalite/timeout/butce + kopya-hash kablosu."""
+"""OCR testleri (RapidOCR): triyaj/kalite/bellek/temp + kopya-hash kablosu.
+
+Motor gerçekten kuruluysa (rapidocr + modeller) gercek tanima testleri kosar;
+aksi halde motorlu testler atlanir, sozlesme testleri (triyaj, bellek, temp,
+butce, erteleme) her kosumda dogrulanir.
+"""
 import os
-import subprocess
 import sys
 import time
 import zipfile
@@ -9,17 +13,13 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-_TD = "C:/Users/user/AppData/Local/hermes/cache/scratch/evrakci-a1/tessdata"
-if os.path.isdir(_TD):
-    os.environ["EVRAKCI_TESSDATA"] = _TD
-
 from evrakci import coordinator, dup, extract, ocr, rank, schema, vault  # noqa: E402
 from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
 from evrakci.vocab import ensure_v5  # noqa: E402
 
 PW = "test-sifresi-12345"
-MOTOR = ocr.models_ok()[0]
-motor_var = pytest.mark.skipif(not MOTOR, reason="tesseract+tur modeli yok")
+MOTOR = ocr.engine_ok()[0]
+motor_var = pytest.mark.skipif(not MOTOR, reason="RapidOCR zinciri kurulu degil")
 
 
 def _kasa(tmp_path):
@@ -100,79 +100,19 @@ def test_ocr01_taramali_sayfa_okunur(tmp_path):
     assert len(rows) == 1
     txt, method, conf = rows[0]
     assert "Ankara" in txt and "Ayşe" in txt, txt
-    assert method in ("basic", "improved"), method
+    assert method == "basic", method
     assert (conf or 0) > 0
     out = rank.search_ranked(con, "Ankara Ayşe vergi levhası")
     assert out["results"] and out["results"][0]["name"] == "tarama.pdf", out
     con.close()
 
 
-@motor_var
-def test_ocr02_kotu_cikti_iyinin_onune_gecemez(tmp_path):
-    def tsv(kelime_conf):
-        L = ["level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\t"
-             "left\ttop\twidth\theight\tconf\ttext"]
-        for i, (w, c) in enumerate(kelime_conf):
-            L.append(f"5\t1\t1\t1\t1\t{i + 1}\t0\t0\t50\t20\t{c}\t{w}")
-        return "\n".join(L)
-
-    iyi = tsv([("Ankara", 55), ("Ayşe", 54), ("vergi", 53)])  # ort 54 <60 -> iyilestirme tetiklenir
-    kotu = tsv([("Ankara", 20), ("###", 15), ("@@@", 10)])
-    cagir = {"n": 0}
-
-    def sahte(png, langs, psm, timeout, workdir):
-        cagir["n"] += 1
-        return (iyi if cagir["n"] == 1 else kotu), 0.1, None
-
-    _yaz_pdf(str(tmp_path / "b.pdf"), ["x"])
-    wd = ocr.temp_dir(str(tmp_path))
-    try:
-        orig = ocr._run_tess
-        ocr._run_tess = sahte
-        r = ocr.ocr_page(str(tmp_path / "b.pdf"), 0, wd)
-    finally:
-        ocr._run_tess = orig
-        import shutil
-        shutil.rmtree(wd, ignore_errors=True)
-    assert cagir["n"] == 2  # iyilestirme denendi, kotu sonuc elendi
-    assert "Ankara" in r.text, r.text  # iyi cikti korundu
-
-
-def test_ocr02_skor_karsilastirma():
-    iyi = ocr.score_of(90.0, 10, 0.0, False)
-    kotu = ocr.score_of(30.0, 40, 0.5, True)
-    assert iyi > kotu
-    assert ocr.score_of(0.0, 0, 1.0, False) < 0
-
-
-@motor_var
-def test_ocr03_timeout_retry_eder_dosyayi_oldurmez(tmp_path):
-    kok = str(tmp_path / "arsiv")
-    os.makedirs(kok)
-    _tara_pdf(os.path.join(kok, "yavas.pdf"), ["Ankara test sayfası"])
-    _bekle()
-    con, db = _kasa(tmp_path)
-    orig_run = subprocess.run
-
-    def patla(*a, **k):
-        raise subprocess.TimeoutExpired(cmd="tesseract", timeout=1)
-    subprocess.run = patla
-    try:
-        st = coordinator.run_scan(con, db, kok)
-    finally:
-        subprocess.run = orig_run
-    assert st["ocr_failed"] >= 0, st
-    row = con.execute("SELECT index_status FROM files").fetchone()
-    assert row[0] in ("ok", "partial", "pending"), row  # dosya govde aramada kalir
-    con.close()
-
-
-def test_ocr03_motor_yoksa_klasik_akis_surer(tmp_path, monkeypatch):
+def test_motor_eksikse_klasik_akis_surer(tmp_path, monkeypatch):
     kok = str(tmp_path / "arsiv")
     os.makedirs(kok)
     _yaz_pdf(os.path.join(kok, "duz.pdf"), ["Ankara Ayşe 2024 rapor"])
     _bekle()
-    monkeypatch.setattr(ocr, "find_exe", lambda: None)
+    monkeypatch.setattr(ocr, "engine_ok", lambda: (False, ["rapidocr-zinciri"]))
     con, db = _kasa(tmp_path)
     st = coordinator.run_scan(con, db, kok)
     assert st["result"] == "complete", st
@@ -183,11 +123,38 @@ def test_ocr03_motor_yoksa_klasik_akis_surer(tmp_path, monkeypatch):
     con.close()
 
 
+def test_motor_eksik_ocr_isi_ertelenir(tmp_path, monkeypatch):
+    kok = str(tmp_path / "arsiv")
+    os.makedirs(kok)
+    _tara_pdf(os.path.join(kok, "tarama.pdf"), ["Ankara test sayfası"])
+    _bekle()
+    monkeypatch.setattr(ocr, "engine_ok", lambda: (False, ["rapidocr-zinciri"]))
+    con, db = _kasa(tmp_path)
+    coordinator.run_scan(con, db, kok)
+    row = con.execute("SELECT index_status, error_code FROM files").fetchone()
+    # dosya govde aramada kalir; OCR isi kuyrukta bekler
+    assert row[0] in ("partial", "pending"), row
+    n = con.execute("SELECT count(*) FROM jobs WHERE kind='ocr'").fetchone()[0]
+    assert n >= 1
+    con.close()
+
+
 def test_ram_kapisi_ocr_erteler(tmp_path, monkeypatch):
     monkeypatch.setattr(ocr, "avail_ram", lambda: 1 * 1024**3)
     assert not ocr.ram_allows()
     out, _wd = ocr.ocr_document("yok.pdf", [0], str(tmp_path))
     assert out[0].method == "deferred" and out[0].error_code == "MEMORY_LIMIT"
+
+
+def test_bozuk_pdf_dosyayi_oldurmez(tmp_path, monkeypatch):
+    monkeypatch.setattr(ocr, "engine_ok", lambda: (True, []))
+    wd = ocr.temp_dir(str(tmp_path))
+    try:
+        r = ocr.ocr_page(str(tmp_path / "bozuk.pdf"), 0, wd)
+    finally:
+        import shutil
+        shutil.rmtree(wd, ignore_errors=True)
+    assert r.method == "low" and r.error_code == "CORRUPT_DOCUMENT"
 
 
 def test_temp_cokme_artigi_temizlenir(tmp_path):
@@ -245,3 +212,22 @@ def test_kopya_hash_taramada_kablolu(tmp_path):
     g = dup.groups(con)
     assert len(g) == 1 and len(g[0]["paths"]) == 2, g
     con.close()
+
+
+@motor_var
+def test_rapid_kucuk_punto_turkce_tanimada(tmp_path):
+    """Kalite kapisi (WordArc kaniti): kucuk punto TR metin dogru okunur."""
+    from PIL import Image, ImageDraw, ImageFont
+    satirlar = ["T.C. Gelir Idaresi Baskanligi", "Vergi Kimlik No: 1234567890",
+                "Isyeri adresi: Cankaya/ANKARA, Istiklal Cad. No:4"]
+    f = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 22)
+    img = Image.new("RGB", (900, 40 * len(satirlar) + 40), "white")
+    dr = ImageDraw.Draw(img)
+    for i, ln in enumerate(satirlar):
+        dr.text((20, 20 + i * 40), ln, fill="black", font=f)
+    png = str(tmp_path / "kucuk.png")
+    img.save(png)
+    text, mean, words = ocr.recognize_png(png)
+    assert words >= 3
+    assert "Gelir" in text and "Vergi" in text, text
+    assert mean > 50, mean

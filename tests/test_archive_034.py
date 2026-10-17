@@ -61,7 +61,7 @@ def test_reindex_failure_preserves_old_content(tmp_path):
     past=time.time()-10; os.utime(file,(past,past))
     con=database(); signature=f'{file.stat().st_size}:{file.stat().st_mtime_ns}'
     fid=index.index_entry(con,Entry(str(file),file.name,'.xlsx',3,1),ExtractResult([Segment('sheet',None,'sheet','eski tahsilat içeriği')]))
-    from evrakci import queue
+    from evrakci import job_queue as queue
     queue.enqueue(con,fid,signature); con.commit(); task=queue.claim(con)
     outcome=coordinator._process_job(con,task,[],str(tmp_path),str(root))
     assert outcome=='retry'
@@ -80,7 +80,7 @@ def test_image_missing_ocr_stays_partial_and_queued(tmp_path,monkeypatch):
     root=tmp_path/'images'; root.mkdir(); image=root/'receipt.png'; Image.new('RGB',(60,60),'white').save(image)
     past=time.time()-10; os.utime(image,(past,past))
     db=str(tmp_path/'index.db'); con=vault.open_vault(db,'synthetic-archive-1234'); migrate.ensure_current(con)
-    monkeypatch.setattr(ocr,'models_ok',lambda *args:(False,['tur']))
+    monkeypatch.setattr(ocr,'engine_ok',lambda *args:(False,['rapidocr-zinciri']))
     result=coordinator.run_scan(con,db,str(root))
     assert not result['complete']
     assert con.execute('SELECT index_status FROM files').fetchone()[0]=='partial'

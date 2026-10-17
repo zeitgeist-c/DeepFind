@@ -9,7 +9,8 @@ VENV = os.path.join(KOK, ".venv", "Lib", "site-packages")
 HEDEF = os.path.join(KOK, "LISANSLAR.md")
 
 ILGILI = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx",
-          "defusedxml", "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6"]
+          "defusedxml", "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6",
+          "rapidocr", "onnxruntime", "opencv-python-headless", "numpy"]
 
 
 def lisans_dosyalari(dist):
@@ -22,8 +23,10 @@ def lisans_dosyalari(dist):
 
 
 def main():
+    sys.path.insert(0, os.path.join(KOK, "src"))
+    from evrakci.version import __version__
     sys.path.insert(0, os.path.join(VENV))
-    satir = ["# Evrakçı 0.1.0 — Üçüncü-taraf lisansları", "",
+    satir = [f"# Evrakçı {__version__} — Üçüncü-taraf lisansları", "",
              "Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.",
              ""]
     for ad in ILGILI:
@@ -41,8 +44,8 @@ def main():
     satir += ["",
               "PySide6 (LGPLv3): lisans metni pakette `licenses/` altında taşınır; "
               "Qt kaynak teklifi Qt Company kanalıyla (dinamik bağ, değişiklik yok).",
-              "Tesseract-OCR pakete dahil değildir; ayrı önkoşul kurulumdur "
-              "(UB-Mannheim, Apache-2.0)."]
+              "RapidOCR (PP-OCR modelleri, Apache-2.0) + ONNX Runtime (MIT) + "
+              "OpenCV-python-headless (Apache-2.0) bağımlılıkları licenses/ altında taşınır."]
     with open(HEDEF, "w", encoding="utf-8") as f:
         f.write("\n".join(satir) + "\n")
     print(f"yazildi: {HEDEF}", flush=True)
