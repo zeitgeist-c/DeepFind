@@ -6,6 +6,7 @@ import time
 
 from . import exclusions as exc
 from . import extract as ex
+from . import gom as gom_mod
 from . import normalize as nz
 from . import ocr as ocr_mod
 from . import job_queue as q
@@ -31,6 +32,30 @@ def emit_progress(sink, payload=None, **kw):
 
 class AlreadyRunning(Exception):
     pass
+
+
+_GOM_OTURUM = None
+_GOM_OTURUM_MTIME = None
+
+
+def _gom_oturumu():
+    """Surec basina tek vektor oturumu (mtime degisince yeniler). Yoksa None."""
+    global _GOM_OTURUM, _GOM_OTURUM_MTIME
+    from . import embed as embed_mod
+
+    if not gom_mod.model_var_mi():
+        return None
+    try:
+        mt = os.path.getmtime(embed_mod._varsayilan_model_yolu())
+    except OSError:
+        return None
+    if _GOM_OTURUM is None or _GOM_OTURUM_MTIME != mt:
+        try:
+            _GOM_OTURUM = embed_mod.Oturum()
+        except Exception:
+            return None
+        _GOM_OTURUM_MTIME = mt
+    return _GOM_OTURUM
 
 
 class ScanLock:
@@ -326,6 +351,8 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
     con.commit()
     write_revision(con, fid, cur_sig, res, _context_for(path, root))
     con.execute("UPDATE files SET source_status='ok' WHERE file_id=?",(fid,)); con.commit()
+    if gom_mod.model_var_mi():
+        q.enqueue(con, fid, cur_sig, kind="embed")
     # Ince metinli PDF sayfalari -> agir OCR fazi (ayri is; ayni kaynagi paralel okumaz)
     if ext in ({'.pdf'} | {'.jpg','.jpeg','.png','.tif','.tiff'}) and res.status in ("ok", "partial"):
         thin = [s.page for s in (res.segments or [])
@@ -444,6 +471,9 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
         con.execute("UPDATE files SET index_status='ok',error_code=NULL WHERE file_id=? AND error_code='OCR_PENDING'",(fid,)); con.commit()
     # Tum sayfalar timeout/unavailable ise retry; aksi halde tamamla
     q.complete(con, job["job_id"])
+    if gom_mod.model_var_mi():
+        q.enqueue(con, fid, sig, kind="embed")
+        con.commit()
     return "done"
 
 
@@ -453,6 +483,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
     nz.install(con)  # segment yazim/silim trigger'lari fold() UDF'ine bagli (v9)
     stats = {"found": 0, "done": 0, "changed": 0, "unstable": 0, "failed": 0,
              "missing": 0, "ocr_done": 0, "ocr_deferred": 0, "ocr_failed": 0,
+             "embed_done": 0,
              "hashed": 0, "skipped": 0, "complete": False, "result": "partial"}
     if "updated_at" not in {r[1] for r in con.execute("PRAGMA table_info(scan_runs)")}:
         migrate.ensure_v8(con)
@@ -659,6 +690,30 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             report("OCR işleniyor", path, r)
         if ocr_session is not None:
             ocr_session.kill()
+        # --- vektor fazi (cikarim + OCR bitince; model bir kez yuklenir) ---
+        gom_oturumu = _gom_oturumu()
+        if gom_oturumu is None:
+            report("Vektör modeli yok; klasik arama sürüyor", root, force=True)
+        while gom_oturumu is not None:
+            if stop and stop():
+                stats["result"] = "cancelled"
+                break
+            job = q.claim(con, ("embed",), scoped=True)
+            if not job:
+                break
+            satir = con.execute("SELECT path FROM files WHERE file_id=?", (job["file_id"],)).fetchone()
+            yol = satir[0] if satir else ""
+            report("Vektör dizini hazırlanıyor", yol, force=True)
+            try:
+                ot = gom_oturumu
+                r = gom_mod.process_embed_job(
+                    con, job, kodla=lambda m: ot.encode(m, gorev="belge"))
+            except Exception:
+                r = q.fail(con, job["job_id"], "EMBED_FAILED")
+            stats["embed_done"] += 1 if r == "done" else 0
+            if r in ("retry", "dead"):
+                stats["failed"] += 1
+            report("Vektör işleniyor", yol, r)
         # --- kopya hash (arka plan; sinirli; kaynagi bir kez daha okur) ---
         try:
             from . import dup as dup_mod

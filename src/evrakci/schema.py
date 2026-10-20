@@ -39,6 +39,13 @@ CREATE TRIGGER IF NOT EXISTS seg_ad AFTER DELETE ON segments BEGIN
   INSERT INTO docs_fts(docs_fts, rowid, label, raw_text)
   VALUES ('delete', old.seg_id, fold(old.label), fold(old.raw_text));
 END;
+CREATE TABLE IF NOT EXISTS embeddings(
+  seg_id INTEGER PRIMARY KEY REFERENCES segments(seg_id) ON DELETE CASCADE,
+  model_ver TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  vec BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_ver ON embeddings(model_ver);
 """
 
 SCHEMA_VERSION = "3"
@@ -64,6 +71,19 @@ def mark_folded(con) -> None:
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES (?, '1') "
         "ON CONFLICT(k) DO UPDATE SET v=excluded.v", (FTS_FOLDED_KEY,))
+
+
+EMBED_VER_KEY = "embed_model_ver"
+
+
+def mark_embed(con) -> None:
+    from . import embed as embed_mod
+
+    con.execute(
+        "INSERT INTO schema_meta(k, v) VALUES (?, ?) "
+        "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        (EMBED_VER_KEY, embed_mod.MODEL_VER),
+    )
 
 
 def _folded_triggers(con) -> None:
@@ -108,6 +128,8 @@ def ensure_schema(con) -> None:
         rebuild_fts(con)
     if not con.execute("SELECT v FROM schema_meta WHERE k=?", (FTS_FOLDED_KEY,)).fetchone():
         mark_folded(con)
+    if not con.execute("SELECT v FROM schema_meta WHERE k=?", (EMBED_VER_KEY,)).fetchone():
+        mark_embed(con)
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
         "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
