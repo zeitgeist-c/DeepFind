@@ -5,6 +5,26 @@ from evrakci import migrate, vault, backup
 from evrakci import startup
 
 
+def test_acilis_yuzde_ve_sayac_gosterir(tmp_path):
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    dialog = startup.OpeningDialog(
+        str(tmp_path / 'yok.db'), 'sifre', str(tmp_path / 'yedek'))
+    dialog._baslangic = time.monotonic() - 10
+    dialog.update_progress('backup', 3, 10)
+    assert dialog.bar.value() == 30
+    assert '%30' in dialog.detail.text()
+    assert '3/10' in dialog.detail.text()
+    assert 'kalan' in dialog.detail.text()
+    dialog.update_progress('schema', 0, 0)
+    assert 'Geçen süre' in dialog.detail.text()
+    assert dialog._sure_yaz(75) == '1 dk 15 sn'
+    dialog._saat.stop()
+    dialog.deleteLater()
+    app.processEvents()
+
+
 def test_legacy_preparation_stays_responsive_and_reports_backup(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtCore import QTimer

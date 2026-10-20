@@ -3,7 +3,7 @@ import os
 import threading
 import time
 
-from PySide6.QtCore import QThread, Signal, Qt
+from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QVBoxLayout
 
 from . import backup, diagnostics, migrate, vault
@@ -96,6 +96,11 @@ class OpeningDialog(QDialog):
         layout.addWidget(self.status)
         layout.addWidget(self.detail)
         layout.addWidget(self.bar)
+        self._baslangic = 0.0
+        self._son_oran = None
+        self._saat = QTimer(self)
+        self._saat.setInterval(500)
+        self._saat.timeout.connect(self._suren_guncelle)
         self.worker = PreparationWorker(path, password, backup_dir, self)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.complete)
@@ -108,11 +113,39 @@ class OpeningDialog(QDialog):
         self.status.setText(texts.get(stage, 'Şifreli kasa açılıyor…'))
         if total:
             self.bar.setRange(0, 100)
-            self.bar.setValue(int(done * 100 / total))
-            self.detail.setText('Bu işlem büyük kasalarda birkaç dakika sürebilir. Kaynak evraklar değiştirilmez.')
+            oran = int(done * 100 / total)
+            self.bar.setValue(oran)
+            self._son_oran = (done, total)
+            self.detail.setText(self._ayrinti())
         else:
             self.bar.setRange(0, 0)
-            self.detail.setText('Bu aşamanın süresi kasa büyüklüğüne bağlıdır.')
+            self._son_oran = None
+            self.detail.setText(self._ayrinti())
+
+    def _ayrinti(self) -> str:
+        gecen = time.monotonic() - self._baslangic if self._baslangic else 0.0
+        saat = self._sure_yaz(gecen)
+        if not self._son_oran:
+            return (f'Geçen süre: {saat}. Bu aşamanın süresi kasa büyüklüğüne bağlıdır. '
+                    'Kaynak evraklar değiştirilmez.')
+        done, total = self._son_oran
+        oran = int(done * 100 / total) if total else 0
+        metin = f'%{oran} • {done}/{total} adım • geçen: {saat}'
+        if done > 0 and gecen > 1:
+            kalan = gecen / done * (total - done)
+            metin += f' • kalan ~{self._sure_yaz(kalan)}'
+        return metin + '. Kaynak evraklar değiştirilmez.'
+
+    @staticmethod
+    def _sure_yaz(saniye: float) -> str:
+        saniye = max(0, int(saniye))
+        if saniye < 60:
+            return f'{saniye} sn'
+        return f'{saniye // 60} dk {saniye % 60:02d} sn'
+
+    def _suren_guncelle(self):
+        if self.worker.isRunning():
+            self.detail.setText(self._ayrinti())
 
     def reject(self):
         if self.worker.isRunning():
@@ -122,9 +155,12 @@ class OpeningDialog(QDialog):
             super().reject()
 
     def complete(self):
+        self._saat.stop()
         self.done(QDialog.Rejected if self.worker.stop.is_set() or self.worker.error else QDialog.Accepted)
 
     def prepare(self):
+        self._baslangic = time.monotonic()
+        self._saat.start()
         self.worker.start()
         result = self.exec()
         self.worker.wait()
