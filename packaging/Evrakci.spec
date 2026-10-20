@@ -26,7 +26,9 @@ a = Analysis([str(root / "src/evrakci/__main__.py")], pathex=[str(root / "src")]
              binaries=binaries, datas=[(str(root / "src/evrakci/assets"), "evrakci/assets"),
                                        *ocr_datas], hiddenimports=["PySide6.QtWidgets",
                                        *collect_submodules("rapidocr"),
-                                       *collect_submodules("onnxruntime")],
+                                       *collect_submodules("onnxruntime"),
+                                       "transformers", "tokenizers", "huggingface_hub",
+                                       "safetensors", "regex"],
              hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False)
 # Qt'nin Windows ICU bağımlılığı PATH'teki Poppler ICU ile aynı dosya adını taşır.
 # Bu wheel Windows'un ICU API'sini kullanır; yabancı icuuc.dll onu gölgelememeli.

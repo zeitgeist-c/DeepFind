@@ -54,7 +54,9 @@ def main():
     licenses.mkdir(exist_ok=True)
     deps = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx", "defusedxml",
             "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6",
-            "rapidocr", "onnxruntime", "opencv-python-headless", "numpy", "pyclipper",
+            "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy", "pyclipper",
+            "transformers", "tokenizers", "huggingface-hub", "hf-xet", "safetensors",
+            "regex", "filelock",
             "shapely", "omegaconf", "pyyaml", "six", "requests", "tqdm", "colorlog",
             "protobuf", "flatbuffers", "idna", "certifi", "urllib3", "charset-normalizer"]
     manifest = {"program": "Evrakçı", "version": __version__, "dependencies": {}}
