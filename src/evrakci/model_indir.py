@@ -50,7 +50,7 @@ def indir(url: str | None = None, oet: str | None = None,
     os.makedirs(os.path.dirname(yol), exist_ok=True)
     gecici = yol + ".indir"
     try:
-        with urllib.request.urlopen(url) as yanit, open(gecici, "wb") as f:
+        with urllib.request.urlopen(url, timeout=60) as yanit, open(gecici, "wb") as f:
             toplam = int(yanit.headers.get("Content-Length", 0) or 0)
             okunan = 0
             while True:

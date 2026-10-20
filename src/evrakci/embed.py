@@ -50,20 +50,24 @@ def hazir_oturum(yol: str | None = None):
 def isit_oturumu(yol: str | None = None):
     """Paylasilan Oturumu kur (yoksa), dondur; model yoksa None.
 
-    Acilista arka planda bir kez cagrilir; aramalar hazir olana dek FTS yapar."""
+    Acilista arka planda bir kez cagrilir; aramalar hazir olana dek FTS yapar.
+    Agir kurulum kilit disinda olur; bekleyen okur bloklanmaz."""
     hedef = yol or _varsayilan_model_yolu()
+    ot = hazir_oturum(hedef)
+    if ot is not None:
+        return ot
+    if not os.path.isfile(hedef):
+        return None
+    try:
+        yeni = Oturum(hedef)
+    except Exception:
+        return None
     with _PAYLASILAN_KILIT:
         if _PAYLASILAN["ot"] is not None and _PAYLASILAN["yol"] == hedef:
             return _PAYLASILAN["ot"]
-        if not os.path.isfile(hedef):
-            return None
-        try:
-            ot = Oturum(hedef)
-        except Exception:
-            return None
         _PAYLASILAN["yol"] = hedef
-        _PAYLASILAN["ot"] = ot
-        return ot
+        _PAYLASILAN["ot"] = yeni
+        return yeni
 
 
 class Oturum:
@@ -95,6 +99,8 @@ class Oturum:
     def encode(self, metinler: list[str], gorev: str = "sorgu",
                toplu: int = VARSAYILAN_TOPLU) -> np.ndarray:
         """gorev: 'sorgu' | 'belge'. Donus (n, 256) float32."""
+        if not metinler:
+            return np.zeros((0, DIM), dtype=np.float32)
         onek = SORGU_ONEKI if gorev == "sorgu" else BELGE_ONEKI
         parcalar = []
         for i in range(0, len(metinler), toplu):

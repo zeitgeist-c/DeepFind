@@ -45,6 +45,8 @@ def vektor_yaz(con, ciftler: list[tuple[int, str]], v) -> int:
     """Dagit: chunk vektorlerini segmentte ortala, birimle, yaz. Donus: segment."""
     import numpy as np
 
+    if not ciftler:
+        return 0
     v = np.asarray(v, dtype=np.float32)
     ids = sorted({s for s, _ in ciftler})
     con.execute(

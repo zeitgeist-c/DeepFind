@@ -1,4 +1,4 @@
-# Evrakçı 0.8.0 — Üçüncü-taraf lisansları
+# Evrakçı 0.8.1 — Üçüncü-taraf lisansları
 
 Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.
 
@@ -28,7 +28,7 @@
 - rapidocr==3.10.0 — Apache-2.0
   - rapidocr-3.10.0.dist-info/licenses/LICENSE
   - rapidocr-3.10.0.dist-info/licenses/MODEL_LICENSES.md
-- onnxruntime==1.30.0 — MIT License
+- onnxruntime-directml==1.24.4 — MIT License
   - onnxruntime/LICENSE
   - onnxruntime/ThirdPartyNotices.txt
 - opencv-python-headless==4.11.0.86 — Apache 2.0
@@ -41,6 +41,19 @@
   - numpy-2.5.4.dist-info/licenses/numpy/_core/include/numpy/libdivide/LICENSE.txt
   - numpy-2.5.4.dist-info/licenses/numpy/_core/src/common/pythoncapi-compat/COPYING
   - numpy-2.5.4.dist-info/licenses/numpy/_core/src/highway/LICENSE
+- transformers==5.20.2 — Apache 2.0 License
+  - transformers-5.20.2.dist-info/licenses/LICENSE
+- tokenizers==0.23.3 — ?
+- huggingface_hub==2.2.0 — Apache-2.0
+  - huggingface_hub-2.2.0.dist-info/licenses/LICENSE
+- hf-xet==1.7.0 — Apache-2.0
+  - hf_xet-1.7.0.dist-info/licenses/LICENSE
+- safetensors==0.8.0 — ?
+  - safetensors-0.8.0.dist-info/licenses/LICENSE
+- regex==2026.9.29 — Apache-2.0 AND CNRI-Python
+  - regex-2026.9.29.dist-info/licenses/LICENSE.txt
+- filelock==4.2.4 — MIT
+  - filelock-4.2.4.dist-info/licenses/LICENSE
 
 PySide6 (LGPLv3): lisans metni pakette `licenses/` altında taşınır; Qt kaynak teklifi Qt Company kanalıyla (dinamik bağ, değişiklik yok).
 RapidOCR (PP-OCR modelleri, Apache-2.0) + ONNX Runtime (MIT) + OpenCV-python-headless (Apache-2.0) bağımlılıkları licenses/ altında taşınır.

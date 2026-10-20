@@ -10,7 +10,9 @@ HEDEF = os.path.join(KOK, "LISANSLAR.md")
 
 ILGILI = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx",
           "defusedxml", "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6",
-          "rapidocr", "onnxruntime", "opencv-python-headless", "numpy"]
+          "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy",
+          "transformers", "tokenizers", "huggingface-hub", "hf-xet", "safetensors",
+          "regex", "filelock"]
 
 
 def lisans_dosyalari(dist):
