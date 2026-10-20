@@ -1,4 +1,4 @@
-# Evrakçı 0.8.1 — Üçüncü-taraf lisansları
+# Evrakçı 0.9.0 — Üçüncü-taraf lisansları
 
 Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.
 
