@@ -27,11 +27,14 @@ def main():
         assert manifest["version"] == __version__ and manifest["program"] == "Evrakçı"
         assert len(list((package / "_internal" / "evrakci" / "assets").glob("*.svg"))) == 4
         report = Path(directory) / "smoke.json"
+        # Duman 60 sn'yi asar: 216 MB soguk acilis + transformers/ORT + model isinma
+        # olculdu (~85 sn bu makinede). Esik olcume bagli; davranis degistirmez.
         process = subprocess.run([str(exe), "--package-smoke", str(report)], cwd=package,
-                                 timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+                                 timeout=300, creationflags=subprocess.CREATE_NO_WINDOW)
         smoke = json.loads(report.read_text(encoding="utf-8"))
         assert process.returncode == 0 and smoke["ok"], smoke
         assert "actual-first-run-to-main-and-scan" in smoke["checks"]
+        assert "vektor-model-durumu" in smoke["checks"]
         result = dict(smoke, package=str(archive), size=archive.stat().st_size,
                       sha256=hashlib.sha256(archive.read_bytes()).hexdigest(), zip_crc=True)
         output = ROOT / "build" / ("package-check-" + __version__ + ".json")

@@ -295,6 +295,9 @@ def run(report_path):
             opening.worker.progress.connect(lambda phase, *_: phases.append(phase))
             assert opening.prepare() == QDialog.Accepted
             assert {'backup', 'verify', 'schema'} <= set(phases)
+            from . import gom as _gom
+            report["vektor_model"] = bool(_gom.model_var_mi())
+            checkpoint('vektor-model-durumu')
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
                                            "excel-preview", "pdf-preview-loading", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
@@ -302,7 +305,8 @@ def run(report_path):
                                            "packaged-turkish-ocr", "ai-local-preview-no-network",
                                            "ai-model-switch", "ai-model-migration", "durable-scan-history",
                                            'search-workbench-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
-                                           'background-startup-migration', 'root-remove-worker', 'exclusion-worker'])
+                                           'background-startup-migration', 'root-remove-worker', 'exclusion-worker',
+                                           'vektor-model-durumu'])
     except Exception as error:
         import traceback
         report["stage"] = current_stage
