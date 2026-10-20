@@ -12,8 +12,9 @@ import urllib.request
 MODEL_SURUM = "eg2-text-256-v1"
 MODEL_DOSYA = "eg2-text.onnx"
 # Surumde doldurulur (ornek: releases indirme adresi + sha256).
-MODEL_URL = ""
-MODEL_SHA256 = ""
+MODEL_URL = ("https://github.com/zeitgeist-c/Evrakci-Releases"
+             "/releases/download/v0.9.0/eg2-text.onnx")
+MODEL_SHA256 = "2cabcf6413a22497987da2a092635ade33530614fce978ad11d9828b30dbd843"
 MODEL_BOYUT = 1085617477  # bayt; export ciktisi, yaklasik
 
 
