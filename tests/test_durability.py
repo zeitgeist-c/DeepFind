@@ -152,7 +152,7 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
     src = pathlib.Path(os.path.dirname(__file__), "..", "src", "evrakci")
     yazan = []
     for f in src.glob("*.py"):
-        if f.name in ("cli.py", "backup.py", "recovery.py", "update.py"):
+        if f.name in ("cli.py", "backup.py", "recovery.py", "update.py", "model_indir.py"):
             # backup.py / recovery.py: yalniz yonetilen yerel hedeflere yazar
             # (dest/staging/manifest ve kasa klasorundeki evrakci-kurtarma.*);
             # kaynak-dizin kaniti test_backup.py::test_bak_kaynaga_dokunmaz ve
@@ -160,6 +160,9 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
             # update.py: yalniz %LOCALAPPDATA%/Evrakci/Updates altina yazar
             # (indirme/acma/artik toplama); kaynak-dizin kaniti
             # test_update.py::AcmaTestleri + temizle testleri (runtime).
+            # model_indir.py: yalniz %LOCALAPPDATA%/Evrakci/models (ya da
+            # cagrida verilen acik yol) altina yazar; kaynak-dizin kaniti
+            # test_model_indir.py::test_varsayilan_hedef_yonetilen_alan (runtime).
             continue
         if f.name == "thumbs.py":
             # thumbs.py: yalniz %LOCALAPPDATA%/Evrakci/thumbs onbellek dizininde

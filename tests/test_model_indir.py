@@ -44,5 +44,17 @@ def test_gerekli_mi(tmp_path):
     assert model_indir.gerekli_mi(yol) is True
 
 
+def test_varsayilan_hedef_yonetilen_alan(tmp_path):
+    import os
+
+    from evrakci import model_indir
+
+    kok = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    hedef = model_indir.hedef_yol()
+    assert os.path.abspath(hedef).startswith(os.path.abspath(kok))
+    kaynak = str(tmp_path / "arsiv")
+    assert not os.path.abspath(hedef).startswith(os.path.abspath(kaynak))
+
+
 def kwargs_url(p):
     return p.as_uri()
