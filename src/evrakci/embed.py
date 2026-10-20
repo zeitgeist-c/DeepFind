@@ -30,8 +30,17 @@ def isle(hiddens: np.ndarray, maske: np.ndarray, kirp: int = DIM) -> np.ndarray:
 
 
 def _varsayilan_model_yolu() -> str:
-    kok = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(kok, "Evrakçı", "models", "eg2-text.onnx")
+    """Okuma yolu: once yeni ortak konum, yoksa eski kisisel konum."""
+    from . import model_indir as mi_mod
+
+    yeni = mi_mod.hedef_yol()
+    if os.path.isfile(yeni):
+        return yeni
+    eski_kok = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    eski = os.path.join(eski_kok, "Evrakçı", "models", mi_mod.MODEL_DOSYA)
+    if os.path.isfile(eski):
+        return eski
+    return yeni
 
 
 _PAYLASILAN = {"yol": None, "ot": None}

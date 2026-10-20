@@ -18,8 +18,14 @@ MODEL_SHA256 = "2cabcf6413a22497987da2a092635ade33530614fce978ad11d9828b30dbd843
 MODEL_BOYUT = 1085617477  # bayt; export ciktisi, yaklasik
 
 
+def _kok() -> str:
+    """Ortak veri kok dizini: makinede tek model kopyasi."""
+    return (os.environ.get("PROGRAMDATA") or os.environ.get("LOCALAPPDATA")
+            or os.path.expanduser("~"))
+
+
 def hedef_yol(kok: str | None = None) -> str:
-    taban = kok or os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    taban = kok or _kok()
     return os.path.join(taban, "Evrakçı", "models", MODEL_DOSYA)
 
 

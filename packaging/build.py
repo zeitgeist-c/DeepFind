@@ -106,6 +106,23 @@ def main():
                 archive.write(path, path.relative_to(package.parent))
     digest = hashlib.sha256(destination.read_bytes()).hexdigest()
     print(json.dumps({"package": str(destination), "sha256": digest}, ensure_ascii=False))
+    # Kurulum (Inno Setup): taze kurulumlar icin tek EXE.
+    (ROOT / "packaging" / "ver.iss").write_text(
+        f'#define AppVersion "{__version__}"\n', encoding="utf-8")
+    iscc = os.environ.get("INNO_ISCC", r"C:\tmp\Inno\ISCC.exe")
+    if not Path(iscc).is_file():
+        for aday in (r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+                     r"C:\Program Files\Inno Setup 6\ISCC.exe"):
+            if Path(aday).is_file():
+                iscc = aday
+                break
+    subprocess.run([iscc, str(ROOT / "packaging/Evrakci.iss")],
+                   cwd=str(ROOT / "packaging"), check=True, timeout=600)
+    kurulum = ROOT / (stem + ".exe")
+    assert kurulum.is_file(), "kurulum EXE uretilemedi"
+    print(json.dumps({"setup": str(kurulum),
+                      "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
+                     ensure_ascii=False))
 
 
 if __name__ == "__main__":

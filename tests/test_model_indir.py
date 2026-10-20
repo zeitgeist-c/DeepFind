@@ -49,7 +49,8 @@ def test_varsayilan_hedef_yonetilen_alan(tmp_path):
 
     from evrakci import model_indir
 
-    kok = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    kok = (os.environ.get("PROGRAMDATA") or os.environ.get("LOCALAPPDATA")
+           or os.path.expanduser("~"))
     hedef = model_indir.hedef_yol()
     assert os.path.abspath(hedef).startswith(os.path.abspath(kok))
     kaynak = str(tmp_path / "arsiv")

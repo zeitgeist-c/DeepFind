@@ -31,3 +31,4 @@ Thumbs.db
 .hermes/
 # OCR kontrollu temp
 ocr-tmp/
+packaging/ver.iss
