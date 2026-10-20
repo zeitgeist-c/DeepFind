@@ -256,3 +256,58 @@ def tag_rules(con) -> list:
 def delete_rule(con, rule_id: int) -> None:
     con.execute("DELETE FROM tag_rules WHERE rule_id=?", (rule_id,))
     con.commit()
+
+
+FTS_AGIRLIK = 0.4
+VEC_AGIRLIK = 0.6
+
+
+def _vektorler(con, seg_ids: list) -> dict:
+    """seg_id -> birim vektor (model surumu tutanlar)."""
+    from . import embed as embed_mod
+
+    if not seg_ids:
+        return {}
+    satirlar = con.execute(
+        f"SELECT seg_id, vec FROM embeddings WHERE model_ver=?"
+        f" AND seg_id IN ({','.join('?' * len(seg_ids))})",
+        (embed_mod.MODEL_VER, *seg_ids)).fetchall()
+    import numpy as np
+
+    return {s: np.frombuffer(v, dtype=np.float32).copy() for s, v in satirlar}
+
+
+def search_hybrid(con, query, year=None, ext=None, limit=50, folder=None,
+                  offset=0, tag=None, kodla=None) -> dict:
+    """FTS + vektor hibrit: ayni bicim, vektorle yeniden sirali.
+
+    Vektor yoksa (eski kasa / modelsiz) FTS sonucunu aynen dondurur.
+    kodla(metinler) -> (n,256); verilmezse modelden kurulur.
+    """
+    taban = search_ranked(con, query, year, ext, limit, folder, offset, tag)
+    if not taban["results"]:
+        return taban
+    if kodla is None:
+        from . import gom as gom_mod
+
+        if not gom_mod.model_var_mi():
+            return taban
+        from . import embed as embed_mod
+
+        ot = embed_mod.Oturum()
+        kodla = lambda m: ot.encode(m, gorev="sorgu")  # noqa: E731
+    seg_ids = [r["seg_id"] for r in taban["results"]]
+    vecs = _vektorler(con, seg_ids)
+    if not vecs:
+        return taban
+    import numpy as np
+
+    q = np.asarray(kodla([query]), dtype=np.float32)[0]
+    for r in taban["results"]:
+        v = vecs.get(r["seg_id"])
+        benzer = float(np.dot(q, v)) if v is not None else 0.0
+        fts = min(100, max(0, r.get("score", 0))) / 100.0
+        r["score"] = round((FTS_AGIRLIK * fts + VEC_AGIRLIK * max(0.0, benzer)) * 100.0, 1)
+        r["vec_skor"] = round(benzer, 3)
+    taban["results"].sort(key=lambda r: r["score"], reverse=True)
+    return taban
