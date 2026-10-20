@@ -122,3 +122,37 @@ def test_model_kapisi():
 
     assert gom.model_var_mi(__file__) is True
     assert gom.model_var_mi(os.path.join("yok", "boyle-bir-dosya.onnx")) is False
+
+
+def test_vektor_yaz_dagitir(tmp_path):
+    import numpy as np
+
+    from evrakci import gom
+
+    con = _kasa(tmp_path)
+    fid = _dosya(con)
+    ciftler = gom._metinler(con, fid)
+    assert len(ciftler) == 1
+    v = np.zeros((1, 256), dtype=np.float32)
+    v[0, 5] = 1.0
+    assert gom.vektor_yaz(con, ciftler, v) == 1
+    satir = con.execute("SELECT dim, length(vec) FROM embeddings").fetchone()
+    assert satir == (256, 1024)
+    con.close()
+
+
+def test_alt_surec_gom():
+    if not os.environ.get("EVRAKCI_GERCEK_MODEL") == "1":
+        return
+    from evrakci import embed
+    from evrakci.workers import WorkerSession
+
+    sess = WorkerSession()
+    try:
+        sonuc = sess.call("gom", (embed._varsayilan_model_yolu(),
+                                  ["elektrik faturasi", "kira sozlesmesi"]),
+                          timeout=600)
+        assert len(sonuc["vektorler"]) == 2
+        assert len(sonuc["vektorler"][0]) == 256
+    finally:
+        sess.kill()

@@ -92,7 +92,7 @@ class AramaIsci(QThread):
             req = self.request
             q, year, ext, folder = req[0], req[1], req[2], req[3]
             tag = req[4] if len(req) > 4 else None
-            out = rank.search_ranked(con, q, year=year, ext=ext, limit=50,
+            out = rank.search_hybrid(con, q, year=year, ext=ext, limit=50,
                                      folder=folder or None, offset=getattr(self,"offset",0),
                                      tag=tag or None)
             if not self.stop.is_set():
@@ -454,6 +454,12 @@ class AnaPencere(QMainWindow):
             pass
         self._zamanlayici_kontrol(ilk=True)
         self._kisaltmalar()
+        try:
+            from . import embed as _embed
+
+            threading.Thread(target=_embed.isit_oturumu, daemon=True).start()
+        except Exception:
+            pass  # model yoksa aramalar FTS yapar
         self._schedule_timer = QTimer(self)
         self._schedule_timer.timeout.connect(self._zamanlayici_kontrol)
         self._schedule_timer.start(60_000)

@@ -2,6 +2,8 @@
 import multiprocessing as mp
 import time
 
+_GOM_COCUK = {}  # alt surec ici vektor oturum onbellegi (suru basina bir)
+
 
 def _perform(kind, args):
     if kind == "extract":
@@ -66,6 +68,15 @@ def _perform(kind, args):
                               for i in range(min(200, ws.nrows))], "sheet": ws.name}
         finally:
             wb.release_resources()
+    if kind == "gom":
+        from . import embed as embed_mod
+
+        model_yolu, metinler = args
+        ot = _GOM_COCUK.get(model_yolu)
+        if ot is None:
+            ot = embed_mod.Oturum(model_yolu)
+            _GOM_COCUK[model_yolu] = ot
+        return {"vektorler": ot.encode(metinler, gorev="belge").tolist()}
     raise ValueError("bilinmeyen iş")
 
 

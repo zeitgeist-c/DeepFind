@@ -288,13 +288,11 @@ def search_hybrid(con, query, year=None, ext=None, limit=50, folder=None,
     if not taban["results"]:
         return taban
     if kodla is None:
-        from . import gom as gom_mod
-
-        if not gom_mod.model_var_mi():
-            return taban
         from . import embed as embed_mod
 
-        ot = embed_mod.Oturum()
+        ot = embed_mod.hazir_oturum()
+        if ot is None:
+            return taban
         kodla = lambda m: ot.encode(m, gorev="sorgu")  # noqa: E731
     seg_ids = [r["seg_id"] for r in taban["results"]]
     vecs = _vektorler(con, seg_ids)

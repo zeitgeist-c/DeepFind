@@ -34,30 +34,6 @@ class AlreadyRunning(Exception):
     pass
 
 
-_GOM_OTURUM = None
-_GOM_OTURUM_MTIME = None
-
-
-def _gom_oturumu():
-    """Surec basina tek vektor oturumu (mtime degisince yeniler). Yoksa None."""
-    global _GOM_OTURUM, _GOM_OTURUM_MTIME
-    from . import embed as embed_mod
-
-    if not gom_mod.model_var_mi():
-        return None
-    try:
-        mt = os.path.getmtime(embed_mod._varsayilan_model_yolu())
-    except OSError:
-        return None
-    if _GOM_OTURUM is None or _GOM_OTURUM_MTIME != mt:
-        try:
-            _GOM_OTURUM = embed_mod.Oturum()
-        except Exception:
-            return None
-        _GOM_OTURUM_MTIME = mt
-    return _GOM_OTURUM
-
-
 class ScanLock:
     """Kasa dizininde capraz-surec kilidi (SCN-05: ikinci tarama acilmaz)."""
 
@@ -690,30 +666,70 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             report("OCR işleniyor", path, r)
         if ocr_session is not None:
             ocr_session.kill()
-        # --- vektor fazi (cikarim + OCR bitince; model bir kez yuklenir) ---
-        gom_oturumu = _gom_oturumu()
-        if gom_oturumu is None:
+        # --- vektor fazi: kalici alt surecte gom (cokus yalitimi) ---
+        # Model turda bir yuklenir; alt surec olurse is basarisiz sayilir,
+        # ana surec ve kasa saglam kalir (OCR deseniyle ayni).
+        from .workers import WorkerSession
+
+        gom_oturumu = None
+        if not gom_mod.model_var_mi():
             report("Vektör modeli yok; klasik arama sürüyor", root, force=True)
-        while gom_oturumu is not None:
+        while True:
             if stop and stop():
                 stats["result"] = "cancelled"
                 break
             job = q.claim(con, ("embed",), scoped=True)
             if not job:
                 break
-            satir = con.execute("SELECT path FROM files WHERE file_id=?", (job["file_id"],)).fetchone()
-            yol = satir[0] if satir else ""
+            if gom_oturumu is None:
+                try:
+                    gom_oturumu = WorkerSession()
+                except Exception:
+                    report("Vektör işçisi açılamadı; klasik arama sürüyor", root, force=True)
+                    break
+            fid = job["file_id"]
+            kayit = con.execute(
+                "SELECT size, mtime_ns, path FROM files WHERE file_id=?", (fid,)).fetchone()
+            if not kayit:
+                q.complete(con, job["job_id"])
+                continue
+            boy, degis, yol = kayit
+            if q.signature_of(boy, degis) != job["signature"]:
+                q.enqueue(con, fid, q.signature_of(boy, degis), kind="embed")
+                con.commit()
+                q.complete(con, job["job_id"])
+                continue
+            ciftler = gom_mod._metinler(con, fid)
+            if not ciftler:
+                q.complete(con, job["job_id"])
+                continue
             report("Vektör dizini hazırlanıyor", yol, force=True)
             try:
-                ot = gom_oturumu
-                r = gom_mod.process_embed_job(
-                    con, job, kodla=lambda m: ot.encode(m, gorev="belge"))
+                sonuc = gom_oturumu.call(
+                    "gom", (gom_mod.model_yolu(), [t for _, t in ciftler]),
+                    timeout=min(1800, max(300, len(ciftler) * 5)),
+                    stop=stop if stop else None)
+                gom_mod.vektor_yaz(con, ciftler, sonuc["vektorler"])
+                q.complete(con, job["job_id"])
+                r = "done"
+            except InterruptedError:
+                con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?",
+                            (job["job_id"],))
+                con.commit()
+                stats["result"] = "cancelled"
+                break
+            except TimeoutError:
+                r = q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
+                gom_oturumu = None
             except Exception:
                 r = q.fail(con, job["job_id"], "EMBED_FAILED")
+                gom_oturumu = None
             stats["embed_done"] += 1 if r == "done" else 0
             if r in ("retry", "dead"):
                 stats["failed"] += 1
             report("Vektör işleniyor", yol, r)
+        if gom_oturumu is not None:
+            gom_oturumu.kill()
         # --- kopya hash (arka plan; sinirli; kaynagi bir kez daha okur) ---
         try:
             from . import dup as dup_mod

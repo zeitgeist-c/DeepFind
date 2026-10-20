@@ -14,6 +14,11 @@ from . import job_queue as q
 TOPLU = 16
 
 
+def model_yolu() -> str:
+    """Uretim model dosyasi."""
+    return embed_mod._varsayilan_model_yolu()
+
+
 def model_var_mi(yol: str | None = None) -> bool:
     """Uretim modeli diskte mi? Yoksa gom kuyrugu kurulmaz (FTS aynen)."""
     import os
@@ -36,15 +41,14 @@ def _metinler(con, file_id: int) -> list[tuple[int, str]]:
     return ciftler
 
 
-def isle_dosya(con, file_id: int, kodla) -> int:
-    """kodla(metinler) -> (n,256) float32. Donus: vektor yazilan segment."""
-    ciftler = _metinler(con, file_id)
-    if not ciftler:
-        return 0
+def vektor_yaz(con, ciftler: list[tuple[int, str]], v) -> int:
+    """Dagit: chunk vektorlerini segmentte ortala, birimle, yaz. Donus: segment."""
+    import numpy as np
+
+    v = np.asarray(v, dtype=np.float32)
     ids = sorted({s for s, _ in ciftler})
     con.execute(
         f"DELETE FROM embeddings WHERE seg_id IN ({','.join('?' * len(ids))})", ids)
-    v = np.asarray(kodla([t for _, t in ciftler]), dtype=np.float32)
     toplam = np.zeros((len(ids), v.shape[1]), dtype=np.float64)
     sayac = np.zeros(len(ids), dtype=np.int64)
     sira = {s: i for i, s in enumerate(ids)}
@@ -62,6 +66,14 @@ def isle_dosya(con, file_id: int, kodla) -> int:
             (seg_id, embed_mod.MODEL_VER, embed_mod.DIM, birim.tobytes()))
     con.commit()
     return len(ids)
+
+
+def isle_dosya(con, file_id: int, kodla) -> int:
+    """kodla(metinler) -> (n,256) float32. Donus: vektor yazilan segment."""
+    ciftler = _metinler(con, file_id)
+    if not ciftler:
+        return 0
+    return vektor_yaz(con, ciftler, kodla([t for _, t in ciftler]))
 
 
 def process_embed_job(con, job: dict, kodla=None) -> str:

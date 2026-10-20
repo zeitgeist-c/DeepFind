@@ -5,6 +5,7 @@ import os
 import sys
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -39,6 +40,28 @@ def test_sabitler():
 
 
 GERCEK = os.environ.get("EVRAKCI_GERCEK_MODEL") == "1"
+
+
+def test_isci_oturumu_yoksa_none(tmp_path):
+    from evrakci import embed
+
+    assert embed.hazir_oturum(str(tmp_path / "yok.onnx")) is None
+
+
+@pytest.mark.skipif("not _model_var()")
+def test_isci_oturumu_onbellekler():
+    from evrakci import embed
+
+    ot = embed.isit_oturumu()
+    assert ot is not None
+    assert embed.hazir_oturum() is ot
+    assert embed.isit_oturumu() is ot
+
+
+def _model_var() -> bool:
+    from evrakci import gom
+
+    return gom.model_var_mi()
 
 
 def test_gercek_model_dumani():
