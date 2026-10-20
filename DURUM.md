@@ -1,5 +1,18 @@
 # Evrakçı — DURUM
 
+## 0.9.0 sürüm kaydı: yerel vektör araması (hibrit FTS + EmbeddingGemma-2) — 21.10.2026
+
+Sürüm yükseltmesi: `0.8.1 → 0.9.0` (yeni yetenek; `src/evrakci/version.py` tek
+kanonik kaynak). İçerik: EmbeddingGemma-2 metin kulesi (ONNX + DirectML, 271M),
+hibrit arama, gömme kuyruğu + alt süreç yalıtımı, model dağıtıcısı.
+
+- **Hız (ölçülen):** GPU 3 belge 86 ms, CPU yedek 280 ms; tam model CPU'da elendi.
+- **Doğrulama:** 294 test (272 → 294), paket kapısı 26/26, donmuş EXE dumanı OK.
+- **Paket:** `Evrakçı-0.9.0.zip` = 216.371.605 bayt, SHA-256
+  `3aafa8ae…3918ca7242`. Model ilk açılışta indirilir (1 GB, sha sabitli).
+- **Yayın:** `zeitgeist-c/Evrakci-Releases` → v0.9.0 (Latest). Ayrıntı: `TESLIM-0.9.0.md`.
+- Sınırlar: "AI ile ara" (Gemini) aynen durur; model yokken arama FTS'ye düşer.
+
 ## 0.8.1 sürüm kaydı: DMS arayüz desenleri (M1–M5) — 17.10.2026
 
 Sürüm yükseltmesi: `0.8.0 → 0.8.1` (yalnız yama hanesi; `src/evrakci/version.py`
