@@ -157,6 +157,9 @@ def ensure_current(con, progress=None) -> None:
     if version is None or version < 7:
         schema.ensure_schema(con)
         ensure_v5(con)
+    # A version marker does not prove optional vector objects exist in an
+    # older vault. Repair additively without rebuilding its existing FTS.
+    schema.ensure_embeddings(con)
     ensure_v8(con)
     archive = con.execute("SELECT v FROM schema_meta WHERE k='archive_version'").fetchone()
     if not archive or archive[0] != '034':

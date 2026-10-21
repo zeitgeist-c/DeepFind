@@ -4,7 +4,7 @@ Windows için yerel, şifreli belge arama uygulaması. PDF, XLSX/XLS, DOCX, ODT,
 
 ## Kurulum ve güncelleme
 
-`Evrakçı-0.10.3.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
+`Evrakçı-0.10.4.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
 
 Ayarlar → Güncellemeler ile yeni sürüm denetlenir; açılıştan sonra günde bir kez de sessiz denetim yapılır. İndirme SHA-256 ile, kurulum EXE'si sürüm kaydıyla doğrulanır. Güncelleme sabit AppId üzerinden aynı kurulumu yükseltir; kısayollar ve kaldırıcı aynı uygulamayı gösterir. UAC onayı istenebilir. Başarısız kurulumda önceki programı yeniden açma yolu vardır; canlı kasa kurulum tarafından değiştirilmez.
 
@@ -56,4 +56,6 @@ $env:PYTHONPATH = 'src'
 .\.venv\Scripts\python.exe eval/package_check.py
 ```
 
-Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.3.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
+Eski kasalarda eksik embedding tablosu ve indeksi otomatik hazırlanır; metin indeksi ve mevcut vektörler korunur. Eksik veya yanlış boyutlu vektörler normal taramada tamamlanır. Kalıcı başarısız işler varken tarama tamamlandı sayılmaz.
+
+Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.4.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.

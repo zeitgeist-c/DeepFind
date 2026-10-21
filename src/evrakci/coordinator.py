@@ -467,6 +467,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         migrate.ensure_v8(con)
     migrate.ensure_archive(con)
     with (nullcontext() if lock_held else ScanLock(vault_path)):
+        from .schema import ensure_embeddings
+        ensure_embeddings(con)
         if not prepared:
             con.execute("DELETE FROM scan_manifest WHERE run_id IN (SELECT run_id FROM scan_runs "
                         "WHERE finished_at IS NOT NULL AND coalesce(result,'')<>'manifest')")
@@ -724,12 +726,12 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         if ocr_session is not None:
             ocr_session.kill()
         if gom_mod.model_var_mi():
-            from .embed import MODEL_VER
+            from .embed import MODEL_VER, DIM
             rows = con.execute("SELECT f.file_id,f.size,f.mtime_ns FROM files f "
                 "JOIN scan_selected sel ON sel.file_id=f.file_id WHERE EXISTS("
                 "SELECT 1 FROM segments s LEFT JOIN embeddings e ON e.seg_id=s.seg_id "
-                "AND e.model_ver=? WHERE s.file_id=f.file_id AND s.kind NOT IN ('name_only','context') "
-                "AND e.seg_id IS NULL)", (MODEL_VER,)).fetchall()
+                "AND e.model_ver=? AND e.dim=? WHERE s.file_id=f.file_id AND s.kind NOT IN ('name_only','context') "
+                "AND e.seg_id IS NULL)", (MODEL_VER,DIM)).fetchall()
             for fid, size, modified in rows:
                 q.enqueue(con, fid, q.signature_of(size,modified), kind='embed')
             con.commit()
@@ -792,6 +794,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             pending = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
                                   "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
             incomplete=con.execute("SELECT count(*) FROM files WHERE file_id IN (SELECT file_id FROM scan_selected) AND index_status NOT IN ('ok','excluded')").fetchone()[0]
+            incomplete = max(incomplete, documents.total-documents.done)
             stats['incomplete']=incomplete
             stats["complete"] = not pending and not stats["failed"] and not stats["ocr_failed"] and not incomplete
             stats["result"] = "complete" if stats["complete"] else "partial"

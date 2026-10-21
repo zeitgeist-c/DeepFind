@@ -6,6 +6,14 @@ kolonu ve docs_fts_folded tablosu kaldirildi — her belgede 1 ham kopya + FTS.
 """
 from __future__ import annotations
 
+EMBEDDING_TABLE_SQL = """CREATE TABLE IF NOT EXISTS embeddings(
+  seg_id INTEGER PRIMARY KEY REFERENCES segments(seg_id) ON DELETE CASCADE,
+  model_ver TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  vec BLOB NOT NULL
+)"""
+EMBEDDING_INDEX_SQL = 'CREATE INDEX IF NOT EXISTS idx_embeddings_ver ON embeddings(model_ver)'
+
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS schema_meta(k TEXT PRIMARY KEY, v TEXT);
@@ -39,14 +47,18 @@ CREATE TRIGGER IF NOT EXISTS seg_ad AFTER DELETE ON segments BEGIN
   INSERT INTO docs_fts(docs_fts, rowid, label, raw_text)
   VALUES ('delete', old.seg_id, fold(old.label), fold(old.raw_text));
 END;
-CREATE TABLE IF NOT EXISTS embeddings(
-  seg_id INTEGER PRIMARY KEY REFERENCES segments(seg_id) ON DELETE CASCADE,
-  model_ver TEXT NOT NULL,
-  dim INTEGER NOT NULL,
-  vec BLOB NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_embeddings_ver ON embeddings(model_ver);
 """
+SCHEMA_SQL += EMBEDDING_TABLE_SQL + ';' + EMBEDDING_INDEX_SQL + ';'
+
+
+def ensure_embeddings(con) -> None:
+    """Older current-version vaults may never have had the optional vector table.
+
+    Add only missing objects; preserve vectors, segments and FTS. The caller
+    owns the transaction, unlike executescript which implicitly commits it.
+    """
+    con.execute(EMBEDDING_TABLE_SQL)
+    con.execute(EMBEDDING_INDEX_SQL)
 
 SCHEMA_VERSION = "3"
 

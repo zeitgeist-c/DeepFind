@@ -1,5 +1,14 @@
 # Evrakçı — DURUM
 
+## 0.10.4: eksik embedding şeması ve tarama doğruluğu — 21.10.2026
+
+Güncel şema işaretli eski kasalarda bulunmayabilen embeddings tablosu ve
+indeksi eklemeli hazırlanır; FTS ve mevcut vektörler korunur. Kalıcı başarısız
+belgeler genel tarama sonucunda da eksik sayılır. Yanlış boyutlu vektörler
+yeniden üretilir. Başarısız regresyonla yeniden üretim ve şifreli kasa testleri
+yapıldı. Paket kabulü eski kasa onarımından sonra gerçek vektör yazımını da
+sınar. Kanıt ve canlı kasa sınırı TESLIM-0.10.4.md içindedir.
+
 ## 0.10.3: taramada belge sayımı ve ilerleme — 21.10.2026
 
 Seçili kaynakların tümünde önce envanter çıkarılır; içerik/OCR/embedding sonra
