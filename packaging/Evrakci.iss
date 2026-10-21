@@ -71,6 +71,12 @@ Source: "..\build\embedding\embeddinggemma-2-Q8_0.gguf"; DestDir: "{#ModelDir}";
 #endif
 #endif
 
+[InstallDelete]
+#ifndef TestPrevious
+; Owned legacy keyword-search runtime; no document/model/data folders.
+Type: filesandordirs; Name: "{app}\_internal\rapidfuzz"
+#endif
+
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppName}-{#AppVersion}.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}-{#AppVersion}.exe"; Tasks: desktopicon

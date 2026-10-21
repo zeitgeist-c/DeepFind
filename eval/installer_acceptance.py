@@ -36,6 +36,7 @@ def main():
         compile_setup('/DTestPrevious')
         install('0.10.4')
         assert (target/'Evrakçı-0.10.4.exe').is_file()
+        assert (target/'_internal/rapidfuzz').is_dir()
         # The small package must refuse before replacing any app file.
         compile_setup('/DUpdatePackage')
         install(__version__, success=False)
@@ -55,6 +56,8 @@ def main():
         assert not legacy.exists()
         assert not (target/'Evrakçı-0.10.4.exe').exists()
         assert not (target/'Evrakçı-0.10.4.bat').exists()
+        assert not (target/'_internal/rapidfuzz').exists()
+        result['obsolete_keyword_runtime_removed']=True
         assert sentinel.read_text(encoding='utf-8')=='preserve' and unknown.is_file()
         result['legacy_model_moved_and_old_launchers_removed']=True
         install(__version__)
