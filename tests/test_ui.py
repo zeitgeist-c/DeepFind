@@ -1112,6 +1112,33 @@ def test_015_lock_clears_dialog(pencere, monkeypatch):
     assert not pencere.scan_log.toPlainText()
 
 
+def test_scan_has_known_total_two_percentages_and_phase_eta(pencere):
+    from types import SimpleNamespace
+    import datetime, time
+    pencere._scan_progress({'found':7,'inventory_ready':False})
+    assert pencere.tarama_bar.maximum()==0
+    assert pencere.scan_metrics['documents_remaining'].text()=='—'
+    data={'inventory_ready':True,'inventory_complete':True,'found':10,'documents_total':10,
+          'documents_done':4,'phase_key':'content','phase_done':8,'phase_total':10,
+          'phase_elapsed':40,'stage':'İçerik okunuyor','path':'sentetik.txt'}
+    pencere.scan_started=datetime.datetime.now();pencere._scan_elapsed=time.monotonic()-60
+    pencere.isci=SimpleNamespace(snapshot=lambda:data)
+    try:
+        pencere._scan_clock_update()
+        assert pencere.tarama_bar.value()==40 and pencere.scan_phase_bar.value()==80
+        assert pencere.scan_metrics['documents_remaining'].text()=='6'
+        assert '4 / 10' in pencere.scan_progress_detail.text()
+        assert 'kalan ~0 dk 10 sn' in pencere.scan_clock.text()
+    finally:pencere.isci=None
+
+
+def test_inaccessible_inventory_is_labelled_as_partial(pencere):
+    pencere._scan_progress({'inventory_ready':True,'inventory_complete':False,
+        'documents_total':10,'documents_done':10,'found':10,'stage':'Son kontroller'})
+    assert 'Envanter eksik' in pencere.scan_progress_detail.text()
+    assert 'Bilinen belgeler' in pencere.tarama_bar.format()
+
+
 def test_015_without_tray(pencere):
     tray = pencere.tepsi
     pencere.tepsi = None

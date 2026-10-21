@@ -1,5 +1,14 @@
 # Evrakçı — DURUM
 
+## 0.10.3: taramada belge sayımı ve ilerleme — 21.10.2026
+
+Seçili kaynakların tümünde önce envanter çıkarılır; içerik/OCR/embedding sonra
+başlar. Sabit toplam üzerinden tamamlanan/kalan belge ve yüzde gösterilir.
+Ayrı aşama çubuğu ve aşamanın hızından kalan süre tahmini bulunur; duraklama
+tahmini şişirmez. Erişilemeyen klasör varsa envanter eksik olarak etiketlenir.
+Sayım görüntüsü tekrar kullanılır ve işlem sonunda temizlenir. Kanıt ve
+kabul sınırları TESLIM-0.10.3.md içindedir.
+
 ## 0.10.2: her açılışta indeks yeniden kurma hatası — 21.10.2026
 
 Kök neden: ensure_current → ensure_v8 güncel 9 sürümünü 8 yapıyor, ensure_v9

@@ -31,7 +31,7 @@ def source(path):
     os.utime(path, (old, old))
 
 
-def test_discovery_processes_before_all_files_found_and_scopes_queue(tmp_path, monkeypatch):
+def test_discovery_counts_before_processing_and_scopes_queue(tmp_path, monkeypatch):
     root = tmp_path / "selected"
     for i in range(40):
         source(root / f"{i}.xlsx")
@@ -52,7 +52,8 @@ def test_discovery_processes_before_all_files_found_and_scopes_queue(tmp_path, m
         monkeypatch.setattr(coordinator, '_process_job', process)
         result = coordinator.run_scan(con, db, str(root), progress=snapshots.append)
         assert result['done'] == 40 and result['complete']
-        assert min(discovered_when_processing) < 40
+        # 0.10.3: the requested fixed denominator requires full inventory first.
+        assert discovered_when_processing and set(discovered_when_processing) == {40}
         assert snapshots[-1]['done'] == 40
         assert con.execute("SELECT status FROM jobs WHERE file_id=?", (fid,)).fetchone()[0] == 'pending'
         assert not con.execute("SELECT 1 FROM segments WHERE file_id=?", (fid,)).fetchone()

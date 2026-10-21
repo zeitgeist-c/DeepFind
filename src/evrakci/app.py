@@ -154,15 +154,35 @@ class TaramaIsci(QObject):
         self._progress_lock = threading.Lock()
         self._latest = {}
         self._last_emit = 0.0
+        self._document_total = None
+        self._inventory_complete = False
+        self._phase_key = None
+        self._phase_started = 0.0
+        self._paused_seconds = 0.0
+        self._phase_pause_base = 0.0
+        self._pause_started = None
 
     def snapshot(self):
         with self._progress_lock:
-            return dict(self._latest)
+            if not self._latest: return {}
+            data = dict(self._latest)
+            current_pause = time.monotonic()-self._pause_started if self._pause_started is not None else 0
+            data['phase_elapsed'] = max(0,time.monotonic()-self._phase_started-(self._paused_seconds-self._phase_pause_base)-current_pause)
+            return data
 
     def report_progress(self, data, totals):
         combined = dict(data, **{k: data.get(k, 0) + totals.get(k, 0)
-                               for k in ("found", "done", "failed", "ocr_done", "ocr_failed", "skipped", "pending")})
+                               for k in ("found", "done", "failed", "ocr_done", "ocr_failed", "skipped", "pending", "documents_done")})
         with self._progress_lock:
+            if self._document_total is not None:
+                combined['inventory_ready'] = True
+                combined['inventory_complete'] = self._inventory_complete
+                combined['documents_total'] = self._document_total
+                combined['found'] = self._document_total
+            if data.get('phase_key') != self._phase_key:
+                self._phase_key = data.get('phase_key')
+                self._phase_started = time.monotonic()
+                self._phase_pause_base = self._paused_seconds
             self._latest = combined
         now = time.monotonic()
         if now - self._last_emit >= 0.2:
@@ -172,10 +192,13 @@ class TaramaIsci(QObject):
     def stop_requested(self):
         waiting = self.paused.is_set() and not self._dur.is_set()
         if waiting:
+            self._pause_started = time.monotonic()
             self.duraklama.emit(True)
         while self.paused.is_set() and not self._dur.is_set():
             time.sleep(0.1)
         if waiting:
+            self._paused_seconds += time.monotonic()-self._pause_started
+            self._pause_started = None
             self.duraklama.emit(False)
         return self._dur.is_set()
 
@@ -186,42 +209,68 @@ class TaramaIsci(QObject):
         try:
             from .migrate import ensure_current
             con = vault.open_vault(self.kasa_yolu, self._sifre)
+            inventories = []
             try:
                 ensure_current(con)
                 toplam = {}
                 all_complete = True
-                for kok in self.kokler:
-                    if self._dur.is_set():
-                        break
-                    st = coordinator.run_scan(con, self.kasa_yolu, kok,
-                                              stop=self.stop_requested, guarded=True,
-                                              progress=lambda data: self.report_progress(data, toplam))
-                    all_complete = all_complete and bool(st.get("complete"))
-                    for k, v in st.items():
-                        if isinstance(v, (int, float)):
-                            toplam[k] = toplam.get(k, 0) + v
-                    toplam["result"] = st.get("result", "")
-                toplam["complete"] = all_complete and not self._dur.is_set()
-                if not toplam["complete"] and toplam.get("result") == "complete":
-                    toplam["result"] = "partial"
-                if self._dur.is_set():
-                    toplam["result"] = "cancelled"
-                if not self._dur.is_set():
-                    self.ilerleme.emit(dict(self.snapshot(), stage="Arama sözlüğü güncelleniyor", path=""))
-                    try:
-                        rebuild_vocab(con)
-                    except Exception as error:
-                        diagnostics.record("vocabulary_error", type(error).__name__)
-                        toplam["complete"] = False
+                with coordinator.ScanLock(self.kasa_yolu):
+                    inventory_totals = {}
+                    for kok in self.kokler:
+                        if self._dur.is_set(): break
+                        st = coordinator.run_scan(con,self.kasa_yolu,kok,stop=self.stop_requested,
+                            guarded=True,inventory_only=True,fresh_inventory=True,lock_held=True,
+                            progress=lambda data:self.report_progress(data,inventory_totals))
+                        inventories.append((kok,st))
+                        inventory_totals['found'] = inventory_totals.get('found',0)+st['found']
+                    if not self._dur.is_set():
+                        self._document_total = sum(st['found'] for _,st in inventories)
+                        self._inventory_complete = all(st['scope_complete'] for _,st in inventories)
+                        for kok, inventory in inventories:
+                            if self._dur.is_set(): break
+                            st = coordinator.run_scan(con,self.kasa_yolu,kok,stop=self.stop_requested,
+                                guarded=True,prepared=inventory,lock_held=True,
+                                progress=lambda data:self.report_progress(data,toplam))
+                            all_complete = all_complete and bool(st.get('complete'))
+                            for key in ('found','done','changed','unstable','failed','missing','ocr_done',
+                                        'ocr_deferred','ocr_failed','embed_done','hashed','skipped','pending','documents_done'):
+                                toplam[key] = toplam.get(key,0)+st.get(key,0)
+                            toplam['result'] = st.get('result','')
+                    else:
+                        toplam.update(inventory_totals)
+                    toplam['documents_total'] = self._document_total or 0
+                    toplam['inventory_ready'] = self._document_total is not None
+                    toplam['inventory_complete'] = self._inventory_complete
+                    toplam["complete"] = all_complete and not self._dur.is_set()
+                    if not toplam["complete"] and toplam.get("result") == "complete":
                         toplam["result"] = "partial"
-                        con.execute(
-                            "UPDATE scan_runs SET result='partial', error_code='VOCAB_ERROR' "
-                            "WHERE run_id=(SELECT max(run_id) FROM scan_runs)"
-                        )
-                        con.commit()
+                    if self._dur.is_set():
+                        toplam["result"] = "cancelled"
+                    if not self._dur.is_set():
+                        self.report_progress(dict(self.snapshot(),stage="Arama sözlüğü güncelleniyor",path="",phase_key='dictionary',phase_done=0,phase_total=0),{})
+                        try:
+                            rebuild_vocab(con)
+                        except Exception as error:
+                            diagnostics.record("vocabulary_error", type(error).__name__)
+                            toplam["complete"] = False
+                            toplam["result"] = "partial"
+                            con.execute(
+                                "UPDATE scan_runs SET result='partial', error_code='VOCAB_ERROR' "
+                                "WHERE run_id=(SELECT max(run_id) FROM scan_runs)"
+                            )
+                            con.commit()
                 diagnostics.record("scan_finished", toplam.get("result", "unknown"))
                 self.bitti.emit(dict(toplam))
             finally:
+                try:
+                    for _, inventory in inventories:
+                        rid = inventory['run_id']
+                        con.execute('DELETE FROM scan_manifest WHERE run_id=?', (rid,))
+                        con.execute('UPDATE scan_runs SET finished_at=?,result=? WHERE run_id=? AND finished_at IS NULL',
+                                    (int(time.time()),'cancelled' if self._dur.is_set() else 'interrupted',rid))
+                    con.commit()
+                except Exception:
+                    diagnostics.record('scan_inventory_cleanup_failed')
                 con.close()
         except Exception as e:  # noqa: BLE001 - worker hatasi arayuze tasinir
             diagnostics.record("scan_error", type(e).__name__)
@@ -2462,9 +2511,20 @@ class AnaPencere(QMainWindow):
         self.popup_scope.setMinimumWidth(0)
         popup.addWidget(self.popup_scope)
         self.tarama_bar = QProgressBar()
+        self.tarama_bar.setStyleSheet('QProgressBar { min-height: 24px; max-height: 24px; text-align: center; }')
+        self.tarama_bar.setTextVisible(True)
+        self.tarama_bar.setFormat('Belge tamamlanma: %p%')
         self.tarama_bar.setRange(0, 0)
         self.tarama_bar.hide()
         popup.addWidget(self.tarama_bar)
+        self.scan_phase_bar = QProgressBar()
+        self.scan_phase_bar.setStyleSheet('QProgressBar { min-height: 20px; max-height: 20px; text-align: center; }')
+        self.scan_phase_bar.setTextVisible(True)
+        self.scan_phase_bar.hide()
+        popup.addWidget(self.scan_phase_bar)
+        self.scan_progress_detail = label('', 'ikincil')
+        self.scan_progress_detail.setWordWrap(True)
+        popup.addWidget(self.scan_progress_detail)
         detail_card, detail_layout = card()
         self.scan_current = label("Tarama ayrıntıları burada görünecek.", "subheading")
         self.scan_current.setTextFormat(Qt.PlainText)
@@ -2477,7 +2537,7 @@ class AnaPencere(QMainWindow):
         counts_grid = QGridLayout()
         counts_grid.setSpacing(0)
         self.scan_metrics = {}
-        for i, (key, caption) in enumerate((("found", "Bulunan"), ("done", "İşlenen"), ("pending", "Bekleyen"),
+        for i, (key, caption) in enumerate((("found", "Toplam / bulunan"), ('documents_done','Tamamlanan belge'), ('documents_remaining','Kalan belge'), ("done", "İçeriği okunan"), ("pending", "Bekleyen iş"),
                                            ("skipped", "Güncel / atlanan"), ("ocr_done", "OCR tamamlanan"), ("failed", "İşlem hatası"), ("ocr_failed", "OCR hatası"))):
             metric = QWidget()
             ml = QVBoxLayout(metric)
@@ -2645,6 +2705,9 @@ class AnaPencere(QMainWindow):
         self.isci_thread.start()
         diagnostics.record("scan_started", "automatic" if automatic else "manual")
         self.tarama_bar.show()
+        self.tarama_bar.setRange(0,0)
+        self.scan_progress_detail.setText('Dosya listesi oluşturuluyor…')
+        self.scan_phase_bar.hide()
         self.duraklat_btn.setText("Duraklat")
         self.duraklat_btn.setEnabled(True)
         self.iptal_btn.setEnabled(True)
@@ -2668,22 +2731,62 @@ class AnaPencere(QMainWindow):
             return False
 
     def _scan_clock_update(self):
+        data = {}
         if self.isci is not None:
             data = self.isci.snapshot()
             if data:
                 self._scan_progress(data)
         if self.scan_started:
             seconds = int(time.monotonic() - self._scan_elapsed)
-            self.scan_clock.setText(f"Başlangıç {self.scan_started:%H:%M:%S} • Geçen süre {seconds // 60:02d}:{seconds % 60:02d}")
+            text = f"Başlangıç {self.scan_started:%H:%M:%S} • Geçen süre {seconds // 60:02d}:{seconds % 60:02d}"
+            done,total = data.get('phase_done',0),data.get('phase_total',0)
+            elapsed = data.get('phase_elapsed',0)
+            if data.get('inventory_ready') and total:
+                text += f'\nBu aşama: {done}/{total} iş'
+                if done and elapsed > 2 and done < total:
+                    remaining = int(elapsed/done*(total-done))
+                    text += f' • bu aşamada kalan ~{remaining//60} dk {remaining%60:02d} sn'
+                elif done < total:
+                    text += ' • kalan süre hesaplanıyor…'
+            elif data.get('phase_key') in ('finalize','dictionary'):
+                text += '\nSon kontroller sürüyor.'
+            self.scan_clock.setText(text)
 
     def _scan_progress(self, data):
         if self._locked:
             return
+        data = dict(data)
+        ready = data.get('inventory_ready',False)
+        total,done = data.get('documents_total',0),data.get('documents_done',0)
+        data['documents_remaining'] = max(0,total-done) if ready else 0
         self._scan_metrics_update(data)
+        if ready:
+            self.tarama_bar.setRange(0,100)
+            percentage = min(100,int(done*100/total)) if total else 0
+            self.tarama_bar.setValue(percentage)
+            text = f'Tamamlanan {done:,} / {total:,} belge • Kalan {max(0,total-done):,}'
+            if not data.get('inventory_complete',True):
+                text = 'Envanter eksik • bilinen belgeler: ' + text
+                self.tarama_bar.setFormat('Bilinen belgeler: %p%')
+            else:
+                self.tarama_bar.setFormat('Belge tamamlanma: %p%')
+            self.scan_progress_detail.setText(text)
+            if getattr(self,'_scan_status','') == 'running':
+                self.tarama_bilgi.setText(f'%{percentage} • {text}')
+        else:
+            self.tarama_bar.setRange(0,0)
+            self.scan_progress_detail.setText(f"Dosya listesi oluşturuluyor • {data.get('found',0):,} belge bulundu. Toplam henüz kesinleşmedi.")
+        phase_done,phase_total = data.get('phase_done',0),data.get('phase_total',0)
+        self.scan_phase_bar.setVisible(bool(ready and phase_total))
+        if ready and phase_total:
+            caption = {'content':'İçerik okuma','ocr':'OCR','embedding':'Vektör dizini'}.get(data.get('phase_key'),'Bu aşama')
+            self.scan_phase_bar.setRange(0,100)
+            self.scan_phase_bar.setFormat(caption + ': %p%')
+            self.scan_phase_bar.setValue(min(100,int(phase_done*100/phase_total)))
         self._scan_stage = data.get("stage", "")
         path = data.get("path", "")
         self.scan_current.setText(self._scan_stage + "\n" + path)
-        self.popup_status.setText(self.tarama_bilgi.text())
+        self.popup_status.setText(self._scan_stage)
         self.scan_counts.setText(f"Bulunan {data.get('found', 0):,} • İşlenen {data.get('done', 0):,} • "
                                  f"Bekleyen {data.get('pending', 0):,} • OCR {data.get('ocr_done', 0):,} • "
                                  f"Güncel/atlanan {data.get('skipped', 0):,} • İşlem hatası {data.get('failed', 0):,} • OCR hatası {data.get('ocr_failed', 0):,}")
@@ -2714,11 +2817,11 @@ class AnaPencere(QMainWindow):
     def _tara_bitti(self, st):
         if self.con is None or self._locked:
             return
-        self.tarama_bar.hide()
         self.scan_timer.stop()
         self._scan_clock_update()
         result = {"cancelled": "Tarama iptal edildi", "complete": "Tarama tamamlandı",
                   "partial": "Tarama kısmen tamamlandı"}.get(st.get("result"), "Tarama durdu")
+        self._scan_progress(dict(st,stage=result))
         self._scan_metrics_update(st)
         self.tarama_bilgi.setText(result)
         self.popup_status.setText(result)
@@ -2742,6 +2845,7 @@ class AnaPencere(QMainWindow):
             return
         self.scan_timer.stop()
         self.tarama_bar.hide()
+        self.scan_phase_bar.hide()
         self.tarama_bilgi.setText("Tarama tamamlanamadı. Bugün otomatik tekrar denenmeyecek.")
         self.scan_log.appendPlainText(msg)
         self.popup_status.setText("Tarama tamamlanamadı.")
@@ -3681,8 +3785,11 @@ class AnaPencere(QMainWindow):
         self.activateWindow()
 
     def _scan_metrics_update(self, data):
+        data = dict(data)
+        if data.get('inventory_ready'):
+            data['documents_remaining'] = max(0,data.get('documents_total',0)-data.get('documents_done',0))
         for key, value in self.scan_metrics.items():
-            value.setText(f"{data.get(key, 0):,}")
+            value.setText('—' if key in ('documents_done','documents_remaining') and not data.get('inventory_ready') else f"{data.get(key, 0):,}")
 
     def _scan_show(self):
         if self._locked:
@@ -3814,6 +3921,10 @@ class AnaPencere(QMainWindow):
         self.scan_counts.clear()
         for value in self.scan_metrics.values():
             value.clear()
+        self.scan_progress_detail.clear()
+        self.tarama_bar.hide()
+        self.tarama_bar.setValue(0)
+        self.scan_phase_bar.hide()
         self.scan_clock.clear()
         self.scope_path.clear()
         self.scope_sources.clear()

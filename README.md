@@ -4,7 +4,7 @@ Windows için yerel, şifreli belge arama uygulaması. PDF, XLSX/XLS, DOCX, ODT,
 
 ## Kurulum ve güncelleme
 
-`Evrakçı-0.10.2.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
+`Evrakçı-0.10.3.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
 
 Ayarlar → Güncellemeler ile yeni sürüm denetlenir; açılıştan sonra günde bir kez de sessiz denetim yapılır. İndirme SHA-256 ile, kurulum EXE'si sürüm kaydıyla doğrulanır. Güncelleme sabit AppId üzerinden aynı kurulumu yükseltir; kısayollar ve kaldırıcı aynı uygulamayı gösterir. UAC onayı istenebilir. Başarısız kurulumda önceki programı yeniden açma yolu vardır; canlı kasa kurulum tarafından değiştirilmez.
 
@@ -42,6 +42,8 @@ Varsayılan kasa `%LOCALAPPDATA%\Evrakci\Data\evrakci.db`, yedekler `%LOCALAPPDA
 
 ## Geliştirme
 
+Belge taraması önce seçili kaynakların tamamını sayar, sonra içerik işlemlerine geçer. Tarama ayrıntıları toplam/tamamlanan/kalan belgeyi ve yüzdeyi gösterir. İçerik okuma, OCR ve vektör aşamalarında ayrı ilerleme ve aşamaya özgü yaklaşık kalan süre görünür. Sayım bitmeden yüzde üretilmez; erişilemeyen klasörler varsa envanterin eksik olduğu belirtilir.
+
 Düzeltme sürümleri `0.10.1 → 0.10.2 → 0.10.3` şeklinde ilerler.
 
 Sürümün tek kaynağı `src/evrakci/version.py` dosyasıdır. Python bağımlılıkları `pyproject.toml` içindedir. `packaging/fetch_engine.py` resmî model/motor sürümlerini proje `build/embedding` alanına indirir ve özetlerini doğrular. BF16 yalnız geliştirici karşılaştırması içindir; dağıtıma Q8_0 girer.
@@ -54,4 +56,4 @@ $env:PYTHONPATH = 'src'
 .\.venv\Scripts\python.exe eval/package_check.py
 ```
 
-Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.2.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
+Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.3.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.

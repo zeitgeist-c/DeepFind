@@ -155,6 +155,12 @@ def run(report_path):
             pen._tara_baslat()
             assert pen.scan_dialog.isVisible()
             worker = pen.isci
+            pen._tara_duraklat()
+            pause_deadline = time.monotonic() + 15
+            while pen._scan_status != 'paused':
+                app.processEvents();time.sleep(.01)
+                assert time.monotonic() < pause_deadline
+            pen._tara_duraklat()
             pen.scan_dialog.close()
             pen._tara_baslat()
             assert pen.isci is worker and pen.scan_dialog.isVisible()
@@ -166,6 +172,11 @@ def run(report_path):
             assert pen.tara_btn.text() == "Şimdi tara"
             assert not pen.scan_dialog.isModal()
             assert pen.scan_history.count() > 0
+            snapshot = worker.snapshot()
+            assert snapshot['inventory_ready'] and snapshot['documents_total'] > 0
+            assert 0 <= snapshot['documents_done'] <= snapshot['documents_total']
+            assert pen.scan_metrics['documents_remaining'].text() == f"{snapshot['documents_total']-snapshot['documents_done']:,}"
+            assert pen.tarama_bar.value() == int(snapshot['documents_done']*100/snapshot['documents_total'])
             checkpoint('archive-file-list-image-ocr')
             from .app import EKRANLAR
             pen.nav.setCurrentRow(EKRANLAR.index('Taranmış Evraklar'))
@@ -307,7 +318,8 @@ def run(report_path):
                                            'search-workbench-local-model-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration', 'root-remove-worker', 'exclusion-worker',
                                            'vektor-model-durumu', 'real-semantic-search', 'model-process-closed-on-lock',
-                                           'startup-index-once', 'startup-counted-progress'])
+                                           'startup-index-once', 'startup-counted-progress',
+                                           'scan-inventory-and-percentages', 'scan-pause-resume'])
     except Exception as error:
         import traceback
         report["stage"] = current_stage

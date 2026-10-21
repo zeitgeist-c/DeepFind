@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import time
+from contextlib import nullcontext
 
 from . import exclusions as exc
 from . import extract as ex
@@ -453,7 +454,8 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
     return "done"
 
 
-def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None, limit=None) -> dict:
+def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None, limit=None,
+             *, inventory_only=False, prepared=None, lock_held=False, fresh_inventory=False) -> dict:
     """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi.
     limit: bu calistirmada en fazla kac dosya islenir (kalan is pending kalir)."""
     nz.install(con)  # segment yazim/silim trigger'lari fold() UDF'ine bagli (v9)
@@ -464,20 +466,38 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
     if "updated_at" not in {r[1] for r in con.execute("PRAGMA table_info(scan_runs)")}:
         migrate.ensure_v8(con)
     migrate.ensure_archive(con)
-    with ScanLock(vault_path):
+    with (nullcontext() if lock_held else ScanLock(vault_path)):
+        if not prepared:
+            con.execute("DELETE FROM scan_manifest WHERE run_id IN (SELECT run_id FROM scan_runs "
+                        "WHERE finished_at IS NOT NULL AND coalesce(result,'')<>'manifest')")
+            con.commit()
         con.execute("CREATE TABLE IF NOT EXISTS scan_selected(file_id INTEGER PRIMARY KEY)")
         absroot = os.path.abspath(root)
-        run_id = find_resumable_run(con, absroot)
+        run_id = prepared['run_id'] if prepared else find_resumable_run(con, absroot)
         if run_id is None:
             run_id = con.execute(
                 "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (absroot, int(time.time()))
             ).lastrowid
             con.execute("DELETE FROM scan_selected")
             con.commit()
+        if fresh_inventory:
+            con.execute('DELETE FROM scan_selected')
+            con.execute('DELETE FROM scan_manifest WHERE run_id=?', (run_id,))
+            con.execute('DELETE FROM scan_scopes WHERE run_id=?', (run_id,))
+            con.commit()
         q.recover_running(con)
         rules = exc.list_rules(con)
-        all_complete = True
+        all_complete = prepared.get('scope_complete', True) if prepared else True
         seen = set()
+        documents = None
+        stats.update(inventory_ready=False, phase_key='inventory', phase_done=0, phase_total=0,
+                     documents_done=0, documents_total=0)
+        if prepared:
+            stats.update(prepared)
+            con.execute('DELETE FROM scan_selected')
+            con.execute('INSERT INTO scan_selected SELECT file_id FROM scan_manifest WHERE run_id=?', (run_id,))
+            seen = {r[0] for r in con.execute('SELECT f.path FROM files f JOIN scan_manifest m ON m.file_id=f.file_id WHERE m.run_id=?', (run_id,))}
+            con.commit()
         last_report = 0.0
         last_checkpoint = 0.0
 
@@ -502,6 +522,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             nonlocal last_report
             now = time.monotonic()
             checkpoint(stage)
+            if documents is not None:
+                stats.update(documents_total=documents.total, documents_done=documents.done)
             if progress and (force or now - last_report >= 0.2):
                 pending = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running')"
                                       " AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
@@ -510,6 +532,22 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
 
         def quota_full():
             return limit is not None and (stats["done"] + stats["ocr_done"]) >= limit
+
+        def phase(key, kind):
+            nonlocal phase_kind, phase_seen
+            phase_kind, phase_seen = kind, set()
+            stats.update(phase_key=key, phase_done=0, phase_total=con.execute(
+                "SELECT count(DISTINCT file_id) FROM jobs WHERE kind=? AND status IN ('pending','running') "
+                "AND file_id IN (SELECT file_id FROM scan_selected)", (kind,)).fetchone()[0])
+
+        phase_kind, phase_seen = '', set()
+
+        def phase_finished(file_id):
+            continuing = con.execute("SELECT 1 FROM jobs WHERE file_id=? AND kind=? AND "
+                "(status='running' OR (status='pending' AND not_before<=?)) LIMIT 1",
+                (file_id,phase_kind,q.now())).fetchone()
+            if not continuing: phase_seen.add(file_id)
+            stats['phase_done'] = len(phase_seen)
 
         def process_batch(cap=None):
             count = 0
@@ -537,6 +575,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                     stats[key] += int(r == outcome)
                 stats["failed"] += int(r in ("retry", "dead"))
                 count += 1
+                phase_finished(job['file_id'])
+                if documents is not None: documents.refresh(job['file_id'])
                 if r in ("retry", "dead"):
                     error = con.execute("SELECT error_code FROM jobs WHERE job_id=?", (job["job_id"],)).fetchone()
                     code = error[0] if error else ""
@@ -545,79 +585,93 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 else:
                     report("İçerik işleniyor", path, r)
 
-        # --- kesif (lazy, dizin bazinda kapsam) ---
-        run_started = con.execute(
-            "SELECT started_at FROM scan_runs WHERE run_id=?", (run_id,)).fetchone()[0] or 0
-        done_dirs = completed_dirs(con, run_id)
-        stack = [os.path.abspath(root)]
-        while stack:
-            if stop and stop():
-                break
-            cur = stack.pop()
-            if cur in done_dirs:
-                # Bitmis ve run baslangic saniyesinden eski klasore tekrar girilmez;
-                # ayni/ileri saniyede degismis klasor normal gezilir (yeni dosya kacmaz).
-                try:
-                    if os.stat(cur).st_mtime_ns // 1_000_000_000 < run_started:
-                        continue
-                except OSError:
-                    pass
-            report("Klasörler keşfediliyor", cur)
-            dir_ok = True
-            try:
-                with os.scandir(cur) as it:
-                    entries = list(it)
-            except OSError:
-                entries = []
-                dir_ok = False
-                stats["failed"] += 1
-                con.execute('INSERT OR REPLACE INTO scan_errors VALUES (?,?,?)',(run_id,cur,'ACCESS_DENIED'))
-                report("Klasöre erişilemiyor", cur, "erişim hatası", force=True)
-            con.execute("INSERT OR IGNORE INTO scan_scopes(run_id, dir, complete) VALUES (?,?,?)",
-                        (run_id, cur, 0))
-            for e in entries:
+        if not prepared:
+            # --- kesif (lazy, dizin bazinda kapsam) ---
+            run_started = con.execute(
+                "SELECT started_at FROM scan_runs WHERE run_id=?", (run_id,)).fetchone()[0] or 0
+            done_dirs = completed_dirs(con, run_id)
+            stack = [os.path.abspath(root)]
+            while stack:
                 if stop and stop():
-                    dir_ok = False
                     break
+                cur = stack.pop()
+                if cur in done_dirs and not fresh_inventory:
+                    # Bitmis ve run baslangic saniyesinden eski klasore tekrar girilmez;
+                    # ayni/ileri saniyede degismis klasor normal gezilir (yeni dosya kacmaz).
+                    try:
+                        if os.stat(cur).st_mtime_ns // 1_000_000_000 < run_started:
+                            continue
+                    except OSError:
+                        pass
+                report("Klasörler keşfediliyor", cur)
+                dir_ok = True
                 try:
-                    if exc.is_excluded(e.path, rules):
-                        stats["skipped"] += 1
-                        continue
-                    if e.stat(follow_symlinks=False).st_file_attributes & 0x400:
-                        continue  # Windows junction/reparse point izlenmez.
-                    if e.is_dir(follow_symlinks=False):
-                        if e.name in scan_mod.SKIP_DIRS or e.name.startswith("~$"):
-                            continue
-                        stack.append(e.path)
-                    elif e.is_file(follow_symlinks=False):
-                        if e.name.startswith("~$"):
-                            continue
-                        st = e.stat(follow_symlinks=False)
-                        ext = os.path.splitext(e.name)[1].lower()
-                        if ext not in scan_mod.SUPPORTED_EXTS and ext not in scan_mod.NAME_ONLY_EXTS:
-                            continue
-                        entry = scan_mod.Entry(e.path, e.name, ext, st.st_size, st.st_mtime_ns)
-                        if exc.is_excluded(entry.path, rules):
-                            continue
-                        seen.add(entry.path)
-                        if note_discovered(con, entry, commit=False) == "skipped":
-                            stats["skipped"] += 1
-                        stats["found"] += 1
-                        if stats["found"] % 32 == 0:
-                            con.commit()
-                            process_batch(8)
-                        report("Klasörler keşfediliyor", cur)
+                    with os.scandir(cur) as it:
+                        entries = list(it)
                 except OSError:
+                    entries = []
                     dir_ok = False
-                    stats['failed']+=1
-                    con.execute('INSERT OR REPLACE INTO scan_errors VALUES (?,?,?)',(run_id,e.path,'ACCESS_DENIED'))
-                    continue
-            if dir_ok:
-                con.execute("UPDATE scan_scopes SET complete=1 WHERE run_id=? AND dir=?", (run_id, cur))
-            else:
-                all_complete = False
-            con.commit()
-            process_batch(8)
+                    stats["failed"] += 1
+                    con.execute('INSERT OR REPLACE INTO scan_errors VALUES (?,?,?)',(run_id,cur,'ACCESS_DENIED'))
+                    report("Klasöre erişilemiyor", cur, "erişim hatası", force=True)
+                con.execute("INSERT OR IGNORE INTO scan_scopes(run_id, dir, complete) VALUES (?,?,?)",
+                            (run_id, cur, 0))
+                for e in entries:
+                    if stop and stop():
+                        dir_ok = False
+                        break
+                    try:
+                        if exc.is_excluded(e.path, rules):
+                            stats["skipped"] += 1
+                            continue
+                        if e.stat(follow_symlinks=False).st_file_attributes & 0x400:
+                            continue  # Windows junction/reparse point izlenmez.
+                        if e.is_dir(follow_symlinks=False):
+                            if e.name in scan_mod.SKIP_DIRS or e.name.startswith("~$"):
+                                continue
+                            stack.append(e.path)
+                        elif e.is_file(follow_symlinks=False):
+                            if e.name.startswith("~$"):
+                                continue
+                            st = e.stat(follow_symlinks=False)
+                            ext = os.path.splitext(e.name)[1].lower()
+                            if ext not in scan_mod.SUPPORTED_EXTS and ext not in scan_mod.NAME_ONLY_EXTS:
+                                continue
+                            entry = scan_mod.Entry(e.path, e.name, ext, st.st_size, st.st_mtime_ns)
+                            if exc.is_excluded(entry.path, rules):
+                                continue
+                            seen.add(entry.path)
+                            if note_discovered(con, entry, commit=False) == "skipped":
+                                stats["skipped"] += 1
+                            fid = con.execute('SELECT file_id FROM files WHERE path=?', (entry.path,)).fetchone()[0]
+                            con.execute('INSERT OR IGNORE INTO scan_manifest VALUES (?,?,?,?)', (run_id,fid,entry.size,entry.mtime_ns))
+                            stats["found"] += 1
+                            if stats["found"] % 32 == 0:
+                                con.commit()
+                            report("Klasörler keşfediliyor", cur)
+                    except OSError:
+                        dir_ok = False
+                        stats['failed']+=1
+                        con.execute('INSERT OR REPLACE INTO scan_errors VALUES (?,?,?)',(run_id,e.path,'ACCESS_DENIED'))
+                        continue
+                if dir_ok:
+                    con.execute("UPDATE scan_scopes SET complete=1 WHERE run_id=? AND dir=?", (run_id, cur))
+                else:
+                    all_complete = False
+                con.commit()
+        stats.update(run_id=run_id, scope_complete=all_complete, inventory_complete=all_complete, documents_total=stats['found'])
+        if inventory_only:
+            stats['result'] = 'cancelled' if stop and stop() else 'partial'
+            if stats['result'] == 'cancelled':
+                con.execute("UPDATE scan_runs SET finished_at=?,result='cancelled' WHERE run_id=?", (int(time.time()),run_id))
+                con.commit()
+            report('Dosya listesi hazır', root, force=True)
+            return stats
+        stats['inventory_ready'] = True
+        from .scan_progress import DocumentProgress
+        documents = DocumentProgress(con,run_id,gom_mod.model_var_mi())
+        phase('content','extract')
+        report('Belge işleme başlıyor', root, force=True)
         # --- kuyruk isleme ---
         process_batch()
         # --- agir OCR fazi (cikarma bitince; kaynagi paralel okumaz, UI/aramayi bekletmez) ---
@@ -631,6 +685,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             except Exception:
                 return None
 
+        phase('ocr','ocr')
         while True:
             if stop and stop():
                 stats["result"] = "cancelled"
@@ -663,6 +718,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             stats["ocr_deferred"] += 1 if r == "deferred" else 0
             if r in ("retry", "dead"):
                 stats["ocr_failed"] += 1
+            phase_finished(job['file_id'])
+            documents.refresh(job['file_id'])
             report("OCR işleniyor", path, r)
         if ocr_session is not None:
             ocr_session.kill()
@@ -676,6 +733,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             for fid, size, modified in rows:
                 q.enqueue(con, fid, q.signature_of(size,modified), kind='embed')
             con.commit()
+        phase('embedding','embed')
         # Shared native process isolates driver failures without duplicate model loads.
         if gom_mod.model_var_mi():
             from . import embed as embedding
@@ -699,9 +757,12 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                     break
                 except Exception as error:
                     outcome = q.fail(con, job['job_id'], type(error).__name__)
+                phase_finished(fid)
+                documents.refresh(fid)
                 if outcome == 'done': stats['embed_done'] += 1
                 if outcome in ('retry', 'dead'): stats['failed'] += 1
                 report('Vektör işleniyor', str(fid), outcome)
+        stats.update(phase_key='finalize', phase_done=0, phase_total=0)
         # --- kopya hash (arka plan; sinirli; kaynagi bir kez daha okur) ---
         try:
             from . import dup as dup_mod
