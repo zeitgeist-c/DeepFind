@@ -34,7 +34,7 @@ def test_sabitler():
     from evrakci import embed
 
     assert embed.DIM == 256
-    assert embed.MODEL_VER == "eg2-text-256-v1"
+    assert embed.MODEL_VER == "eg2-q8-256-v2"
     assert embed.SORGU_ONEKI == "task: search result | query: "
     assert embed.BELGE_ONEKI == "title: none | text: "
 
@@ -48,7 +48,7 @@ def test_isci_oturumu_yoksa_none(tmp_path):
     assert embed.hazir_oturum(str(tmp_path / "yok.onnx")) is None
 
 
-@pytest.mark.skipif("not _model_var()")
+@pytest.mark.skipif(not GERCEK, reason="Gerçek motor ayrı kabul betiğinde sınanır")
 def test_isci_oturumu_onbellekler():
     from evrakci import embed
 

@@ -49,10 +49,9 @@ def test_varsayilan_hedef_yonetilen_alan(tmp_path):
 
     from evrakci import model_indir
 
-    kok = (os.environ.get("PROGRAMDATA") or os.environ.get("LOCALAPPDATA")
-           or os.path.expanduser("~"))
+    from evrakci.engine import shared_model_path
     hedef = model_indir.hedef_yol()
-    assert os.path.abspath(hedef).startswith(os.path.abspath(kok))
+    assert os.path.abspath(hedef) == str(shared_model_path())
     kaynak = str(tmp_path / "arsiv")
     assert not os.path.abspath(hedef).startswith(os.path.abspath(kaynak))
 

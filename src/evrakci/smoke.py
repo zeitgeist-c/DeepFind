@@ -70,7 +70,6 @@ def run(report_path):
             stat = source.stat()
             index_entry(con, Entry(str(source), source.name, ".xlsx", stat.st_size, stat.st_mtime_ns), result)
             rebuild_vocab(con)
-            set_setting(con, "ai_model", "gemini-3.5-flash")
             con.close()
             checkpoint("window")
             pen = AnaPencere(db, password)
@@ -78,22 +77,14 @@ def run(report_path):
             app.processEvents()
             from .archive_ui import layout_cards
             pen.resize(1500,1000); app.processEvents(); layout_cards(pen); app.processEvents()
-            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == ['Ara','AI ile ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']
+            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == ['Ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']
             assert pen.arama_islik.count()==3 and pen.gecmis_split.count()==2 and pen.dosya_split.count()==2
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
-            assert pen.ai_page.isAncestorOf(pen.ai_key_input) and pen.ai_page.isAncestorOf(pen.ai_question)
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
             assert pen.settings_page.isAncestorOf(pen.update_durum)
             assert not pen.update_denetle_btn.isHidden()   # paketli: denetim açık
             assert pen.update_indir_btn.isHidden()
             assert pen.update_bar.isHidden()
-            assert [pen.ai_model.itemData(i) for i in range(pen.ai_model.count())] == [
-                "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
-                "gemma-4-26b-a4b-it"]
-            assert pen.ai_model.currentData() == "gemini-3.5-flash-lite"
-            assert get_setting(pen.con, "ai_model") == "gemini-3.5-flash-lite"
-            pen.ai_model.setCurrentIndex(0)
-            assert get_setting(pen.con, "ai_model") == "gemini-3.6-flash"
             pen.arama_kutu.setText("Ankara denetim")
             pen._ara_simdi()
             deadline = time.monotonic() + 30
@@ -143,32 +134,8 @@ def run(report_path):
             preview.close()
             preview.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
-            checkpoint("ai-local-preview")
-            pen._ai_show()
-            pen.ai_question.setText("Ankara denetim")
-            pen._ai_prepare()
-            deadline=time.monotonic()+30
-            while pen._jobs:
-                app.processEvents(); time.sleep(0.01)
-                assert time.monotonic()<deadline
-            assert pen.ai_preview is not None and pen.ai_reply is None
-            assert "Ankara" in pen.ai_preview_box.toPlainText()
-            gemma_index = pen.ai_model.findData("gemma-4-26b-a4b-it")
-            assert gemma_index >= 0
-            pen.ai_model.setCurrentIndex(gemma_index)
-            assert pen.ai_preview is None
-            pen.ai_mode.setCurrentIndex(1)
-            deadline=time.monotonic()+30
-            while pen._jobs:
-                app.processEvents(); time.sleep(0.01)
-                assert time.monotonic()<deadline
-            assert pen.ai_document.count() == 1
-            pen._ai_prepare()
-            while pen._jobs:
-                app.processEvents(); time.sleep(0.01)
-                assert time.monotonic()<deadline
-            assert pen.ai_preview is not None and pen.ai_preview.mode == "summary"
-            assert pen.ai_reply is None
+            assert not hasattr(pen, 'ai_network')
+            assert pen.settings_page.isAncestorOf(pen.model_status)
             checkpoint("packaged-ocr")
             from . import ocr_setup, ocr
             from PIL import Image, ImageDraw, ImageFont
@@ -200,7 +167,8 @@ def run(report_path):
             assert not pen.scan_dialog.isModal()
             assert pen.scan_history.count() > 0
             checkpoint('archive-file-list-image-ocr')
-            pen.nav.setCurrentRow(5)
+            from .app import EKRANLAR
+            pen.nav.setCurrentRow(EKRANLAR.index('Taranmış Evraklar'))
             deadline=time.monotonic()+30
             while pen._jobs:
                 app.processEvents(); time.sleep(.01); assert time.monotonic()<deadline
@@ -268,8 +236,24 @@ def run(report_path):
             pen._nav_toggle()
             assert pen.scan_time_edit.displayFormat() == "HH:mm"
             checkpoint("lock")
+            checkpoint('real-semantic-search')
+            from . import embed as model, gom as embedding_jobs
+            session = model.isit_oturumu()
+            assert session is not None, model.status()
+            # Index synthetic content with the actual packaged model, not test vectors.
+            pen.con.execute("INSERT INTO files(path,name,ext,index_status) VALUES ('synthetic-rental.txt','rental.txt','.txt','ok')")
+            synthetic_id = pen.con.execute("SELECT file_id FROM files WHERE path='synthetic-rental.txt'").fetchone()[0]
+            pen.con.execute("INSERT INTO segments(file_id,kind,label,raw_text) VALUES (?,'para','Belge','kira sözleşmesi aylık ödeme')", (synthetic_id,))
+            pen.con.commit()
+            embedding_jobs.isle_dosya(pen.con,synthetic_id,lambda texts:session.encode(texts,gorev='belge'))
+            from .rank import search_hybrid
+            result = search_hybrid(pen.con,'ev kiralama anlaşması')
+            assert any(r['file_id']==synthetic_id and r['score_class']=='semantic' for r in result['results']), result
+            report['embedding_backend'] = model.status()
+            model_process = session.proc
             assert theme.apply(app, "koyu") == "koyu"
             pen.kilitle()
+            assert model_process.poll() is not None
             assert pen.con is None and pen.sonuc_model.rowCount() == 0
             pen._unlock_dialog.old.setText(password)
             pen._unlock_dialog._submit()
@@ -302,11 +286,10 @@ def run(report_path):
                                            "excel-preview", "pdf-preview-loading", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
-                                           "packaged-turkish-ocr", "ai-local-preview-no-network",
-                                           "ai-model-switch", "ai-model-migration", "durable-scan-history",
-                                           'search-workbench-ai-tab-settings-backups','paged-archive-files','image-ocr-indexed',
+                                           "packaged-turkish-ocr", "durable-scan-history",
+                                           'search-workbench-local-model-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration', 'root-remove-worker', 'exclusion-worker',
-                                           'vektor-model-durumu'])
+                                           'vektor-model-durumu', 'real-semantic-search', 'model-process-closed-on-lock'])
     except Exception as error:
         import traceback
         report["stage"] = current_stage

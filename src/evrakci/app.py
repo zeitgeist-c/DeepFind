@@ -15,7 +15,7 @@ from pathlib import Path
 from PySide6.QtCore import (QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter,
                             QTime, QEvent, QSettings, QRect, QSize, QItemSelection, QItemSelectionModel)
 from PySide6.QtCore import QUrl
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply, QLocalServer, QLocalSocket
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel, QColor, QPixmap
 from PySide6.QtWidgets import (QApplication, QAbstractItemView, QCheckBox, QComboBox, QDialog,
                                QFileDialog,
@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (QApplication, QAbstractItemView, QCheckBox, QComb
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
-from . import ai, migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery, thumbs, sorgu
+from . import migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery, thumbs, sorgu
 from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
@@ -38,10 +38,9 @@ from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
                  Cip, GridDelegate)
 from . import archive_ui
 
-EKRANLAR = ["Ara", "AI ile ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
+EKRANLAR = ["Ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
 SAYFA_ACIKLAMA = {
-    "Ara": "Dosya adı, içerik ve klasör bağlamıyla arayın.",
-    "AI ile ara": "Alıntılarla arşivinize soru sorun; göndermeden önce inceleyin.",
+    "Ara": "Anlamıyla, dosya adıyla veya içeriğiyle arayın; belgeler bu bilgisayarda kalır.",
     "Kaynaklar": "Taranacak klasörleri ve kapsam dışında kalan yolları yönetin.",
     "Tarama": "Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.",
     "Geçmiş": "Önceki aramalarınıza tek tıkla dönün.",
@@ -457,7 +456,7 @@ class AnaPencere(QMainWindow):
         try:
             from . import embed as _embed
 
-            threading.Thread(target=_embed.isit_oturumu, daemon=True).start()
+            threading.Thread(target=lambda: _embed.isit_oturumu(cancel=lambda: self._locked or self._exiting), daemon=True).start()
         except Exception:
             pass  # model yoksa aramalar FTS yapar
         self._schedule_timer = QTimer(self)
@@ -762,7 +761,6 @@ class AnaPencere(QMainWindow):
         self._ekran_tarama()
         self._ekran_gecmis()
         self._ekran_ayarlar()
-        self._ekran_ai()
         archive_ui.install(self)
         self._sayfa_kartlari()
         self.workspace = workspace
@@ -843,7 +841,7 @@ class AnaPencere(QMainWindow):
     def _nav_ikonlari(self):
         from PySide6.QtCore import QSize
         self.nav.setIconSize(QSize(18, 18))
-        for i, kind in enumerate(("search", "ai", "folder", "scan", "history", "document", "settings")):
+        for i, kind in enumerate(("search", "folder", "scan", "history", "document", "settings")):
             self.nav.item(i).setIcon(theme.symbol_icon(kind))
 
     def _tema_yenile(self):
@@ -1053,64 +1051,9 @@ class AnaPencere(QMainWindow):
         self._search_offset+=50
         self._ara_simdi(reset=False)
 
-    def _ai_show(self):
-        self.nav.setCurrentRow(EKRANLAR.index('AI ile ara'))
-        self._ai_refresh_docs()
 
-    def _ai_doc_page(self,direction):
-        self.ai_doc_offset=max(0,self.ai_doc_offset+direction*100) if direction else 0
-        self._ai_refresh_docs()
 
-    def _ai_test(self):
-        if self.con is None: return
-        key=migrate.get_setting(self.con,'gemini_api_key','')
-        if not key:
-            self.ai_connection.setText('Önce anahtarı kaydedin.'); return
-        request=QNetworkRequest(QUrl(ai.endpoint(self.ai_model.currentData())))
-        request.setHeader(QNetworkRequest.ContentTypeHeader,'application/json')
-        request.setRawHeader(b'x-goog-api-key',key.encode())
-        request.setTransferTimeout(15000)
-        import json
-        reply=self.ai_network.post(request,json.dumps({'contents':[{'parts':[{'text':'Reply OK'}]}],'generationConfig':{'maxOutputTokens':8}}).encode())
-        self._connection_reply=reply
-        self.ai_connection.setText('Bağlantı sınanıyor…')
-        def ready():
-            if self._locked: return
-            code=reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
-            self.ai_connection.setText('Bağlantı doğrulandı.' if code==200 else {400:'İstek veya model geçersiz.',401:'Anahtar geçersiz.',403:'Anahtar veya model erişimi reddedildi.',404:'Model bulunamadı.',429:'Kota sınırına ulaşıldı.'}.get(code,'Ağ bağlantısı kurulamadı.'))
-            reply.deleteLater(); self._connection_reply=None
-        reply.finished.connect(ready)
 
-    def _ai_suggest(self):
-        if self.con is None or self.ai_reply is not None: return
-        key=migrate.get_setting(self.con,'gemini_api_key','')
-        if not key:
-            self.ai_status.setText('Önce anahtarı kaydedin.'); return
-        question=self.ai_question.text().strip()
-        if not 3<=len(question)<=1000:
-            self.ai_status.setText('Soruyu 3–1000 karakter arasında yazın.'); return
-        import json
-        request=QNetworkRequest(QUrl(ai.endpoint(self.ai_model.currentData())))
-        request.setHeader(QNetworkRequest.ContentTypeHeader,'application/json')
-        request.setRawHeader(b'x-goog-api-key',key.encode()); request.setTransferTimeout(20000)
-        body={'contents':[{'parts':[{'text':'Bu sorudan belge aramak için en fazla 8 anahtar sözcük çıkar. Tarih, tutar ve evrak numarasını koru. Yalnız JSON nesnesi döndür: {"query":"sözcükler"}. Soru: '+question}]}]}
-        reply=self.ai_network.post(request,json.dumps(body,ensure_ascii=False).encode())
-        self._suggestion_reply=reply; self.ai_status.setText('Yalnız soru gönderildi; arama sözcükleri hazırlanıyor…')
-        def ready():
-            if self._locked or self.ai_question.text().strip()!=question:
-                reply.deleteLater(); self._suggestion_reply=None; return
-            try:
-                payload=bytes(reply.readAll())
-                if len(payload)>10000: raise ValueError()
-                envelope=json.loads(payload)
-                raw=''.join(p.get('text','') for p in envelope['candidates'][0]['content']['parts'])
-                query=json.loads(raw)['query']
-                if not isinstance(query,str) or not 1<=len(query)<=300 or len(query.split())>16: raise ValueError()
-                self.ai_retrieval.setText(query); self.ai_status.setText('Önerilen sözcükleri inceleyin, ardından Alıntıları hazırla’ya basın.')
-            except (ValueError,KeyError,IndexError,TypeError):
-                self.ai_status.setText('Sorgu önerisi alınamadı; arama sözcüklerini kendiniz yazabilirsiniz.')
-            reply.deleteLater(); self._suggestion_reply=None
-        reply.finished.connect(ready)
 
     def _kisaltmalar(self):
         self.hareketsizlik = QTimer(self)
@@ -1980,6 +1923,10 @@ class AnaPencere(QMainWindow):
         else:
             self.oneri.setText(f"{len(res)} sonuç" +
                                (f" • {', '.join(out['suggestions'][:3])}" if out["suggestions"] else ""))
+        if out.get('semantic_error'):
+            self.oneri.setText(self.oneri.text() + ' • Anlamsal arama kullanılamadı: ' + out['semantic_error'])
+        elif out.get('semantic'):
+            self.oneri.setText(self.oneri.text() + ' • Anlamsal + tam arama')
         self._filtre_cipleri()
         try:
             import json
@@ -2376,7 +2323,6 @@ class AnaPencere(QMainWindow):
             }
         self._kok_tazele()
         self._durum_yaz()
-        self._ai_refresh_docs()
         if sil:
             self.durum.showMessage(f"{sil} dosyanın kaydı kaldırıldı. Kaynak belgeler korunur.", 8000)
 
@@ -2432,7 +2378,6 @@ class AnaPencere(QMainWindow):
         self.sonuc_model.clear()
         self.onizleme.temizle()
         self._list_cache.clear()
-        self._ai_refresh_docs()
         self.durum.showMessage(f"Hariç kuralı kaydedildi; {count} dosyanın içeriği temizlendi.", 8000)
 
     def _haric_hata(self, error_type):
@@ -3454,6 +3399,8 @@ class AnaPencere(QMainWindow):
                                 self._denetim_satiri(self.sifre_btn, self.forget_btn)))
         self._kurtarma_bolumu(k)
         self._yedek_bolumu(k)
+        from .model_ui import install
+        install(self, k)
         self._guncelleme_bolumu(k)
         alt = "Yerel ve şifreli çalışır" if not self.sifresiz else "Yerel çalışır; şifre eklenebilir"
         self.surum_bilgi = QLabel(f"Evrakçı {__version__} · {alt}")
@@ -3479,303 +3426,18 @@ class AnaPencere(QMainWindow):
             row.addWidget(widget, 1 if i == 0 and widget.__class__.__name__ in ("QLineEdit",) else 0)
         return kutu
 
-    def _ekran_ai(self):
-        w = QWidget()
-        layout = QVBoxLayout(w)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.ai_kurulum = QWidget()
-        kl = QVBoxLayout(self.ai_kurulum)
-        kl.setContentsMargins(0, 0, 0, 0)
-        kl.addWidget(label("AI modeli • yalnız açık gönderim", "ikincil"))
-        self.ai_model = QComboBox()
-        self.ai_model.setAccessibleName("AI modeli")
-        for model_id, caption in ai.MODELS.items():
-            self.ai_model.addItem(caption, model_id)
-        saved = migrate.get_setting(self.con, "ai_model", ai.MODEL)
-        selected = ai.selected_model(saved)
-        self.ai_model.setCurrentIndex(self.ai_model.findData(selected))
-        if selected != saved:
-            migrate.set_setting(self.con, "ai_model", selected)
-        kl.addWidget(self.ai_model)
-        key_row = QHBoxLayout()
-        self.ai_key_input = QLineEdit()
-        self.ai_key_input.setEchoMode(QLineEdit.Password)
-        self.ai_key_input.setPlaceholderText("API anahtarı kayıtlı" if migrate.get_setting(self.con, "gemini_api_key") else "Gemini API anahtarı")
-        self.ai_key_input.setAccessibleName("Gemini API anahtarı")
-        kl.addWidget(self.ai_key_input)
-        key_satir = QHBoxLayout()
-        key_save = QPushButton("Kasaya kaydet")
-        key_save.setToolTip("Anahtarı kasaya kaydet")
-        key_save.clicked.connect(self._ai_save_key)
-        key_satir.addWidget(key_save)
-        key_remove = QPushButton("Kaldır")
-        key_remove.clicked.connect(self._ai_remove_key)
-        key_satir.addWidget(key_remove)
-        kl.addLayout(key_satir)
-        test = QPushButton("Bağlantıyı test et")
-        test.setProperty("ghost", True)
-        test.clicked.connect(self._ai_test)
-        kl.addWidget(test)
-        self.ai_connection = label("Anahtar şifreli kasada saklanır.", "ikincil")
-        self.ai_connection.setWordWrap(True)
-        kl.addWidget(self.ai_connection)
-        kl.addWidget(label("Word/Excel içine gömülü resimler OCR kapsamına dahil değildir.", "ikincil"))
-        kl.addStretch(1)
-        layout.addWidget(self.ai_kurulum)
-        self.ai_soru = QWidget()
-        sl = QVBoxLayout(self.ai_soru)
-        sl.setContentsMargins(0, 0, 0, 0)
-        mode_row = QHBoxLayout()
-        self.ai_mode = QComboBox()
-        self.ai_mode.addItem("Arşive soru sor", "question")
-        self.ai_mode.addItem("Belgeyi özetle", "summary")
-        self.ai_mode.currentIndexChanged.connect(self._ai_mode_changed)
-        mode_row.addWidget(self.ai_mode)
-        self.ai_question = QLineEdit()
-        self.ai_question.setPlaceholderText("Örneğin: 2024 denetim raporunda hangi sonuçlar var?")
-        self.ai_question.setAccessibleName("Arşive sorulacak soru")
-        self.ai_question.returnPressed.connect(self._ai_prepare)
-        mode_row.addWidget(self.ai_question, 1)
-        self.ai_document = QComboBox()
-        self.ai_document.setAccessibleName("Özetlenecek belge")
-        self.ai_document.hide()
-        mode_row.addWidget(self.ai_document, 1)
-        sl.addLayout(mode_row)
-        self.ai_retrieval = QLineEdit()
-        self.ai_retrieval.setPlaceholderText("İsteğe bağlı arama sözcükleri; asıl soru korunur")
-        sl.addWidget(self.ai_retrieval)
-        self.ai_retrieval.textChanged.connect(self._ai_clear_preview)
-        self.ai_doc_query = QLineEdit()
-        self.ai_doc_query.setPlaceholderText("Özetlenecek belgede ad veya yol ara")
-        sl.addWidget(self.ai_doc_query)
-        self.ai_doc_offset = 0
-        doc_nav = QHBoxLayout()
-        for caption, direction in [("Önceki belgeler", -1), ("Sonraki belgeler", 1)]:
-            button = QPushButton(caption)
-            button.clicked.connect(lambda _, d=direction: self._ai_doc_page(d))
-            doc_nav.addWidget(button)
-        sl.addLayout(doc_nav)
-        suggestions = QPushButton("Sorgu önerisi üret")
-        suggestions.setToolTip("Gemini ile sorgu önerileri üret (yalnız soru gönderilir)")
-        suggestions.clicked.connect(self._ai_suggest)
-        sl.addWidget(suggestions)
-        layout.addWidget(self.ai_soru)
-        self.ai_alinti = QWidget()
-        al = QVBoxLayout(self.ai_alinti)
-        al.setContentsMargins(0, 0, 0, 0)
-        prepare = QPushButton("Alıntıları hazırla")
-        prepare.clicked.connect(self._ai_prepare)
-        al.addWidget(prepare)
-        self.ai_preview_box = QPlainTextEdit()
-        self.ai_preview_box.setReadOnly(True)
-        self.ai_preview_box.setPlaceholderText("Buluta gönderilecek metin burada görünecek.")
-        self.ai_preview_box.setMinimumHeight(120)
-        al.addWidget(self.ai_preview_box, 1)
-        layout.addWidget(self.ai_alinti)
-        self.ai_yanit = QWidget()
-        yl = QVBoxLayout(self.ai_yanit)
-        yl.setContentsMargins(0, 0, 0, 0)
-        self.ai_send = QPushButton("Alıntıları gönder")
-        self.ai_send.setToolTip("Gösterilen alıntıları gönder")
-        self.ai_send.setProperty("birincil", True)
-        self.ai_send.setEnabled(False)
-        self.ai_send.clicked.connect(self._ai_send)
-        yl.addWidget(self.ai_send)
-        self.ai_status = label("Önce soru sorun veya bir belge seçin; alıntıları kontrol edin.", "ikincil")
-        self.ai_status.setWordWrap(True)
-        yl.addWidget(self.ai_status)
-        self.ai_answer = QPlainTextEdit()
-        self.ai_answer.setReadOnly(True)
-        self.ai_answer.setPlaceholderText("Yanıt burada görünecek.")
-        yl.addWidget(self.ai_answer, 1)
-        self.ai_answer.hide()
-        self.ai_sources = QListWidget()
-        self.ai_sources.setMaximumHeight(90)
-        self.ai_sources.itemClicked.connect(self._ai_open_source)
-        yl.addWidget(self.ai_sources)
-        self.ai_sources.hide()
-        layout.addWidget(self.ai_yanit)
-        self.ai_preview = None
-        self.ai_reply = None
-        self._ai_timed_out = False
-        self.ai_network = QNetworkAccessManager(self)
-        self.ai_timeout = QTimer(self)
-        self.ai_timeout.setSingleShot(True)
-        self.ai_timeout.timeout.connect(self._ai_abort_timeout)
-        self.ai_question.textChanged.connect(self._ai_clear_preview)
-        self.ai_document.currentIndexChanged.connect(self._ai_clear_preview)
-        self.ai_model.currentIndexChanged.connect(self._ai_model_changed)
-        self.ai_doc_timer = QTimer(w)
-        self.ai_doc_timer.setSingleShot(True)
-        self.ai_doc_timer.setInterval(300)
-        self.ai_doc_timer.timeout.connect(lambda: self._ai_doc_page(0))
-        self.ai_doc_query.textChanged.connect(lambda: self.ai_doc_timer.start())
-        self._ai_ham = w
 
-    def _ai_model_changed(self):
-        if self.con is not None:
-            migrate.set_setting(self.con, "ai_model", self.ai_model.currentData())
-        self._ai_clear_preview()
 
-    def _ai_mode_changed(self):
-        summary = self.ai_mode.currentData() == "summary"
-        self.ai_question.setVisible(not summary)
-        self.ai_document.setVisible(summary)
-        self._ai_clear_preview()
-        if summary:
-            self._ai_refresh_docs()
 
-    def _ai_refresh_docs(self):
-        archive_ui.refresh_docs(self)
 
-    def _ai_save_key(self):
-        key = self.ai_key_input.text().strip()
-        if not key:
-            self.ai_status.setText("Kaydedilecek anahtar yazılmadı.")
-            return
-        migrate.set_setting(self.con, "gemini_api_key", key)
-        self.ai_key_input.clear()
-        self.ai_key_input.setPlaceholderText("API anahtarı kayıtlı")
-        self.ai_status.setText("API anahtarı şifreli kasaya kaydedildi.")
 
-    def _ai_remove_key(self):
-        migrate.set_setting(self.con, "gemini_api_key", "")
-        self.ai_key_input.clear()
-        self.ai_key_input.setPlaceholderText("Gemini API anahtarı")
-        self.ai_status.setText("API anahtarı kasadan kaldırıldı.")
 
-    def _ai_clear_preview(self):
-        if self.ai_reply is not None:
-            self.ai_timeout.stop()
-            reply, self.ai_reply = self.ai_reply, None
-            reply.abort()
-            reply.deleteLater()
-            self.ai_status.setText("İstek iptal edildi. Yeni alıntılar hazırlayın.")
-        self.ai_preview = None
-        self.ai_send.setEnabled(False)
-        self.ai_preview_box.clear()
-        self.ai_answer.clear()
-        self.ai_answer.hide()
-        self.ai_sources.clear()
-        self.ai_sources.hide()
 
-    def _ai_prepare(self):
-        if self.con is None or self.ai_reply is not None:
-            return
-        self._ai_clear_preview()
-        question=self.ai_question.text()
-        retrieval=self.ai_retrieval.text().strip()
-        mode=self.ai_mode.currentData()
-        file_id=self.ai_document.currentData()
-        self.ai_status.setText('İlgili indeks bölümleri hazırlanıyor…')
-        def prepare(con):
-            if mode=='summary':
-                if file_id is None: raise ValueError('Önce bir belge seçin.')
-                return ai.prepare_summary(con,file_id)
-            return ai.prepare_question(con,question,retrieval or None)
-        def ready(preview):
-            if self.ai_question.text()!=question or self.ai_mode.currentData()!=mode or self.ai_retrieval.text().strip()!=retrieval: return
-            self.ai_preview=preview
-            self.ai_preview_box.setPlainText(ai.preview_text(preview))
-            self.ai_send.setEnabled(True)
-            self.ai_status.setText(f'{len(preview.sources)} alıntı hazır. Göndermeden önce inceleyin.' + (' Yalnız seçili kesitler gönderilecek.' if preview.truncated else ''))
-        archive_ui.job(self,'ai_prepare',prepare,ready,failed=lambda error:self.ai_status.setText(error))
 
-    def _ai_send(self):
-        preview = self.ai_preview
-        if self.con is None or preview is None or self.ai_reply is not None:
-            return
-        if not ai.still_current(self.con, preview):
-            self._ai_clear_preview()
-            self.ai_status.setText("İndeks değişti. Alıntıları yeniden hazırlayın.")
-            return
-        key = migrate.get_setting(self.con, "gemini_api_key", "")
-        if not key:
-            self.ai_status.setText("Önce Gemini API anahtarını kasaya kaydedin.")
-            return
-        model = self.ai_model.currentData()
-        request = QNetworkRequest(QUrl(ai.endpoint(model)))
-        request.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
-        request.setRawHeader(b"x-goog-api-key", key.encode("utf-8"))
-        reply = self.ai_network.post(request, ai.request_body(preview, model))
-        self.ai_reply = reply
-        self._ai_timed_out = False
-        self.ai_send.setEnabled(False)
-        self.ai_status.setText("Yanıt bekleniyor…")
-        reply.finished.connect(lambda: self._ai_finished(reply))
-        self.ai_timeout.start(30_000)
 
-    def _ai_finished(self, reply):
-        if reply is not self.ai_reply:
-            reply.deleteLater()
-            return
-        self.ai_timeout.stop()
-        self.ai_reply = None
-        if self.con is None or self.ai_preview is None:
-            reply.deleteLater()
-            return
-        if reply.error() != QNetworkReply.NoError:
-            status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
-            if self._ai_timed_out:
-                message = "AI isteği zaman aşımına uğradı."
-            elif status_code in (401, 403):
-                message = "API anahtarı veya erişim izni doğrulanamadı."
-            elif status_code == 429:
-                message = "Gemini kota sınırına ulaşıldı; daha sonra yeniden deneyin."
-            else:
-                message = "AI isteği tamamlanamadı. Bağlantıyı kontrol edin."
-            self.ai_status.setText(message)
-        else:
-            try:
-                answer, sources = ai.parse_response(bytes(reply.readAll()), self.ai_preview)
-                if not ai.still_current(self.con, self.ai_preview):
-                    raise ValueError("İndeks değişti; yanıtın kaynakları artık güncel değil.")
-                self.ai_answer.setPlainText(answer)
-                self.ai_answer.show()
-                self.ai_sources.clear()
-                for source in sources:
-                    item = QListWidgetItem(f"[{source['id']}] {source['name']} • {source['label']}")
-                    item.setData(Qt.UserRole, source)
-                    self.ai_sources.addItem(item)
-                self.ai_sources.show()
-                self.ai_status.setText("Yanıtı ve aşağıdaki kaynakları kontrol edin.")
-            except (ValueError, KeyError, IndexError, TypeError, UnicodeError):
-                self.ai_status.setText("AI yanıtı doğrulanamadı. Kanıt veya biçim hatalı.")
-        self.ai_send.setEnabled(self.ai_preview is not None)
-        reply.deleteLater()
 
-    def _ai_open_source(self, item):
-        if self.con is None:
-            return
-        source = item.data(Qt.UserRole)
-        if source:
-            if self.ai_preview is None or not ai.still_current(self.con, self.ai_preview):
-                self.ai_status.setText("Kaynak indeksi değişti. Alıntıları yeniden hazırlayın.")
-                return
-            self._open_preview(source)
 
-    def _ai_abort_timeout(self):
-        if self.ai_reply is not None:
-            self._ai_timed_out = True
-            self.ai_reply.abort()
 
-    def _ai_abort(self):
-        self.ai_timeout.stop()
-        reply, self.ai_reply = self.ai_reply, None
-        if reply is not None:
-            reply.abort()
-            reply.deleteLater()
-        self._ai_clear_preview()
-        self.ai_question.clear()
-        if hasattr(self,'ai_retrieval'): self.ai_retrieval.clear()
-        self.ai_key_input.clear()
-        self.ai_document.clear()
-        if hasattr(self,'ai_doc_query'): self.ai_doc_query.clear()
-        for attr in ('_suggestion_reply','_connection_reply'):
-            reply=getattr(self,attr,None)
-            if reply is not None:
-                reply.abort(); reply.deleteLater(); setattr(self,attr,None)
-        self.ai_status.setText("Kasa kilitli.")
 
     def _forget_login(self):
         remember.forget(self.kasa_yolu)
@@ -3840,7 +3502,7 @@ class AnaPencere(QMainWindow):
             return False
         if (self.isci_thread is not None or self._search_thread is not None
                 or self._debounce.isActive() or self._pending_search is not None
-                or self.file_debounce.isActive() or self.ai_doc_timer.isActive()
+                or self.file_debounce.isActive()
                 or self.onizleme.busy() or self._jobs or self._kaldir_thread is not None
                 or self._haric_thread is not None):
             QMessageBox.information(self, "İşlem sürüyor", "Devam eden tarama, arama, hariç/kök kaldırma veya önizlemenin bitmesini bekleyin. Taramayı iptal edebilirsiniz.")
@@ -3949,8 +3611,8 @@ class AnaPencere(QMainWindow):
         elif name == 'Ayarlar':
             self._yedek_tazele()
             self._kurtarma_tazele()
-        elif name == 'AI ile ara':
-            self._ai_refresh_docs()
+            from .model_ui import refresh_coverage
+            refresh_coverage(self)
         QTimer.singleShot(0, lambda: diagnostics.record('tab_ready_ms', str(round((time.perf_counter() - started) * 1000))))
 
     def _durum_yaz(self):
@@ -4100,7 +3762,8 @@ class AnaPencere(QMainWindow):
 
         remember.forget(self.kasa_yolu)
         self._locked = True
-        self._ai_abort()
+        from . import embed
+        embed.close()
         self._debounce.stop()
         self._pending_search = None
         if self._search_thread is not None:
@@ -4254,6 +3917,8 @@ class AnaPencere(QMainWindow):
     def _unlocked(self):
         diagnostics.record("unlock")
         self._locked = False
+        from . import embed
+        threading.Thread(target=lambda: embed.isit_oturumu(cancel=lambda: self._locked or self._exiting), daemon=True).start()
         self.centralWidget().setEnabled(True)
         self._unlock_dialog.old.clear()
         self._son_hareket = dt.datetime.now()
@@ -4268,7 +3933,6 @@ class AnaPencere(QMainWindow):
         self._scan_history_refresh()
         self._scope_changed()
         self._gorunum_yukle()
-        self.ai_key_input.setPlaceholderText("API anahtarı kayıtlı" if migrate.get_setting(self.con, "gemini_api_key") else "Gemini API anahtarı")
         self.show()
         self._durum_yaz()
         self._scan_state("idle")
@@ -4296,7 +3960,8 @@ class AnaPencere(QMainWindow):
         for worker in self._jobs: worker.stop.set()
         if self._jobs:
             self.hide(); QTimer.singleShot(100,self._cikis); return
-        self._ai_abort()
+        from . import embed
+        embed.close()
         if self.isci_thread is not None:
             if self.isci:
                 self.isci.durdur()
@@ -4355,7 +4020,8 @@ class AnaPencere(QMainWindow):
             ev.ignore()
             self._cikis()
             return
-        self._ai_abort()
+        from . import embed
+        embed.close()
         self._save_window_geometry()
         try:
             if self.con is not None:

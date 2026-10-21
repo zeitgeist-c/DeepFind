@@ -8,7 +8,6 @@ from __future__ import annotations
 import numpy as np
 
 from . import embed as embed_mod
-from . import extract as ex_mod
 from . import job_queue as q
 
 TOPLU = 16
@@ -31,14 +30,8 @@ def _metinler(con, file_id: int) -> list[tuple[int, str]]:
         "SELECT seg_id, label, raw_text FROM segments"
         " WHERE file_id=? AND kind NOT IN ('name_only','context')"
         " ORDER BY seg_id", (file_id,)).fetchall()
-    ciftler = []
-    for seg_id, etiket, ham in satirlar:
-        parc = ex_mod.Segment("para", None, etiket or "", ham or "")
-        for dilim, _, _ in ex_mod.chunks(parc, 4000):
-            metin = ((dilim.label or "") + "\n" + (dilim.raw_text or "")).strip()
-            if metin:
-                ciftler.append((seg_id, metin))
-    return ciftler
+    return [(sid, ((label or '') + '\n' + (raw or '')).strip())
+            for sid,label,raw in satirlar if (label or raw)]
 
 
 def vektor_yaz(con, ciftler: list[tuple[int, str]], v) -> int:
@@ -48,25 +41,31 @@ def vektor_yaz(con, ciftler: list[tuple[int, str]], v) -> int:
     if not ciftler:
         return 0
     v = np.asarray(v, dtype=np.float32)
-    ids = sorted({s for s, _ in ciftler})
-    con.execute(
-        f"DELETE FROM embeddings WHERE seg_id IN ({','.join('?' * len(ids))})", ids)
-    toplam = np.zeros((len(ids), v.shape[1]), dtype=np.float64)
-    sayac = np.zeros(len(ids), dtype=np.int64)
-    sira = {s: i for i, s in enumerate(ids)}
-    for (seg_id, _), satir in zip(ciftler, v):
-        toplam[sira[seg_id]] += satir
-        sayac[sira[seg_id]] += 1
-    for seg_id in ids:
-        i = sira[seg_id]
-        orta = toplam[i] / max(1, sayac[i])
-        norm = float(np.linalg.norm(orta)) or 1.0
-        birim = (orta / norm).astype(np.float32)
-        con.execute(
-            "INSERT INTO embeddings(seg_id, model_ver, dim, vec)"
-            " VALUES (?,?,?,?)",
-            (seg_id, embed_mod.MODEL_VER, embed_mod.DIM, birim.tobytes()))
-    con.commit()
+    if v.shape != (len(ciftler), embed_mod.DIM) or not np.isfinite(v).all():
+        raise ValueError('Geçersiz belge vektörleri')
+    if np.any(np.linalg.norm(v,axis=1)<1e-12):
+        raise ValueError('Boş belge vektörü')
+    sums, counts = {}, {}
+    for (sid,_), vector in zip(ciftler,v):
+        sums[sid] = sums.get(sid,np.zeros(embed_mod.DIM,dtype=np.float64)) + vector
+        counts[sid] = counts.get(sid,0)+1
+    values=[]
+    for sid,total in sums.items():
+        mean = total/counts[sid]
+        norm = float(np.linalg.norm(mean))
+        if norm < 1e-12: raise ValueError('Boş segment vektörü')
+        values.append((sid,embed_mod.MODEL_VER,embed_mod.DIM,(mean/norm).astype(np.float32).tobytes()))
+    ids = list(sums)
+    con.execute('SAVEPOINT embedding_file')
+    try:
+        con.executemany('INSERT INTO embeddings(seg_id,model_ver,dim,vec) VALUES (?,?,?,?) '
+                        'ON CONFLICT(seg_id) DO UPDATE SET model_ver=excluded.model_ver,dim=excluded.dim,vec=excluded.vec',values)
+        con.execute('RELEASE embedding_file')
+        con.commit()
+    except Exception:
+        con.execute('ROLLBACK TO embedding_file')
+        con.execute('RELEASE embedding_file')
+        raise
     return len(ids)
 
 
@@ -92,10 +91,14 @@ def process_embed_job(con, job: dict, kodla=None) -> str:
         q.complete(con, job["job_id"])
         return "changed"
     if kodla is None:
-        ot = embed_mod.Oturum()
+        ot = embed_mod.isit_oturumu()
+        if ot is None:
+            raise RuntimeError(embed_mod.status()["error"])
         kodla = lambda metinler: ot.encode(metinler, gorev="belge", toplu=TOPLU)  # noqa: E731
     try:
         isle_dosya(con, fid, kodla)
+    except InterruptedError:
+        raise
     except Exception as error:
         return q.fail(con, job["job_id"], type(error).__name__)
     q.complete(con, job["job_id"])

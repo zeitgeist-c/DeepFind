@@ -1,46 +1,51 @@
 # Evrakçı
 
-Windows için yerel, şifreli belge arama uygulaması. Kaynak belgeler PDF/XLSX/XLS/DOCX/ODT/RTF/TXT/CSV ve JPG/PNG/TIFF olarak okunur; arama indeksi bu bilgisayarda, SQLCipher ile şifreli kasada tutulur. Sunucu, bulut, ayrı kurulum gerektirmez: ZIP'ten çıkarıp EXE'yi çalıştırırsınız.
+Windows için yerel, şifreli belge arama uygulaması. PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV ve JPG/PNG/TIFF kaynaklarını okur. Kaynak evraklar kendi klasörlerinde kalır; indeks SQLCipher ile yerel kasada tutulur.
 
-## Güncelleme
+## Kurulum ve güncelleme
 
-Kurulu sürüm yeni bir yayın çıktığını denetler: program açıldıktan sonra günde bir kez sessizce, ayrıca **Ayarlar → Güncellemeler → Güncellemeyi denetle** ile istenildiği zaman. Yeni sürüm bulununca **İndir ve kur** ile paket indirilir; SHA-256 özeti ve sürüm bilgisi doğrulanır, ardından Evrakçı kendini yeniden başlatır. İndirme iptal edilebilir; doğrulamayı geçemeyen paket asla çalıştırılmaz. Eski program klasörü ve kasanız silinmez; güncelleme yalnız yeni sürüm klasörünü açar. Güncelleme yalnız kurulu programda çalışır (kaynak koddan çalıştırmada denetim görünmez). Yayınlar herkese açık `zeitgeist-c/Evrakci-Releases` deposundan gelir; kaynak kod ayrı ve özeldir.
+`Evrakçı-0.10.0.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
 
-## Çalıştırma
+Ayarlar → Güncellemeler ile yeni sürüm denetlenir; açılıştan sonra günde bir kez de sessiz denetim yapılır. İndirme SHA-256 ile, kurulum EXE'si sürüm kaydıyla doğrulanır. Güncelleme sabit AppId üzerinden aynı kurulumu yükseltir; kısayollar ve kaldırıcı aynı uygulamayı gösterir. UAC onayı istenebilir. Başarısız kurulumda önceki programı yeniden açma yolu vardır; canlı kasa kurulum tarafından değiştirilmez.
 
-`Evrakçı-SÜRÜM.zip` dosyasını bir klasöre açın; içindeki `Evrakçı-SÜRÜM.exe` veya aynı adlı BAT dosyasını çalıştırın. ZIP içinden doğrudan çalıştırmayın; `_internal` ve `licenses` klasörlerini EXE yanında koruyun. Tek başına EXE'yi kopyalamak yeterli değildir. Güncellemeden önce programdan çıkın.
+Tam kurulum modeli `%PROGRAMDATA%\Evrakçı\models` altında bir kez saklar. Aynı model için `.evrakci` güncelleme paketi yalnız programı taşır; model eksik/bozuksa tam kurulum gerekir. `.evrakci` dosyasını elle açmanız gerekmez; güncelleyici yönetir. Model değişirse tam kurulum kullanılmalıdır.
 
-İlk açılışta şifreyi iki kez belirleyin ve kaynak klasörleri seçin. Sonraki açılışta aynı şifre kullanılır. Ayarlar → Parolayı değiştir: mevcut şifre + yeni şifre + yeni şifre tekrarı. Önceki yedekler eski şifreyi gerektirir. Şifre unutulursa kasanın açılacağı vaat edilmez; kaynak belgeler etkilenmez. Kurtarma anahtarı Ayarlar'da üretilir ve şifre yerine kasayı açabilir; onu ayrı ve güvenli yerde saklayın.
+Eski sürümlerle uyum için ZIP de üretilir. ZIP içindeki EXE'nin yanında `_internal` ve `licenses` korunmalıdır; tek başına EXE taşınamaz. ZIP'ten kurulu düzene geçişte güncelleyici tam installer seçer. Eski yayın paketleri korunur. Başarılı kurulum, yalnız SHA-256 özeti bilinen 0.9 ONNX modelini ve artık kullanılmayan uygulama bağımlılıklarını temizler; tanınmayan dosyalar korunur. Canlı kasa, kaynak evraklar ve yedekler bu temizliğe dahil değildir.
 
-Varsayılan kasa `%LOCALAPPDATA%\Evrakci\Data\evrakci.db`, yedekler `%LOCALAPPDATA%\Evrakci\Backups` altındadır. Her bilgisayar kendi yerel kasasını kullanır.
+Yayın kaynağı `zeitgeist-c/Evrakci-Releases` deposudur. Yerel derleme veya Git etiketi oluşturmak dış yayın yapıldığı anlamına gelmez.
 
-Başka bilgisayarda mevcut arşivle devam etmek için uygulama klasörünü ve şifreli kasayı birlikte taşıyın; kaynak belgelerin kayıtlı yolları yeni bilgisayarda erişilebilir olmalıdır. Bu klasörler program güncellemesinde değiştirilmez/silinmez. Kaynak evraklar kendi klasörlerinde kalır; indeks yedeği kaynak evrakların yedeği değildir. Kasa şifresi gereklidir. İki bilgisayarda aynı kasayı eşzamanlı kullanmayın.
+## Anlamsal arama ve GPU
 
-Büyük kasa açılışında tam geçiş yedeği yalnız indeks yapısı değişecekse alınır; başarılı geçiş tekrarı önler, yarım kalan geçiş sonraki açılışta yeniden denenir. İlk içerik taraması uzun sürer; sonraki taramalar değişenleri ve yarım işleri işler. Eski motor sürümünün düşük kaliteli OCR kayıtları kontrollü yeniden işlenir; güncellemede indeks silinmez. Kısmi/OCR bekleyen kayıtları tam içerik saymayın.
+Tek anlamsal model EmbeddingGemma 2 Q8_0'dır (256 boyutlu, L2 normalize). Dosya/kelime araması ve bağımsız anlamsal adaylar birleşir, filtrelenir, sıralanır ve sonra sayfalanır. Örneğin “ev kiralama anlaşması”, içerikte yalnız “kira sözleşmesi” yazan belgeyi bulabilir. Tırnaklı ifade, OR/VEYA ve dışlamalı sorgular tam arama kurallarını korur. Benzerlik sonucu kesin bilgi veya doğrulanmış cevap değildir.
 
-## OCR
+Ayarlar → Yerel anlamsal arama bölümünde kullanılan motor, aygıt, hatalar ve indeks kapsamı görünür. Otomatik seçim önce kurulu CUDA motorunu, ardından Vulkan'ı, sonra CPU'yu dener. Vulkan/CPU ana pakettedir. NVIDIA CUDA bileşeni isteğe bağlı indirilir (yaklaşık 663 MB sıkıştırılmış indirme); sürüm ve SHA-256 sabitlidir. Uygun NVIDIA donanımı/sürücüsü gerekir. Her kartın çalışacağı garanti edilmez; CPU geri dönüşü ve hatalar görünürdür.
 
-Tarama/metin katmanı için RapidOCR (PP-OCR modelleri, ONNX Runtime) kullanılır; motor ve Türkçe modeller paketin içindedir — indirme, tessdata, ayrı kurulum, dil seçimi yoktur. Motor CPU'da, kaynak sınırlı alt süreçte çalışır; bellek düşükse OCR ertelenir, klasik arama sürer. Doğal metni yeterli sayfalar OCR'a girmez. Ayrı JPG/PNG/TIFF evraklar OCR kapsamındadır; Word/Excel içine gömülü resimler kapsam dışıdır. Eski DOC içeriği için LibreOffice gerekir.
+Model tek yerel alt süreçte paylaşılır. İletişim yalnız 127.0.0.1 üzerinde geçici erişim anahtarıyla yürür; belge içeriği harici servise gönderilmez. Uzun metinler token sınırına göre örtüşmeli bölünür. Kilit/çıkışta model süreci kapatılır; Windows süreç sahipliği uygulama çökmesinde de alt süreci kapatır.
 
-## AI Yardımcısı
+Yeni modelin vektörleri önceki ONNX vektörleriyle karıştırılmaz. Eski kasadaki eksikler sonraki taramada tamamlanır; bu sırada klasik arama kullanılabilir. Güncelleme indeksi veya kaynak belgeleri silmez.
 
-İsteğe bağlıdır. Gemini API anahtarını şifreli kasaya kaydedin. Soru veya özetlenecek belgeyi seçip **Alıntıları hazırla** ile yerel kanıtı görün; yalnız **Gösterilen alıntıları gönder** düğmesi Google API'sine ağ isteği yapar; bağlantı testi yalnız küçük bir metin ister, evrak göndermez. Yanıtlar kaynak segment kimlikleriyle doğrulanır ve belgelere geri dönülebilir. API anahtarı ve internet yoksa klasik arama ve OCR çalışmaya devam eder.
+Gemini yardımcısı, API anahtarı/model ayarları, otomatik özet ve üretilmiş soru-cevap kaldırılmıştır. Embedding modeli yalnız arama temsili üretir.
 
-İlk denemeyi küçük izinli veya yapay bir klasörde yapın. Gerçek NAS, temiz Windows, yüksek DPI ve çok yüksek hacim testleri kurum ortamınızda ayrıca doğrulanmalıdır.
+## OCR ve önizleme
 
-## Geliştirme ve doğrulama
+RapidOCR, paket içindeki PP-OCR modelleri ve ONNX Runtime ile taranmış PDF/görsellerden metin çıkarır. Embedding modeli OCR'ın yerine geçmez. Metin katmanı yeterli PDF sayfaları tekrar OCR'a girmez. Word/Excel içine gömülü resimler OCR kapsamında değildir; eski DOC içeriği için LibreOffice gerekir. PDF önizlemesi ve küçük resimler korunur.
 
-Python 3.13 ve pyproject.toml bağımlılıkları kullanılır. Sürümün tek kaynağı `src/evrakci/version.py` dosyasıdır.
+## Kasa ve güvenlik
+
+Varsayılan kasa `%LOCALAPPDATA%\Evrakci\Data\evrakci.db`, yedekler `%LOCALAPPDATA%\Evrakci\Backups` altındadır. Kaynak belgeler yedeğe dahil değildir. Eski yedekler alındıkları şifreyi gerektirir. Kurtarma anahtarını ayrı ve güvenli bir yerde saklayın; şifre ve anahtar olmadan kasa açılacağı vaat edilmez. İki bilgisayarda aynı kasayı eşzamanlı kullanmayın.
+
+Önce küçük izinli veya sentetik klasörle deneyin. Gerçek NAS, temiz Windows, çok büyük arşiv ve farklı GPU/DPI ortamları ayrıca kabul gerektirir.
+
+## Geliştirme
+
+Sürümün tek kaynağı `src/evrakci/version.py` dosyasıdır. Python bağımlılıkları `pyproject.toml` içindedir. `packaging/fetch_engine.py` resmî model/motor sürümlerini proje `build/embedding` alanına indirir ve özetlerini doğrular. BF16 yalnız geliştirici karşılaştırması içindir; dağıtıma Q8_0 girer.
 
 ```powershell
 $env:PYTHONPATH = 'src'
-.\.venv\Scripts\python.exe -m evrakci
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe eval/run_eval.py
-.\.venv\Scripts\python.exe eval/ui_shots.py
+.\.venv\Scripts\python.exe eval/embedding_acceptance.py
 .\.venv\Scripts\python.exe packaging/build.py
+.\.venv\Scripts\python.exe eval/package_check.py
 ```
 
-Gerçek kasa şifresini CLI `--sifre` parametresinde kullanmayın. Arayüz, şifreyi etkileşimli alır. İşlemler gerçek kaynaklara yazmak için tasarlanmamıştır; harici uygulamada belge açma/silme/düzenleme özelliği yoktur.
-
-Sürüm geçmişi ve doğrulama kayıtları: `DURUM.md` (güncel) ile güncel sürümün `DENETIM-*/TESLIM-*` dosyaları; eski sürüm kayıtları ağaçta tutulmaz, `git log`/`git show` ile erişilir.
+Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.0.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.

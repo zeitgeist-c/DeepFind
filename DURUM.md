@@ -1,5 +1,19 @@
 # Evrakçı — DURUM
 
+## 0.10.0: EmbeddingGemma 2 yerel motor ve sade dağıtım — 21.10.2026
+
+Gemini yardımcısı kaldırıldı; bağımsız anlamsal adaylar FTS ile birleşir.
+Q8_0 GGUF, paylaşılan llama.cpp süreci, Vulkan/CPU ve isteğe bağlı CUDA motoru,
+çevrimdışı model dağıtımı ve installer tabanlı güncelleme eklendi.
+OCR, kasa, kaynaklar, önizleme ve yedekleme korunur.
+
+Tam test: 292 geçti, 1 atlandı. Gerçek AMD RX 6650 XT Vulkan ve CPU kabulü,
+izole AppId ile 0.9→0.10 installer yükseltmesi ve modelin tekrar
+kopyalanmadığı güncelleme provası geçti. NVIDIA donanımı bulunmadığından
+CUDA gerçek çalışma kabulü açık. Son paket/commit/etiket kapısı
+TESLIM-0.10.0.md ve build/release-0.10.0.json ile izlenir.
+Canlı kasa/kurulum üzerinde deneme veya harici yayın yapılmadı.
+
 ## 0.9.0 sürüm kaydı: yerel vektör araması (hibrit FTS + EmbeddingGemma-2) — 21.10.2026
 
 Sürüm yükseltmesi: `0.8.1 → 0.9.0` (yeni yetenek; `src/evrakci/version.py` tek

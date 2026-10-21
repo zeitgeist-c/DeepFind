@@ -158,6 +158,8 @@ def ensure_current(con) -> None:
     ensure_v8(con)
     ensure_archive(con)
     ensure_v9(con)
+    con.execute("DELETE FROM settings WHERE k IN ('gemini_api_key','ai_model')")
+    con.commit()
 
 def ensure_archive(con):
     """Additive archive capabilities; existing index and version remain readable."""

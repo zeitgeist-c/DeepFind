@@ -78,10 +78,11 @@ class YayinCozumleme(unittest.TestCase):
         with self.assertRaises(update.UpdateError):
             update.parse_release(dict(GERCEK_YAYIN, tag_name="latest"))
 
-    def test_ozetsiz_yayin_kabul(self):
+    def test_ozetsiz_yayin_reddedilir(self):
         payload = dict(GERCEK_YAYIN, assets=[dict(GERCEK_YAYIN["assets"][0],
                                                   digest=None)])
-        self.assertEqual(update.parse_release(payload).sha256, "")
+        with self.assertRaises(update.UpdateError):
+            update.parse_release(payload)
 
 
 class IndirmeTestleri(unittest.TestCase):

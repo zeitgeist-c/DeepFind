@@ -107,12 +107,6 @@ def main():
         pen.grab().save(os.path.join(output, f"dar-menu-{mod}.png"))
         pen._nav_toggle()
         print(f"kaydedildi: ana-{mod}.png", flush=True)
-        pen.nav.setCurrentRow(6)
-        pen.ai_question.setText("Ankara vergi")
-        pen._ai_prepare()
-        app.processEvents()
-        pen.grab().save(os.path.join(output, f"ai-{mod}.png"))
-        print(f"kaydedildi: ai-{mod}.png", flush=True)
         # M3 kanıtı: filtre çipleri ve ızgara görünümü.
         pen.nav.setCurrentRow(0)
         pen.yil_filtre.setText("2024")

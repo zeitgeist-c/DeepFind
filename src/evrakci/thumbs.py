@@ -58,7 +58,8 @@ def bicim_uzantisi() -> str:
 
 
 def anahtar(path: str, boyut: int, mtime_ns: int, tur: str = "s") -> str:
-    ham = f"{os.path.normcase(str(path))}|{int(boyut)}|{int(mtime_ns)}|{tur}"
+    canonical = str(path).upper() if os.name == 'nt' else os.path.normcase(str(path))
+    ham = f"{canonical}|{int(boyut)}|{int(mtime_ns)}|{tur}"
     return hashlib.sha1(ham.encode("utf-8", "ignore")).hexdigest()
 
 

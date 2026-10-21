@@ -123,23 +123,10 @@ def test_guncelleme_bolumu_kaynak_kopyada(pencere):
 
 def test_tema_uc_mod(pencere):
     _app()
-    assert [pencere.ai_model.itemText(i) for i in range(pencere.ai_model.count())] == [
-        "Gemini 3.6 Flash", "Gemini 3.5 Flash-Lite", "Gemini 3.1 Flash-Lite",
-        "Gemma 4 26B A4B"]
     assert theme.apply(_app(), "acik") == "acik"
     assert theme.apply(_app(), "koyu") == "koyu"
     assert theme.resolve("sistem", True) == "koyu"
     assert theme.resolve("sistem", False) == "acik"
-    from evrakci import ai
-    pencere._ai_show()
-    pencere.ai_question.setText("Ankara arayüz testi")
-    pencere._ai_prepare()
-    _wait_jobs(pencere)
-    assert pencere.ai_preview is not None
-    index = pencere.ai_model.findData("gemini-3.1-flash-lite")
-    pencere.ai_model.setCurrentIndex(index)
-    assert migrate.get_setting(pencere.con, "ai_model") == "gemini-3.1-flash-lite"
-    assert pencere.ai_preview is None and ai.endpoint(pencere.ai_model.currentData())
 
 
 def test_arama_sonuc_ve_onizleme(pencere, tmp_path):
@@ -426,15 +413,16 @@ def test_goster_alanlari_satiri_ve_ayari_etkiler(pencere):
     assert pencere.sonuc_model.rowCount() >= 1
     tam = pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
     assert len(tam.splitlines()) >= 3
-    assert "AppData" in tam  # yol satırı görünür
+    full_path = pencere.sonuclar[0]["path"]
+    assert full_path in tam  # gerçek fixture yolu görünür
     assert all(a.isChecked() for a in pencere.goster_menu.actions())
     # Yolu kapat: satırdan düşer, ayar saklanır, ipucunda yol kalır.
     pencere._alan_degistir("yol", False)
     assert migrate.get_setting(pencere.con, "goster_alanlari") == "tur,ozet,etiket"
     kisa = pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
-    assert "AppData" not in kisa
+    assert full_path not in kisa
     assert len(kisa.splitlines()) == len(tam.splitlines()) - 1
-    assert "AppData" in pencere.sonuc_model.index(0, 0).data(Qt.ToolTipRole)
+    assert full_path in pencere.sonuc_model.index(0, 0).data(Qt.ToolTipRole)
     durum = {a.text(): a.isChecked() for a in pencere.goster_menu.actions()}
     assert durum == {"Yol": False, "Tür ve etiket": True,
                      "İçerik özeti": True, "Etiketler": True}
@@ -448,7 +436,7 @@ def test_goster_alanlari_satiri_ve_ayari_etkiler(pencere):
     # Alan geri açıldığında satıra döner.
     pencere._alan_degistir("yol", True)
     assert migrate.get_setting(pencere.con, "goster_alanlari") == "yol"
-    assert "AppData" in pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
+    assert full_path in pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
 
 
 def test_toplu_secim_etiket_ve_csv(pencere, tmp_path, monkeypatch):
@@ -880,7 +868,7 @@ def test_haric_ui_islemi_arka_planda_ve_geri_acilir(pencere, monkeypatch):
     deadline = time.monotonic() + 20
     while (pencere._jobs or pencere._search_thread is not None or pencere.onizleme.busy()
            or pencere._debounce.isActive() or pencere.file_debounce.isActive()
-           or pencere.ai_doc_timer.isActive()):
+          ):
         _app().processEvents(); time.sleep(.01)
         assert time.monotonic() < deadline
     assert pencere._exclusive_ready()
@@ -1135,72 +1123,3 @@ def test_015_without_tray(pencere):
         assert pencere.scan_dialog.isVisible()
     finally:
         pencere.tepsi = tray
-
-
-def test_020_ai_requires_explicit_send_and_clears_on_lock(pencere):
-    import json
-    from PySide6.QtCore import QObject, Signal
-    from PySide6.QtNetwork import QNetworkReply
-
-    class FakeReply(QObject):
-        finished = Signal()
-
-        def __init__(self, payload):
-            super().__init__()
-            self.payload = payload
-            self.aborted = False
-
-        def error(self):
-            return QNetworkReply.NoError
-
-        def readAll(self):
-            return self.payload
-
-        def abort(self):
-            self.aborted = True
-
-    class FakeNetwork:
-        def __init__(self):
-            self.calls = []
-            self.reply = None
-
-        def post(self, request, body):
-            self.calls.append((request, body))
-            return self.reply
-
-    fake = FakeNetwork()
-    pencere.ai_network = fake
-    pencere._ai_show()
-    pencere.ai_question.setText("Ankara arayüz testi")
-    pencere._ai_prepare()
-    _wait_jobs(pencere)
-    assert pencere.ai_preview is not None
-    assert pencere.ai_send.isEnabled()
-    assert pencere.ai_reply is None
-    assert "Ankara" in pencere.ai_preview_box.toPlainText()
-    assert not fake.calls
-    pencere._ai_send()
-    assert not fake.calls
-    sid = pencere.ai_preview.sources[0]["id"]
-    fake.reply = FakeReply(json.dumps({"candidates": [{"content": {"parts": [{"text":
-        json.dumps({"answer": "Ankara belgesi bulundu.", "source_ids": [sid]})}]}}]}).encode())
-    migrate.set_setting(pencere.con, "gemini_api_key", "synthetic-key")
-    from pathlib import Path
-    assert b"synthetic-key" not in Path(pencere.kasa_yolu).read_bytes()
-    pencere._ai_send()
-    assert len(fake.calls) == 1
-    assert b"Ankara" in fake.calls[0][1]
-    assert b"synthetic-key" not in fake.calls[0][1]
-    fake.reply.finished.emit()
-    assert "Ankara belgesi" in pencere.ai_answer.toPlainText(), pencere.ai_status.text()
-    assert pencere.ai_sources.count() == 1
-    fake.reply = FakeReply(b"")
-    pencere._ai_send()
-    assert pencere.ai_reply is fake.reply
-    pencere.ai_question.setText("Değişen soru")
-    assert fake.reply.aborted and pencere.ai_reply is None
-    pencere.kilitle()
-    assert pencere.ai_preview is None
-    assert not pencere.ai_preview_box.toPlainText()
-    assert not pencere.ai_answer.toPlainText()
-    assert not pencere.ai_key_input.text()

@@ -11,7 +11,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-from evrakci import ai, coordinator, migrate, schema, vault
+from evrakci import coordinator, migrate, schema, vault
 from evrakci.vocab import ensure_v5, rebuild_vocab
 
 
@@ -66,26 +66,6 @@ def test_cancelled_scan_keeps_index_and_interrupted_run_is_recovered(tmp_path, m
         con.close()
 
 
-def test_model_allowlist_and_gemma_body():
-    assert list(ai.MODELS) == ["gemini-3.6-flash", "gemini-3.5-flash-lite",
-                               "gemini-3.1-flash-lite", "gemma-4-26b-a4b-it"]
-    assert ai.MODEL == "gemini-3.5-flash-lite"
-    assert ai.selected_model("gemini-3.8-flash") == "gemini-3.6-flash"
-    assert ai.selected_model("gemini-3.5-flash") == "gemini-3.5-flash-lite"
-    assert ai.selected_model("gemma-4-26b-a4b-it") == "gemma-4-26b-a4b-it"
-    assert ai.endpoint("gemini-3.6-flash").endswith("gemini-3.6-flash:generateContent")
-    assert ai.endpoint("gemini-3.5-flash-lite").endswith("gemini-3.5-flash-lite:generateContent")
-    with pytest.raises(ValueError, match="Desteklenmeyen"):
-        ai.endpoint("gemini-3.8-flash")
-    with pytest.raises(ValueError, match="Desteklenmeyen"):
-        ai.endpoint("gemini-3.5-flash")
-    assert ai.endpoint("gemini-3.1-flash-lite").endswith("gemini-3.1-flash-lite:generateContent")
-    with pytest.raises(ValueError, match="Desteklenmeyen"):
-        ai.endpoint("../../other")
-    preview = ai.Preview("question", "Ankara?", (), "", False)
-    gemma = json.loads(ai.request_body(preview, "gemma-4-26b-a4b-it"))
-    assert "generationConfig" not in gemma
-    assert "systemInstruction" in gemma
 
 
 def test_vocabulary_rebuild_uses_encrypted_stage(tmp_path):

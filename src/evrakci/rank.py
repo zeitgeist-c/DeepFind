@@ -262,50 +262,89 @@ FTS_AGIRLIK = 0.4
 VEC_AGIRLIK = 0.6
 
 
-def _vektorler(con, seg_ids: list) -> dict:
-    """seg_id -> birim vektor (model surumu tutanlar)."""
-    from . import embed as embed_mod
-
-    if not seg_ids:
-        return {}
-    satirlar = con.execute(
-        f"SELECT seg_id, vec FROM embeddings WHERE model_ver=?"
-        f" AND seg_id IN ({','.join('?' * len(seg_ids))})",
-        (embed_mod.MODEL_VER, *seg_ids)).fetchall()
-    import numpy as np
-
-    return {s: np.frombuffer(v, dtype=np.float32).copy() for s, v in satirlar}
-
-
 def search_hybrid(con, query, year=None, ext=None, limit=50, folder=None,
                   offset=0, tag=None, kodla=None) -> dict:
-    """FTS + vektor hibrit: ayni bicim, vektorle yeniden sirali.
+    """Independent vector candidates; merge before global pagination.
 
-    Vektor yoksa (eski kasa / modelsiz) FTS sonucunu aynen dondurur.
-    kodla(metinler) -> (n,256); verilmezse modelden kurulur.
+    Explicit phrases/boolean/exclusion expressions retain lexical semantics.
+    Vectors are streamed from the encrypted database, never persisted in plaintext.
     """
-    taban = search_ranked(con, query, year, ext, limit, folder, offset, tag)
-    if not taban["results"]:
-        return taban
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+    fallback = search_ranked(con, query, year, ext, limit, folder, offset, tag)
+    explicit = bool(re.search(r'"|(?:^|\s)-|\b(?:OR|VEYA|NOT)\b', query))
+    if explicit or not nz.tokens_folded(query):
+        return fallback
     if kodla is None:
         from . import embed as embed_mod
-
         ot = embed_mod.hazir_oturum()
         if ot is None:
-            return taban
-        kodla = lambda m: ot.encode(m, gorev="sorgu")  # noqa: E731
-    seg_ids = [r["seg_id"] for r in taban["results"]]
-    vecs = _vektorler(con, seg_ids)
-    if not vecs:
-        return taban
+            return dict(fallback, engine_status=embed_mod.status())
+        kodla = lambda m: ot.encode(m, gorev='sorgu')
     import numpy as np
-
-    q = np.asarray(kodla([query]), dtype=np.float32)[0]
-    for r in taban["results"]:
-        v = vecs.get(r["seg_id"])
-        benzer = float(np.dot(q, v)) if v is not None else 0.0
-        fts = min(100, max(0, r.get("score", 0))) / 100.0
-        r["score"] = round((FTS_AGIRLIK * fts + VEC_AGIRLIK * max(0.0, benzer)) * 100.0, 1)
-        r["vec_skor"] = round(benzer, 3)
-    taban["results"].sort(key=lambda r: r["score"], reverse=True)
-    return taban
+    from . import embed as embed_mod
+    try:
+        qvec = np.asarray(kodla([query]), dtype=np.float32)
+        if qvec.shape != (1, embed_mod.DIM) or not np.isfinite(qvec).all():
+            raise ValueError('Geçersiz sorgu vektörü')
+        qvec = qvec[0]
+        qnorm = np.linalg.norm(qvec)
+        if qnorm < 1e-12: raise ValueError('Boş sorgu vektörü')
+        qvec = qvec / qnorm
+    except Exception as exc:
+        return dict(fallback, semantic_error=str(exc))
+    # Lexical candidates must include all pages before fusion, not just page 1.
+    by_file = {}
+    page = 0
+    while True:
+        block = search_ranked(con, query, year, ext, 200, folder, page, tag)
+        for result in block['results']:
+            by_file[result['file_id']] = dict(result, score=round(result['score'] * FTS_AGIRLIK, 1))
+        if not block.get('has_more'): break
+        page += 200
+    filters = ["e.model_ver=?", "e.dim=?", "f.index_status NOT IN ('excluded','pending')"]
+    args = [embed_mod.MODEL_VER, embed_mod.DIM]
+    if year:
+        filters.append('EXISTS(SELECT 1 FROM file_years y WHERE y.file_id=f.file_id AND y.year=?)'); args.append(year)
+    if ext:
+        filters.append('f.ext=?'); args.append(ext)
+    if folder:
+        filters.append('instr(lower(f.path),lower(?))>0'); args.append(folder)
+    if tag:
+        filters.append('EXISTS(SELECT 1 FROM file_tags t WHERE t.file_id=f.file_id AND t.tag=?)'); args.append(tag.strip().lower())
+    cursor = con.execute("SELECT f.file_id,f.path,f.name,f.ext,f.index_status,f.error_code,"
+                         "s.seg_id,s.label,s.page,s.raw_text,e.vec FROM embeddings e "
+                         "JOIN segments s ON s.seg_id=e.seg_id JOIN files f ON f.file_id=s.file_id "
+                         "WHERE " + ' AND '.join(filters), args)
+    best = {}
+    for fid,path,name,fext,state,error,sid,label,page,raw,blob in cursor:
+        if len(blob) != embed_mod.DIM * 4: continue
+        v = np.frombuffer(blob, dtype=np.float32)
+        if not np.isfinite(v).all(): continue
+        norm = np.linalg.norm(v)
+        if norm < 1e-12: continue
+        similarity = float(np.dot(qvec, v / norm))
+        if similarity < 0.60: continue
+        if fid in best and best[fid][0] >= similarity: continue
+        best[fid] = (similarity, (path,name,fext,state,error,sid,label,page,raw))
+    for fid, (similarity, data) in best.items():
+        path,name,fext,state,error,sid,label,page,raw = data
+        previous = by_file.get(fid)
+        if previous:
+            previous['score'] = round(previous['score'] + VEC_AGIRLIK * similarity * 100, 1)
+            previous['vec_skor'] = round(similarity, 3)
+            previous['why'] = previous['why'] + ['anlamsal benzerlik']
+        else:
+            by_file[fid] = dict(file_id=fid,path=path,name=name,ext=fext,label=label,page=page,
+                seg_id=sid,snippet=snip.highlight(raw or '',nz.tokens_folded(query)),
+                score=round(VEC_AGIRLIK * similarity * 100,1),score_class='semantic',
+                vec_skor=round(similarity,3),why=['anlamsal benzerlik'],years=[],
+                index_status=state,error_code=error,content_available=True)
+    if not best: return fallback
+    ordered = sorted(by_file.values(), key=lambda r:(-r['score'], r['path'], r['file_id']))
+    counts = {'strict':0, 'folded':0, 'fuzzy':0, 'semantic':0}
+    selected = ordered[offset:offset+limit]
+    for r in selected: counts[r['score_class']] += 1
+    return dict(results=selected, suggestions=fallback['suggestions'], class_counts=counts,
+                empty=not selected, has_more=len(ordered)>offset+limit, offset=offset,
+                semantic=True)

@@ -666,70 +666,42 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             report("OCR işleniyor", path, r)
         if ocr_session is not None:
             ocr_session.kill()
-        # --- vektor fazi: kalici alt surecte gom (cokus yalitimi) ---
-        # Model turda bir yuklenir; alt surec olurse is basarisiz sayilir,
-        # ana surec ve kasa saglam kalir (OCR deseniyle ayni).
-        from .workers import WorkerSession
-
-        gom_oturumu = None
-        if not gom_mod.model_var_mi():
-            report("Vektör modeli yok; klasik arama sürüyor", root, force=True)
-        while True:
-            if stop and stop():
-                stats["result"] = "cancelled"
-                break
-            job = q.claim(con, ("embed",), scoped=True)
-            if not job:
-                break
-            if gom_oturumu is None:
-                try:
-                    gom_oturumu = WorkerSession()
-                except Exception:
-                    report("Vektör işçisi açılamadı; klasik arama sürüyor", root, force=True)
+        if gom_mod.model_var_mi():
+            from .embed import MODEL_VER
+            rows = con.execute("SELECT f.file_id,f.size,f.mtime_ns FROM files f "
+                "JOIN scan_selected sel ON sel.file_id=f.file_id WHERE EXISTS("
+                "SELECT 1 FROM segments s LEFT JOIN embeddings e ON e.seg_id=s.seg_id "
+                "AND e.model_ver=? WHERE s.file_id=f.file_id AND s.kind NOT IN ('name_only','context') "
+                "AND e.seg_id IS NULL)", (MODEL_VER,)).fetchall()
+            for fid, size, modified in rows:
+                q.enqueue(con, fid, q.signature_of(size,modified), kind='embed')
+            con.commit()
+        # Shared native process isolates driver failures without duplicate model loads.
+        if gom_mod.model_var_mi():
+            from . import embed as embedding
+            ot = embedding.isit_oturumu()
+            if ot is None:
+                report('Vektör motoru açılamadı; klasik arama sürüyor', root, force=True)
+            while ot is not None:
+                if stop and stop():
+                    stats['result'] = 'cancelled'
                     break
-            fid = job["file_id"]
-            kayit = con.execute(
-                "SELECT size, mtime_ns, path FROM files WHERE file_id=?", (fid,)).fetchone()
-            if not kayit:
-                q.complete(con, job["job_id"])
-                continue
-            boy, degis, yol = kayit
-            if q.signature_of(boy, degis) != job["signature"]:
-                q.enqueue(con, fid, q.signature_of(boy, degis), kind="embed")
-                con.commit()
-                q.complete(con, job["job_id"])
-                continue
-            ciftler = gom_mod._metinler(con, fid)
-            if not ciftler:
-                q.complete(con, job["job_id"])
-                continue
-            report("Vektör dizini hazırlanıyor", yol, force=True)
-            try:
-                sonuc = gom_oturumu.call(
-                    "gom", (gom_mod.model_yolu(), [t for _, t in ciftler]),
-                    timeout=min(1800, max(300, len(ciftler) * 5)),
-                    stop=stop if stop else None)
-                gom_mod.vektor_yaz(con, ciftler, sonuc["vektorler"])
-                q.complete(con, job["job_id"])
-                r = "done"
-            except InterruptedError:
-                con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?",
-                            (job["job_id"],))
-                con.commit()
-                stats["result"] = "cancelled"
-                break
-            except TimeoutError:
-                r = q.fail(con, job["job_id"], "PROCESS_TIMEOUT")
-                gom_oturumu = None
-            except Exception:
-                r = q.fail(con, job["job_id"], "EMBED_FAILED")
-                gom_oturumu = None
-            stats["embed_done"] += 1 if r == "done" else 0
-            if r in ("retry", "dead"):
-                stats["failed"] += 1
-            report("Vektör işleniyor", yol, r)
-        if gom_oturumu is not None:
-            gom_oturumu.kill()
+                job = q.claim(con, ('embed',), scoped=True)
+                if not job: break
+                fid = job['file_id']
+                report('Vektör dizini hazırlanıyor', str(fid), force=True)
+                try:
+                    outcome = gom_mod.process_embed_job(con, job, kodla=lambda texts: ot.encode(texts, gorev='belge', cancel=stop))
+                except InterruptedError:
+                    con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job['job_id'],))
+                    con.commit()
+                    stats['result'] = 'cancelled'
+                    break
+                except Exception as error:
+                    outcome = q.fail(con, job['job_id'], type(error).__name__)
+                if outcome == 'done': stats['embed_done'] += 1
+                if outcome in ('retry', 'dead'): stats['failed'] += 1
+                report('Vektör işleniyor', str(fid), outcome)
         # --- kopya hash (arka plan; sinirli; kaynagi bir kez daha okur) ---
         try:
             from . import dup as dup_mod

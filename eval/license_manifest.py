@@ -10,9 +10,7 @@ HEDEF = os.path.join(KOK, "LISANSLAR.md")
 
 ILGILI = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx",
           "defusedxml", "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6",
-          "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy",
-          "transformers", "tokenizers", "huggingface-hub", "hf-xet", "safetensors",
-          "regex", "filelock"]
+          "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy"]
 
 
 def lisans_dosyalari(dist):
@@ -43,6 +41,10 @@ def main():
         satir.append(f"- {d.metadata['Name']}=={ver} — {lic}")
         for f in dosyalar[:4]:
             satir.append(f"  - {f}")
+    satir += ["", "- EmbeddingGemma 2 Q8_0: Apache-2.0; embedding/model-LICENSE.txt.",
+              "- llama.cpp b11765: MIT; embedding/llama-LICENSE.txt.",
+              "- LLVM OpenMP: Apache-2.0 with LLVM exceptions; motor klasörlerinde LICENSE-LLVM-OpenMP.",
+              "- İsteğe bağlı CUDA: NVIDIA çalışma zamanı lisansları."]
     satir += ["",
               "PySide6 (LGPLv3): lisans metni pakette `licenses/` altında taşınır; "
               "Qt kaynak teklifi Qt Company kanalıyla (dinamik bağ, değişiklik yok).",

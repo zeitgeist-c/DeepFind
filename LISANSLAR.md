@@ -1,4 +1,4 @@
-# Evrakçı 0.9.0 — Üçüncü-taraf lisansları
+# Evrakçı 0.10.0 — Üçüncü-taraf lisansları
 
 Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.
 
@@ -41,19 +41,11 @@
   - numpy-2.5.4.dist-info/licenses/numpy/_core/include/numpy/libdivide/LICENSE.txt
   - numpy-2.5.4.dist-info/licenses/numpy/_core/src/common/pythoncapi-compat/COPYING
   - numpy-2.5.4.dist-info/licenses/numpy/_core/src/highway/LICENSE
-- transformers==5.20.2 — Apache 2.0 License
-  - transformers-5.20.2.dist-info/licenses/LICENSE
-- tokenizers==0.23.3 — ?
-- huggingface_hub==2.2.0 — Apache-2.0
-  - huggingface_hub-2.2.0.dist-info/licenses/LICENSE
-- hf-xet==1.7.0 — Apache-2.0
-  - hf_xet-1.7.0.dist-info/licenses/LICENSE
-- safetensors==0.8.0 — ?
-  - safetensors-0.8.0.dist-info/licenses/LICENSE
-- regex==2026.9.29 — Apache-2.0 AND CNRI-Python
-  - regex-2026.9.29.dist-info/licenses/LICENSE.txt
-- filelock==4.2.4 — MIT
-  - filelock-4.2.4.dist-info/licenses/LICENSE
+- EmbeddingGemma 2 Q8_0 — Apache-2.0; Google modelinden ggml-org dönüşümü.
+  - `embedding/model-LICENSE.txt`; kaynak ve SHA-256 `embedding/manifest.json`.
+- llama.cpp b11765 — MIT; `embedding/llama-LICENSE.txt`.
+- LLVM OpenMP — Apache-2.0 with LLVM exceptions; CPU/Vulkan motor klasörlerinde `LICENSE-LLVM-OpenMP`.
+- İsteğe bağlı CUDA bileşeni: NVIDIA çalışma zamanlarının yeniden dağıtım koşulları geçerlidir.
 
 PySide6 (LGPLv3): lisans metni pakette `licenses/` altında taşınır; Qt kaynak teklifi Qt Company kanalıyla (dinamik bağ, değişiklik yok).
 RapidOCR (PP-OCR modelleri, Apache-2.0) + ONNX Runtime (MIT) + OpenCV-python-headless (Apache-2.0) bağımlılıkları licenses/ altında taşınır.

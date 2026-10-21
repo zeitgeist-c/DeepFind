@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QScrollArea,QPushButton,QLine
     QComboBox,QListView,QHBoxLayout,QBoxLayout,QLabel,QSplitter,QFrame)
 from .ui import bolme, label, sayac, CardDelegate
 from .tasks import DatabaseTask,list_files
-from . import ai,backup,history
+from . import backup,history
 
 STATUS={'pending':'Bekliyor','ok':'Tamamlandı','partial':'Kısmi','encrypted':'Kilitli',
         'unsupported_content':'İçerik motoru yok','corrupt':'Hatalı','missing':'Erişilemiyor','excluded':'Hariç'}
@@ -45,40 +45,6 @@ def scroll(widget):
 def install(w):
     # Existing behaviors are reparented, rather than duplicated or discarded.
     w._list_cache={}
-    # AI: sol kurulum paneli + sag numarali adimlar, tek yuzey uzerinde
-    kurulum=QWidget(); kurulum.setObjectName("sideRail"); kurulum.setAttribute(Qt.WA_StyledBackground, True)
-    kurulum_layout=QVBoxLayout(kurulum); kurulum_layout.setContentsMargins(16,16,16,16); kurulum_layout.setSpacing(10)
-    kurulum_layout.addWidget(label('Kurulum','eyebrow'))
-    kurulum_layout.addWidget(w.ai_kurulum)
-    kurulum_layout.addStretch(1)
-    adimlar=QWidget(); adim_layout=QVBoxLayout(adimlar); adim_layout.setContentsMargins(16,14,16,14); adim_layout.setSpacing(14)
-    for num,box,baslik in (('1',w.ai_soru,'SORU'),('2',w.ai_alinti,'ALINTILAR'),('3',w.ai_yanit,'YANIT')):
-        satir=QHBoxLayout(); satir.setSpacing(12)
-        rozet=QLabel(num); rozet.setObjectName("numb"); rozet.setFixedWidth(22); rozet.setAlignment(Qt.AlignCenter)
-        satir.addWidget(rozet,0,Qt.AlignTop)
-        adim=QWidget(); adim_inner=QVBoxLayout(adim); adim_inner.setContentsMargins(0,0,0,0); adim_inner.setSpacing(8)
-        adim_inner.addWidget(label(baslik,'eyebrow')); adim_inner.addWidget(box)
-        satir.addWidget(adim,1); adim_layout.addLayout(satir)
-        if num=='3': adim_layout.addStretch(1)
-    adim_kaydir = QScrollArea()
-    adim_kaydir.setWidgetResizable(True)
-    adim_kaydir.setFrameShape(QScrollArea.NoFrame)
-    adim_kaydir.setWidget(adimlar)
-    for box in (w.ai_kurulum,w.ai_soru,w.ai_alinti,w.ai_yanit):
-        for text in box.findChildren(QLabel): text.setWordWrap(True)
-    w.ai_page=QWidget(); ai_sayfa=QVBoxLayout(w.ai_page); ai_sayfa.setContentsMargins(22,18,22,20); ai_sayfa.setSpacing(14)
-    ai_split=QSplitter(Qt.Horizontal); ai_split.setChildrenCollapsible(False)
-    yuzey=QFrame(); yuzey.setObjectName("card"); yl=QHBoxLayout(yuzey); yl.setContentsMargins(0,0,0,0); yl.setSpacing(0)
-    ai_split.addWidget(kurulum); ai_split.addWidget(adim_kaydir)
-    ai_split.setStretchFactor(0,0); ai_split.setStretchFactor(1,1); ai_split.setSizes([260,720])
-    yl.addWidget(ai_split)
-    w.ai_split=ai_split; ai_sayfa.addWidget(yuzey,1)
-    ham = getattr(w,'_ai_ham',None)
-    if ham is not None:
-        w.yigin.removeWidget(ham)
-        ham.setParent(None)
-        ham.deleteLater()
-    w.yigin.insertWidget(1,w.ai_page)
     files=QWidget(); layout=QVBoxLayout(files); layout.setContentsMargins(22,18,22,20); layout.setSpacing(14)
     filters=QHBoxLayout(); filters.setSpacing(9)
     w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText('Dosya adı veya tam yol')
@@ -132,16 +98,14 @@ def install(w):
     w.file_debounce.timeout.connect(lambda:w._files_refresh(reset=True))
     w.file_filter.textChanged.connect(lambda:w.file_debounce.start()); w.file_status.currentIndexChanged.connect(lambda:w._files_refresh(reset=True))
     w.file_list.doubleClicked.connect(w._file_open)
-    w.nav.blockSignals(True); w.nav.clear(); w.nav.addItems(['Ara','AI ile ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']); w.nav.setCurrentRow(0); w.nav.blockSignals(False)
+    w.nav.blockSignals(True); w.nav.clear(); w.nav.addItems(['Ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']); w.nav.setCurrentRow(0); w.nav.blockSignals(False)
     w._nav_ikonlari()
     w.yigin.setCurrentIndex(0)
 
 def layout_cards(w):
-    if not hasattr(w,'ai_row'): return
-    width=w.yigin.width()-70; columns=2 if width>=850 else 1
-    w.ai_row.setDirection(QBoxLayout.LeftToRight if columns==2 else QBoxLayout.TopToBottom)
-    for i,frame in enumerate(w.ai_cards):
-        frame.setMinimumHeight((300 if i==0 else 600) if columns==1 else 0)
+    # Compatibility for existing screenshot utilities; native layouts adapt themselves.
+    return
+
 
 def files_refresh(w,reset=False):
     if reset: w.file_offset=0
@@ -206,14 +170,3 @@ def refresh_history(w):
         w.gecmis_sayi.setText(f'{len(rows)} arama')
         w._gecmis_ayrinti()
     job(w,'history',history.list_all,ready)
-
-def refresh_docs(w):
-    def ready(rows):
-        if hasattr(w,'_list_cache'):
-            if w._list_cache.get('docs')==rows: return
-            w._list_cache['docs']=rows
-        old=w.ai_document.currentData(); w.ai_document.blockSignals(True); w.ai_document.clear()
-        for fid,name,path in rows: w.ai_document.addItem(name+' • '+path,fid)
-        w.ai_document.setCurrentIndex(max(0,w.ai_document.findData(old))); w.ai_document.blockSignals(False)
-    offset=getattr(w,'ai_doc_offset',0); query=w.ai_doc_query.text() if hasattr(w,'ai_doc_query') else ''
-    job(w,'ai_docs',lambda con:ai.list_documents(con,limit=100,offset=offset,query=query),ready)

@@ -31,6 +31,7 @@ from pathlib import Path
 RELEASE_REPO = "zeitgeist-c/Evrakci-Releases"
 API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 from .version import __version__
+from .installer import windows_file_version, spawn_installer
 USER_AGENT = f"Evrakci/{__version__}"
 PROGRAM = "Evrakçı"
 log = logging.getLogger("evrakci.update")
@@ -73,10 +74,20 @@ def parse_release(payload: dict) -> UpdateInfo:
     version = tag[1:] if tag.startswith("v") else tag
     parse_version(version)  # karşılaştıramayacağımız etiketleri reddet
     adaylar = {y.format(s=version) for y in _VARLIK_YAZIMLARI}
-    for asset in payload.get("assets") or []:
+    adaylar.update({f'Evrakçı-{version}.exe', f'Evrakci-{version}.exe'})
+    from .model_indir import paylasilan_hazir
+    incremental = paylasilan_hazir()
+    if incremental:
+        adaylar.update({f'Evrakçı-{version}.evrakci', f'Evrakci-{version}.evrakci'})
+    def priority(asset):
+        name = str(asset.get('name',''))
+        return 0 if name.endswith('.evrakci') else 1 if name.endswith('.exe') else 2
+    for asset in sorted(payload.get("assets") or [], key=priority):
         if asset.get("name") not in adaylar:
             continue
         digest = str(asset.get("digest") or "")
+        if not re.fullmatch(r'(?:sha256:)?[0-9a-fA-F]{64}', digest):
+            raise UpdateError('Yayın SHA-256 doğrulama bilgisi eksik.')
         return UpdateInfo(
             version=version,
             asset_name=str(asset.get("name")),
@@ -224,6 +235,18 @@ def prepare(info: UpdateInfo, progress=None, cancel=None) -> Path:
     bozuk bir paket diskte artık bırakmaz.
     """
     klasor = updates_dir()
+    if info.asset_name.endswith('.evrakci'):
+        return prepare_incremental(info, klasor, progress, cancel)
+    if info.asset_name.lower().endswith('.exe'):
+        target = klasor / f'Evrakçı-{info.version}.exe'
+        download(info, target, progress=progress, cancel=cancel)
+        try:
+            if windows_file_version(target) != parse_version(info.version):
+                raise UpdateError('Kurulum dosyasının sürümü doğrulanamadı.')
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return target
     zip_yolu = klasor / f"{_KLASOR_KALIBI.format(s=info.version)}.zip"
     download(info, zip_yolu, progress=progress, cancel=cancel)
     try:
@@ -231,6 +254,35 @@ def prepare(info: UpdateInfo, progress=None, cancel=None) -> Path:
     except UpdateError:
         zip_yolu.unlink(missing_ok=True)
         raise
+
+
+def prepare_incremental(info, directory, progress=None, cancel=None):
+    """Only two permitted members: versioned installer and strict model manifest."""
+    from .model_indir import MODEL_SHA256, paylasilan_hazir
+    if not paylasilan_hazir(): raise UpdateError('Model doğrulanamadı; tam kurulum gerekli.')
+    archive = directory / f'Evrakçı-{info.version}.evrakci'
+    download(info, archive, progress=progress, cancel=cancel)
+    target = directory / f'Evrakçı-{info.version}.exe'
+    try:
+        with zipfile.ZipFile(archive) as z:
+            installer = f'Evrakçı-{info.version}.exe'
+            if len(z.infolist()) != 2 or set(z.namelist()) != {installer, 'manifest.json'}:
+                raise UpdateError('Güncelleme paketi beklenmeyen dosyalar içeriyor.')
+            if z.getinfo('manifest.json').file_size > 65536 or z.getinfo(installer).file_size > 2*1024**3:
+                raise UpdateError('Güncelleme paketi boyut sınırını aşıyor.')
+            meta = json.loads(z.read('manifest.json'))
+            if meta != {'program':PROGRAM, 'version':info.version, 'model_sha256':MODEL_SHA256}:
+                raise UpdateError('Güncelleme modeli/sürümü uyuşmuyor; tam kurulum gerekli.')
+            with z.open(installer) as source, target.open('wb') as out:
+                shutil.copyfileobj(source, out, 1024*1024)
+        if windows_file_version(target) != parse_version(info.version):
+            raise UpdateError('Kurulum sürümü uyuşmuyor.')
+        return target
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+    finally:
+        archive.unlink(missing_ok=True)
 
 
 def spawn_swap(old_pid: int, hazir_klasor: Path, calisan_exe: Path,
@@ -244,6 +296,8 @@ def spawn_swap(old_pid: int, hazir_klasor: Path, calisan_exe: Path,
     `son-guncelleme.txt` ile bildirir.
     """
     hazir_klasor = Path(hazir_klasor)
+    if hazir_klasor.is_file() and hazir_klasor.suffix.lower() == '.exe':
+        return spawn_installer(old_pid, hazir_klasor, Path(calisan_exe), kasa_yolu)
     calisan_exe = Path(calisan_exe)
     hedef_ust = calisan_exe.resolve().parent
     yeni_exe = hedef_ust / hazir_klasor.name / f"{hazir_klasor.name}.exe"

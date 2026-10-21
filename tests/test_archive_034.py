@@ -1,7 +1,7 @@
 """Archive completeness, retrieval correctness and bounded UI regressions."""
 import sqlite3,time,os
 import pytest
-from evrakci import schema,migrate,index,rank,ai,coordinator,extract,vault
+from evrakci import schema,migrate,index,rank,coordinator,extract,vault
 from evrakci.scan import Entry
 from evrakci.extract import Segment,ExtractResult
 from evrakci.vocab import ensure_v5
@@ -20,15 +20,6 @@ def test_large_archive_does_not_lose_intersection_or_filtered_matches():
     assert rank.search_ranked(con,'tahsilat',offset=500)['results']
     con.close()
 
-def test_ai_selects_late_evidence_and_preserves_question():
-    con=database(); entry=Entry('C:/archive/12345.pdf','12345.pdf','.pdf',1,1)
-    index.index_entry(con,entry,ExtractResult([Segment('pdf_page',9,'Sayfa 9','Boş açıklama '*300+'tahsilat makbuzu 54321: 18.750 TL')]))
-    question='54321 numaralı tahsilat makbuzu tutarı nedir?'
-    preview=ai.prepare_question(con,question)
-    assert any('18.750 TL' in s['text'] for s in preview.sources)
-    assert preview.question==question and ai.still_current(con,preview)
-    assert all(len(s['text'])<=ai.MAX_EXCERPT for s in preview.sources)
-    con.close()
 
 def test_phrase_query_and_identifiers():
     con=database()
@@ -38,12 +29,6 @@ def test_phrase_query_and_identifiers():
     assert rank.search_ranked(con,'54321 18.750')['results'][0]['name']=='0.pdf'
     con.close()
 
-def test_ai_turkish_tolerance_finds_late_excerpt():
-    con=database()
-    index.index_entry(con,Entry('12345.pdf','12345.pdf','.pdf',1,1),ExtractResult([Segment('pdf_page',1,'Sayfa 1','başka açıklamalar '*200+'Ayşe 12 milyon TL')]))
-    preview=ai.prepare_question(con,'Ayse')
-    assert '12 milyon' in preview.sources[0]['text']
-    con.close()
 
 def test_excel_windows_keep_last_row_and_source_unchanged(tmp_path):
     from openpyxl import Workbook

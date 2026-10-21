@@ -55,11 +55,11 @@ def main():
     deps = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx", "defusedxml",
             "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6",
             "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy", "pyclipper",
-            "transformers", "tokenizers", "huggingface-hub", "hf-xet", "safetensors",
-            "regex", "filelock",
             "shapely", "omegaconf", "pyyaml", "six", "requests", "tqdm", "colorlog",
             "protobuf", "flatbuffers", "idna", "certifi", "urllib3", "charset-normalizer"]
-    manifest = {"program": "Evrakçı", "version": __version__, "dependencies": {}}
+    manifest = {"program": "Evrakçı", "version": __version__, "dependencies": {},
+                "source_commit":subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+                "source_dirty":bool(subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip())}
     for name in deps:
         dist = importlib.metadata.distribution(name)
         manifest["dependencies"][name] = dist.version
@@ -78,6 +78,10 @@ def main():
         shutil.copyfile(lgpl, licenses / "LGPL-3.0-only.txt")
     if not (licenses / "LGPL-3.0-only.txt").is_file():
         raise RuntimeError("LGPL lisans metni bulunamadı; paket teslim edilemez")
+    from evrakci.model_indir import gerekli_mi
+    if gerekli_mi(str(package / '_internal/embedding/embeddinggemma-2-Q8_0.gguf')):
+        raise RuntimeError('GGUF model pakette eksik veya özeti geçersiz')
+    shutil.copyfile(ROOT / 'build/embedding/manifest.json', licenses / 'embedding-manifest.json')
     # RapidOCR motoru pakettir: model + config verileri _internal/rapidocr altında olmalı.
     model_root = package / "_internal" / "rapidocr" / "models"
     if not any(model_root.glob("*.onnx")):
@@ -123,6 +127,16 @@ def main():
     print(json.dumps({"setup": str(kurulum),
                       "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
                      ensure_ascii=False))
+    subprocess.run([iscc, '/DUpdatePackage', str(ROOT / 'packaging/Evrakci.iss')],
+                   cwd=str(ROOT / 'packaging'), check=True, timeout=600)
+    from evrakci.model_indir import MODEL_SHA256
+    incremental = ROOT / (stem + '.evrakci')
+    with zipfile.ZipFile(incremental, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.write(ROOT / 'build/update-installer' / (stem + '.exe'), stem + '.exe')
+        archive.writestr('manifest.json', json.dumps({'program':'Evrakçı', 'version':__version__,
+                                                     'model_sha256':MODEL_SHA256},ensure_ascii=False))
+    print(json.dumps({'incremental':str(incremental), 'size':incremental.stat().st_size,
+                      'sha256':hashlib.sha256(incremental.read_bytes()).hexdigest()},ensure_ascii=False))
 
 
 if __name__ == "__main__":
