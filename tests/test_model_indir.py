@@ -58,3 +58,40 @@ def test_varsayilan_hedef_yonetilen_alan(tmp_path):
 
 def kwargs_url(p):
     return p.as_uri()
+
+
+def test_small_update_accepts_installed_or_legacy_model(tmp_path, monkeypatch):
+    from evrakci import model_indir, engine
+    assets = tmp_path / '_internal' / 'embedding'
+    assets.mkdir(parents=True)
+    (tmp_path / 'unins000.exe').write_bytes(b'test')
+    monkeypatch.setattr(engine, 'asset_root', lambda: assets)
+    checked = []
+    def required(path=None):
+        checked.append(path)
+        return path != str(assets / model_indir.MODEL_DOSYA)
+    monkeypatch.setattr(model_indir, 'gerekli_mi', required)
+    assert model_indir.paylasilan_hazir()
+    assert checked == [str(assets / model_indir.MODEL_DOSYA)]
+    monkeypatch.setattr(model_indir, 'gerekli_mi', lambda path=None: path == str(assets / model_indir.MODEL_DOSYA))
+    assert model_indir.paylasilan_hazir()
+    monkeypatch.setattr(model_indir, 'gerekli_mi', lambda path=None: True)
+    assert not model_indir.paylasilan_hazir()
+
+
+def test_portable_model_cannot_select_small_installer(tmp_path, monkeypatch):
+    from evrakci import model_indir, engine
+    assets = tmp_path / '_internal' / 'embedding'
+    monkeypatch.setattr(engine, 'asset_root', lambda: assets)
+    monkeypatch.setattr(model_indir, 'gerekli_mi', lambda path=None: path != str(assets / model_indir.MODEL_DOSYA))
+    assert not model_indir.paylasilan_hazir()
+
+
+def test_runtime_prefers_model_beside_installed_exe(tmp_path, monkeypatch):
+    from evrakci import engine
+    assets = tmp_path / 'Program Files' / 'Evrakçı' / '_internal' / 'embedding'
+    assets.mkdir(parents=True)
+    model = assets / engine.MODEL_DOSYA
+    model.write_bytes(b'test')
+    monkeypatch.setattr(engine, 'asset_root', lambda: assets)
+    assert engine._varsayilan_model_yolu() == str(model)

@@ -6,11 +6,7 @@
   #undef AppVersion
   #define AppVersion "0.9.0"
 #endif
-#ifdef TestInstall
-  #define ModelDir "{app}\_internal\embedding"
-#else
-  #define ModelDir "{commonappdata}\Evrakçı\models"
-#endif
+#define ModelDir "{app}\_internal\embedding"
 
 [Setup]
 #ifdef TestInstall
@@ -45,6 +41,8 @@ PrivilegesRequired=lowest
 PrivilegesRequired=admin
 #endif
 CloseApplications=yes
+RestartApplications=no
+UsePreviousAppDir=yes
 OutputBaseFilename={#AppName}-{#AppVersion}
 #ifdef TestInstall
 Compression=none
@@ -69,7 +67,7 @@ Name: "desktopicon"; Description: "Masaüstü simgesi oluştur"; Flags: unchecke
 Source: "..\dist\{#AppName}-{#AppVersion}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
 #ifndef UpdatePackage
 #ifndef TestPrevious
-Source: "..\build\embedding\embeddinggemma-2-Q8_0.gguf"; DestDir: "{#ModelDir}"; Flags: ignoreversion uninsneveruninstall; Check: ModelNeedsRepair
+Source: "..\build\embedding\embeddinggemma-2-Q8_0.gguf"; DestDir: "{#ModelDir}"; Flags: ignoreversion; Check: ModelNeedsRepair
 #endif
 #endif
 
@@ -81,29 +79,118 @@ Name: "{group}\{#AppName} kaldır"; Filename: "{uninstallexe}"
 [Run]
 Filename: "{app}\{#AppName}-{#AppVersion}.exe"; Description: "{#AppName}'ı başlat"; Flags: nowait postinstall skipifsilent
 
+[UninstallDelete]
+Type: files; Name: "{#ModelDir}\embeddinggemma-2-Q8_0.gguf"
+
 [Code]
-function ModelNeedsRepair: Boolean;
-var ModelPath: String;
+const ModelHash = '2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135';
+
+function ValidModel(const ModelPath: String): Boolean;
 begin
-#ifdef TestInstall
-  ModelPath := ExpandConstant('{param:DIR}\_internal\embedding\embeddinggemma-2-Q8_0.gguf');
-#else
-  ModelPath := ExpandConstant('{commonappdata}\Evrakçı\models\embeddinggemma-2-Q8_0.gguf');
-#endif
-  Result := True;
-  if FileExists(ModelPath) then
-    Result := CompareText(GetSHA256OfFile(ModelPath), '2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135') <> 0;
+  Result := False;
+  if FileExists(ModelPath) then begin
+    try
+      Result := CompareText(GetSHA256OfFile(ModelPath), ModelHash) = 0;
+    except
+      Log('Model doğrulanamadı: ' + ModelPath);
+    end;
+  end;
 end;
 
-function InitializeSetup: Boolean;
+function ModelPath: String;
 begin
-  Result := True;
+  Result := ExpandConstant('{#ModelDir}\embeddinggemma-2-Q8_0.gguf');
+end;
+
+function LegacyModelPath: String;
+begin
+#ifdef TestInstall
+  Result := ExpandConstant('{app}\legacy-model\embeddinggemma-2-Q8_0.gguf');
+#else
+  Result := ExpandConstant('{commonappdata}\Evrakçı\models\embeddinggemma-2-Q8_0.gguf');
+#endif
+end;
+
+function ModelNeedsRepair: Boolean;
+begin
+  Result := not ValidModel(ModelPath);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var Staged: String;
+begin
+  Result := '';
 #ifdef UpdatePackage
   if ModelNeedsRepair then begin
-    MsgBox('Yerel model bulunamadı veya doğrulanamadı. Tam kurulum paketini kullanın.', mbError, MB_OK);
-    Result := False;
+    if not ValidModel(LegacyModelPath) then begin
+      Result := 'Yerel model eksik veya bozuk. Tam kurulum paketini kullanın.';
+      Exit;
+    end;
+    Staged := ModelPath + '.migrating';
+    if not ForceDirectories(ExtractFileDir(ModelPath)) then begin
+      Result := 'Model klasörü oluşturulamadı.';
+      Exit;
+    end;
+    if not FileCopy(LegacyModelPath, Staged, False) then begin
+      DeleteFile(Staged);
+      Result := 'Mevcut model taşınamadı; eski kurulum korundu.';
+      Exit;
+    end;
+    if not ValidModel(Staged) then begin
+      DeleteFile(Staged);
+      Result := 'Taşınan model doğrulanamadı; eski kurulum korundu.';
+      Exit;
+    end;
+    if FileExists(ModelPath) then DeleteFile(ModelPath);
+    if not RenameFile(Staged, ModelPath) then begin
+      DeleteFile(Staged);
+      Result := 'Model yerleştirilemedi; eski kurulum korundu.';
+    end;
   end;
 #endif
+end;
+
+function StrictVersion(const Text: String): Boolean;
+var I, Dots, Digits: Integer;
+begin
+  Result := False;
+  Dots := 0; Digits := 0;
+  for I := 1 to Length(Text) do begin
+    if Text[I] = '.' then begin
+      if Digits = 0 then Exit;
+      Dots := Dots + 1; Digits := 0;
+    end else begin
+      if (Text[I] < '0') or (Text[I] > '9') then Exit;
+      Digits := Digits + 1;
+    end;
+  end;
+  Result := (Dots = 2) and (Digits > 0);
+end;
+
+procedure CleanupOldLaunchers;
+var Entry: TFindRec; Stem, VersionText, ExePath: String;
+    NamedVersion, FileVersion, CurrentVersion: Int64;
+begin
+  StrToVersion('{#AppVersion}', CurrentVersion);
+  if FindFirst(ExpandConstant('{app}\Evrakçı-*.exe'), Entry) then begin
+    try
+      repeat
+        Stem := ChangeFileExt(Entry.Name, '');
+        VersionText := Copy(Stem, Length('Evrakçı-') + 1, MaxInt);
+        ExePath := ExpandConstant('{app}\') + Entry.Name;
+        if StrictVersion(VersionText) and StrToVersion(VersionText, NamedVersion) then
+          if (ComparePackedVersion(NamedVersion, CurrentVersion) < 0) and
+             GetPackedVersion(ExePath, FileVersion) then
+            if ComparePackedVersion(NamedVersion, FileVersion) = 0 then begin
+              if DeleteFile(ExePath) then
+                DeleteFile(ExpandConstant('{app}\') + Stem + '.bat')
+              else Log('Eski program kullanımda; korundu: ' + ExePath);
+            end;
+      until not FindNext(Entry);
+    finally
+      FindClose(Entry);
+    end;
+  end;
 end;
 
 procedure RemoveVerifiedLegacyModel(const ModelPath: String);
@@ -121,6 +208,10 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if (CurStep = ssDone) and (not ModelNeedsRepair) then begin
+    CleanupOldLaunchers;
+    if ValidModel(LegacyModelPath) then DeleteFile(LegacyModelPath);
+  end;
 #ifndef TestInstall
   if (CurStep = ssDone) and (not ModelNeedsRepair) then begin
     RemoveVerifiedLegacyModel(ExpandConstant('{localappdata}\Evrakçı\models\eg2-text.onnx'));

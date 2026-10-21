@@ -20,7 +20,7 @@ GERCEK_YAYIN = {
     "tag_name": "v0.7.0",
     "html_url": "https://github.com/x/y/releases/tag/v0.7.0",
     "assets": [
-        {"name": "Evrakci-0.7.0.zip", "size": 169624127,
+        {"name": "Evrakci-0.7.0.exe", "size": 169624127,
          "digest": "sha256:" + "a" * 64,
          "browser_download_url": "https://x/zip"},
     ],
@@ -59,14 +59,20 @@ class YayinCozumleme(unittest.TestCase):
         # GitHub varlık adlarını latinleştirir (Evrakçı -> Evrakci).
         info = update.parse_release(GERCEK_YAYIN)
         self.assertEqual(info.version, "0.7.0")
-        self.assertEqual(info.asset_name, "Evrakci-0.7.0.zip")
+        self.assertEqual(info.asset_name, "Evrakci-0.7.0.exe")
         self.assertEqual(info.sha256, "a" * 64)
         self.assertEqual(info.size, 169624127)
 
     def test_unicode_varlik_adiyla_bulunur(self):
         payload = dict(GERCEK_YAYIN, assets=[dict(GERCEK_YAYIN["assets"][0],
-                                                  name="Evrakçı-0.7.0.zip")])
-        self.assertEqual(update.parse_release(payload).asset_name, "Evrakçı-0.7.0.zip")
+                                                  name="Evrakçı-0.7.0.exe")])
+        self.assertEqual(update.parse_release(payload).asset_name, "Evrakçı-0.7.0.exe")
+
+    def test_zip_only_release_does_not_move_installed_program(self):
+        payload = dict(GERCEK_YAYIN, assets=[dict(GERCEK_YAYIN['assets'][0],
+                                                  name='Evrakci-0.7.0.zip')])
+        with self.assertRaises(update.UpdateError):
+            update.parse_release(payload)
 
     def test_eksik_paket_hata(self):
         payload = dict(GERCEK_YAYIN, assets=[{"name": "baska.zip", "size": 1,

@@ -44,16 +44,25 @@ def spawn_installer(pid, setup, current, vault):
     script = setup.parent / 'evrakci-install.ps1'
     def quote(text): return "'" + str(text).replace("'", "''") + "'"
     # Start-Process needs a correctly quoted single argument string for Inno.
-    arguments = '/SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="' + str(destination) + '"'
+    arguments = ('/SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="' + str(destination)
+                 + '" /LOG="' + str(setup.parent / 'kurulum.log') + '"')
     source = f'''$ErrorActionPreference = 'Stop'
-try {{ Wait-Process -Id {int(pid)} -Timeout 300 -ErrorAction SilentlyContinue }} catch {{}}
 try {{
+  if (Get-Process -Id {int(pid)} -ErrorAction SilentlyContinue) {{
+    Wait-Process -Id {int(pid)} -Timeout 300 -ErrorAction Stop
+  }}
   $install = Start-Process -FilePath {quote(setup)} -ArgumentList {quote(arguments)} -Verb RunAs -Wait -PassThru
   if ($install.ExitCode -ne 0) {{ throw 'Kurulum tamamlanamadı' }}
+  if (-not (Test-Path -LiteralPath {quote(new_exe)} -PathType Leaf)) {{ throw 'Yeni program bulunamadı' }}
+  Set-Content -LiteralPath {quote(setup.parent/'son-guncelleme.txt')} -Value 'ok' -Encoding UTF8
   Start-Process -FilePath {quote(new_exe)} -ArgumentList @('--restarted', '--kasa', {quote('"'+str(vault)+'"')})
 }} catch {{
-  Set-Content -LiteralPath {quote(setup.parent/'son-guncelleme.txt')} -Value 'fallback' -Encoding UTF8
-  Start-Process -FilePath {quote(current)} -ArgumentList @('--restarted', '--kasa', {quote('"'+str(vault)+'"')})
+  Set-Content -LiteralPath {quote(setup.parent/'son-guncelleme.txt')} -Value 'install_failed' -Encoding UTF8
+  $recover = {quote(current)}
+  if (-not (Test-Path -LiteralPath $recover)) {{ $recover = {quote(new_exe)} }}
+  if ((Test-Path -LiteralPath $recover) -and -not (Get-Process -Id {int(pid)} -ErrorAction SilentlyContinue)) {{
+    Start-Process -FilePath $recover -ArgumentList @('--restarted', '--kasa', {quote('"'+str(vault)+'"')})
+  }}
 }}
 Remove-Item -LiteralPath $PSCommandPath -Force
 '''

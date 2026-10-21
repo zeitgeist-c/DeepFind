@@ -3,6 +3,7 @@ from pathlib import Path
 import importlib.metadata
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,6 @@ def main():
     assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
     stem = f"Evrakçı-{__version__}"
     if "--archive-only" not in sys.argv:
-        import os
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         from PySide6.QtWidgets import QApplication
         from evrakci.theme import app_icon

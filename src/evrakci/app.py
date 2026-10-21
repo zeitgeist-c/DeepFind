@@ -497,6 +497,8 @@ class AnaPencere(QMainWindow):
             self.durum.showMessage(f"Evrakçı {__version__} güncellendi.", 8000)
         elif sonuc == "fallback":
             self._toast_goster("Güncelleme taşınamadı; geçici klasörden çalışıyorsunuz.")
+        elif sonuc == "install_failed":
+            self._toast_goster("Güncelleme kurulamadı veya yönetici onayı iptal edildi. Ayarlar → Güncellemeler'den yeniden deneyin.")
 
     def _kurtarma_ilk_kurulum(self):
         """Kurtarma anahtarı yoksa üret; sonucu tek seferlik bildirime hazırla."""

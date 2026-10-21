@@ -1,6 +1,6 @@
 """Evrakçı kendi kendini güncelleme: herkese açık Evrakci-Releases deposundan.
 
-Kaynak depo özel kalır; paketler (yalnız kurulum ZIP'i) herkese açık ayrı bir
+Kaynak depo özel kalır; kurulum ve güncelleme paketleri herkese açık ayrı bir
 depoda yayınlanır. Böylece uygulama "en yeni sürüm hangisi?" sorusunu EXE
 içine kimlik bilgisi gömmeden sorabilir. GitHub API herkese açık depolarda
 kimliksiz yanıt verir (IP başına sınırlı); günde bir denetim tek istek
@@ -36,10 +36,8 @@ USER_AGENT = f"Evrakci/{__version__}"
 PROGRAM = "Evrakçı"
 log = logging.getLogger("evrakci.update")
 
-# ZIP içindeki kök klasör ve varlık adı bu kalıptan türevlenir. GitHub varlık
-# adlarını latinleştirebildiğinden (ç -> c) iki yazım da kabul edilir.
+# Legacy ZIP preparation keeps the original root folder convention.
 _KLASOR_KALIBI = "Evrakçı-{s}"
-_VARLIK_YAZIMLARI = ("Evrakçı-{s}.zip", "Evrakci-{s}.zip")
 
 
 class UpdateError(Exception):
@@ -69,12 +67,13 @@ def is_newer(candidate: str, current: str) -> bool:
 
 
 def parse_release(payload: dict) -> UpdateInfo:
-    """`/releases/latest` yanıtından kurulum ZIP varlığını seç."""
+    """Select a verified installer; ZIP assets are only for older clients."""
     tag = str(payload.get("tag_name") or "")
     version = tag[1:] if tag.startswith("v") else tag
     parse_version(version)  # karşılaştıramayacağımız etiketleri reddet
-    adaylar = {y.format(s=version) for y in _VARLIK_YAZIMLARI}
-    adaylar.update({f'Evrakçı-{version}.exe', f'Evrakci-{version}.exe'})
+    # Modern clients always use the installer, including portable -> installed
+    # migration. ZIP remains a release asset for pre-0.10 clients only.
+    adaylar = {f'Evrakçı-{version}.exe', f'Evrakci-{version}.exe'}
     from .model_indir import paylasilan_hazir
     incremental = paylasilan_hazir()
     if incremental:
@@ -96,7 +95,7 @@ def parse_release(payload: dict) -> UpdateInfo:
             size=int(asset.get("size") or 0),
             page_url=str(payload.get("html_url") or ""),
         )
-    raise UpdateError("En yeni yayında kurulum paketi bulunamadı.")
+    raise UpdateError("En yeni yayında doğrulanabilir kurulum EXE'si bulunamadı.")
 
 
 def fetch_latest() -> UpdateInfo:

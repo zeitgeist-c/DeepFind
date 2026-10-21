@@ -35,8 +35,11 @@ def gerekli_mi(yol=None):
 
 
 def paylasilan_hazir():
-    from .engine import shared_model_path
-    return not gerekli_mi(str(shared_model_path()))
+    """A small installer can reuse either the installed or legacy shared model."""
+    from .engine import shared_model_path, asset_root
+    assets = asset_root()
+    installed = (assets.parent.parent / 'unins000.exe').is_file()
+    return (installed and not gerekli_mi(str(assets / MODEL_DOSYA))) or not gerekli_mi(str(shared_model_path()))
 
 
 def indir(url, oet, yol, ilerleme=None, cancel=None):

@@ -1,5 +1,19 @@
 # Evrakçı — DURUM
 
+## 0.10.1: kurulum ve güncelleme — 21.10.2026
+
+Model setup içinde gelir ve programın `_internal/embedding` dizinine kurulur.
+Güncelleme aynı AppId/dizini kullanır; eski PE sürümü doğrulanan EXE/BAT çiftleri
+başarılı kurulumda temizlenir. Sağlam model tekrar kopyalanmaz, eski ProgramData
+modeli doğrulanarak taşınır; eksik/bozuk model tam setup ile onarılır.
+Modern istemci kurulum EXE'si olmayan ZIP yayınına düşmez. Eski ZIP istemcilerden
+geçiş için tam setup bir kez çalıştırılır. Düzeltmeler 0.10.1, 0.10.2, 0.10.3 şeklindedir.
+
+Gerçek izole Inno yükseltme/model taşıma/onarma/temizlik/kaldırma kabulü ve
+kurulu EXE smoke geçti: `build/installer-acceptance-0.10.1.json`. Canlı kurulum
+ve kasa test için değiştirilmedi. Son test/paket kimliği `build/release-0.10.1.json`;
+kapsam ve sınırlar `TESLIM-0.10.1.md`.
+
 ## 0.10.0: EmbeddingGemma 2 yerel motor ve sade dağıtım — 21.10.2026
 
 Gemini yardımcısı kaldırıldı; bağımsız anlamsal adaylar FTS ile birleşir.

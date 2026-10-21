@@ -4,13 +4,13 @@ Windows için yerel, şifreli belge arama uygulaması. PDF, XLSX/XLS, DOCX, ODT,
 
 ## Kurulum ve güncelleme
 
-`Evrakçı-0.10.0.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
+`Evrakçı-0.10.1.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
 
 Ayarlar → Güncellemeler ile yeni sürüm denetlenir; açılıştan sonra günde bir kez de sessiz denetim yapılır. İndirme SHA-256 ile, kurulum EXE'si sürüm kaydıyla doğrulanır. Güncelleme sabit AppId üzerinden aynı kurulumu yükseltir; kısayollar ve kaldırıcı aynı uygulamayı gösterir. UAC onayı istenebilir. Başarısız kurulumda önceki programı yeniden açma yolu vardır; canlı kasa kurulum tarafından değiştirilmez.
 
-Tam kurulum modeli `%PROGRAMDATA%\Evrakçı\models` altında bir kez saklar. Aynı model için `.evrakci` güncelleme paketi yalnız programı taşır; model eksik/bozuksa tam kurulum gerekir. `.evrakci` dosyasını elle açmanız gerekmez; güncelleyici yönetir. Model değişirse tam kurulum kullanılmalıdır.
+Tam kurulum modeli programla birlikte `C:\Program Files\Evrakçı\_internal\embedding` altında yerleştirir (özel kurulum dizini seçildiğinde onun altında). Model pakete gömülüdür; ilk kurulumda ayrıca indirme gerekmez. Aynı model için `.evrakci` güncellemesi modeli yeniden taşımaz. 0.10.0 döneminden kalan doğrulanmış ProgramData modeli varsa kurulum dizinine alınır ve yalnız doğrulama sonrası eski kopya temizlenir. Model eksik/bozuksa güncelleyici tam kurulum paketini seçer; tam paket modeli onarır. `.evrakci` dosyasını elle açmanız gerekmez; güncelleyici yönetir. Model değişirse tam kurulum kullanılmalıdır.
 
-Eski sürümlerle uyum için ZIP de üretilir. ZIP içindeki EXE'nin yanında `_internal` ve `licenses` korunmalıdır; tek başına EXE taşınamaz. ZIP'ten kurulu düzene geçişte güncelleyici tam installer seçer. Eski yayın paketleri korunur. Başarılı kurulum, yalnız SHA-256 özeti bilinen 0.9 ONNX modelini ve artık kullanılmayan uygulama bağımlılıklarını temizler; tanınmayan dosyalar korunur. Canlı kasa, kaynak evraklar ve yedekler bu temizliğe dahil değildir.
+Eski sürümlerle uyum için ZIP de üretilir. ZIP içindeki EXE'nin yanında `_internal` ve `licenses` korunmalıdır; tek başına EXE taşınamaz. ZIP'ten kurulu düzene geçişte güncelleyici tam installer seçer. 0.10.1 ve sonraki istemciler kurulum EXE’si olmadan ZIP ile güncellenmez. 0.9.0 ve daha eski ZIP güncelleyicilerden bu düzene geçiş için tam EXE’yi bir kez çalıştırın. Sonraki güncellemeler uygulamanın içinden aynı kurulum dizinine uygulanır. Eski yayın paketleri korunur. Başarılı kurulum, eski sürüm numarası ile EXE sürüm kaydı eşleşen EXE/BAT çiftlerini kaldırır; bilinmeyen dosyaları korur. Ayrıca yalnız SHA-256 özeti bilinen 0.9 ONNX modelini ve artık kullanılmayan uygulama bağımlılıklarını temizler; tanınmayan dosyalar korunur. Canlı kasa, kaynak evraklar ve yedekler bu temizliğe dahil değildir.
 
 Yayın kaynağı `zeitgeist-c/Evrakci-Releases` deposudur. Yerel derleme veya Git etiketi oluşturmak dış yayın yapıldığı anlamına gelmez.
 
@@ -38,6 +38,8 @@ Varsayılan kasa `%LOCALAPPDATA%\Evrakci\Data\evrakci.db`, yedekler `%LOCALAPPDA
 
 ## Geliştirme
 
+Düzeltme sürümleri `0.10.1 → 0.10.2 → 0.10.3` şeklinde ilerler.
+
 Sürümün tek kaynağı `src/evrakci/version.py` dosyasıdır. Python bağımlılıkları `pyproject.toml` içindedir. `packaging/fetch_engine.py` resmî model/motor sürümlerini proje `build/embedding` alanına indirir ve özetlerini doğrular. BF16 yalnız geliştirici karşılaştırması içindir; dağıtıma Q8_0 girer.
 
 ```powershell
@@ -48,4 +50,4 @@ $env:PYTHONPATH = 'src'
 .\.venv\Scripts\python.exe eval/package_check.py
 ```
 
-Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.0.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
+Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.1.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
