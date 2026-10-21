@@ -219,7 +219,7 @@ class Onizleme(QWidget):
 
     # -- dis API --
     def goster(self, con, sonuc: dict, password=None):
-        """sonuc: rank.search_ranked kaydi (path, name, ext, label, page, snippet, why...)."""
+        """sonuc: rank.search_semantic kaydi (path, name, ext, label, page, snippet, why...)."""
         path = sonuc["path"]
         self.temizle()
         self.empty.hide()

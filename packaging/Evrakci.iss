@@ -4,7 +4,7 @@
 #include "ver.iss"
 #ifdef TestPrevious
   #undef AppVersion
-  #define AppVersion "0.9.0"
+  #define AppVersion "0.10.4"
 #endif
 #define ModelDir "{app}\_internal\embedding"
 

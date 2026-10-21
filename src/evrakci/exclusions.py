@@ -1,4 +1,4 @@
-"""Hariç kuralları: yeni iş engelle + bekleyen iptal + aktif içerik/FTS/cache temizle."""
+"""Hariç kuralları: yeni işi engelle; bekleyen işi, metni ve vektörleri temizle."""
 from __future__ import annotations
 
 import os
@@ -72,8 +72,6 @@ def purge_rule(con, rule: str, *, commit=True) -> int:
             if is_excluded(path, [rule]):
                 ids.append(fid)
     if ids:
-        from .vocab import remove_files_from_vocab
-        remove_files_from_vocab(con, ids, include_names=False)
         for fid in ids:
             con.execute("DELETE FROM segments WHERE file_id=?", (fid,))
             con.execute("DELETE FROM jobs WHERE file_id=?", (fid,))

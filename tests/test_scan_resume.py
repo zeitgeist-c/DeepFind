@@ -7,7 +7,7 @@ from evrakci import migrate, job_queue as q
 from evrakci import schema
 from evrakci.extract import ExtractResult, Segment
 from evrakci.scan import Entry
-from evrakci.vocab import ensure_v5
+from evrakci.migrate import ensure_v5
 
 
 def database(path=None):
@@ -147,13 +147,13 @@ def test_completed_dirs_skipped_on_resume(tmp_path):
         con.execute("INSERT INTO scan_scopes(run_id, dir, complete) VALUES (?, ?, 1)",
                     (rid, os.path.abspath(str(done))))
         con.commit()
-        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), require_vectors=False)
         assert stats["found"] == 1
         wb = Workbook()
         wb.active.append(["yeni"])
         wb.save(done / "c.xlsx")
         os.utime(done / "c.xlsx", (past, past))
-        stats2 = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        stats2 = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), require_vectors=False)
         assert stats2["found"] >= 2
     finally:
         con.close()
@@ -182,7 +182,7 @@ def test_stop_flag_cancels_scan(tmp_path):
     os.utime(root / "a.xlsx", (past, past))
     con = database(tmp_path / "kasa.db")
     try:
-        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), stop=lambda: True)
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), stop=lambda: True, require_vectors=False)
         assert stats["result"] == "cancelled"
         assert con.execute(
             "SELECT result FROM scan_runs").fetchone()[0] == "cancelled"
@@ -200,7 +200,7 @@ def test_run_scan_resumes_unfinished_run(tmp_path):
         rid = con.execute(
             "INSERT INTO scan_runs(root, started_at) VALUES (?, ?)", (absroot, 1)).lastrowid
         con.commit()
-        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), require_vectors=False)
         rows = con.execute("SELECT run_id FROM scan_runs").fetchall()
         assert [r[0] for r in rows] == [rid]
         assert con.execute(

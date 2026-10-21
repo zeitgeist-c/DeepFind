@@ -18,7 +18,7 @@ def test_current_marker_does_not_hide_missing_embedding_table(version):
     trace = []; con.set_trace_callback(trace.append)
     migrate.ensure_current(con)
     assert con.execute('SELECT count(*) FROM embeddings').fetchone()[0] == 0
-    assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH 'sirnak'").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM segments WHERE kind NOT IN ('name_only','context')").fetchone()[0] == 1
     assert not any("'delete-all'" in sql.lower() for sql in trace)
     assert con.execute('PRAGMA foreign_key_check').fetchall() == []
     con.close()
@@ -28,11 +28,11 @@ def test_dead_work_cannot_be_reported_as_a_complete_scan(tmp_path, monkeypatch):
     root=tmp_path/'source';files(root,1)
     path=str(tmp_path/'vault.db');con=vault.open_vault(path,'synthetic-dead-1234');migrate.ensure_current(con)
     monkeypatch.setattr(gom,'model_var_mi',lambda:False)
-    assert coordinator.run_scan(con,path,str(root))['complete']
+    assert coordinator.run_scan(con,path,str(root), require_vectors=False)['complete']
     fid,size,mtime=con.execute('SELECT file_id,size,mtime_ns FROM files').fetchone()
     job_queue.enqueue(con,fid,job_queue.signature_of(size,mtime))
     con.execute("UPDATE jobs SET status='dead'");con.commit()
-    result=coordinator.run_scan(con,path,str(root))
+    result=coordinator.run_scan(con,path,str(root), require_vectors=False)
     assert result['documents_done']==0 and not result['complete'] and result['result']=='partial'
     con.close()
 
@@ -41,14 +41,14 @@ def test_incorrect_vector_dimensions_are_backfilled(tmp_path, monkeypatch):
     root=tmp_path/'source';files(root,1)
     path=str(tmp_path/'vault.db');con=vault.open_vault(path,'synthetic-vector-1234');migrate.ensure_current(con)
     monkeypatch.setattr(gom,'model_var_mi',lambda:False)
-    coordinator.run_scan(con,path,str(root))
+    coordinator.run_scan(con,path,str(root), require_vectors=False)
     sid=con.execute('SELECT seg_id FROM segments').fetchone()[0]
     con.execute('INSERT INTO embeddings VALUES (?,?,?,?)',(sid,embed.MODEL_VER,128,np.ones(128,dtype=np.float32).tobytes()));con.commit()
     monkeypatch.setattr(gom,'model_var_mi',lambda:True)
     class Model:
         def encode(self,texts,**kwargs):return np.ones((len(texts),embed.DIM),dtype=np.float32)/16
     monkeypatch.setattr(embed,'isit_oturumu',lambda:Model())
-    result=coordinator.run_scan(con,path,str(root))
+    result=coordinator.run_scan(con,path,str(root), require_vectors=False)
     assert result['complete'] and result['documents_done']==1 and result['embed_done']==1
     assert con.execute('SELECT dim,length(vec) FROM embeddings').fetchone()==(embed.DIM,4*embed.DIM)
     con.close()
@@ -76,13 +76,13 @@ def test_scan_repairs_old_vault_and_really_extracts_and_embeds(tmp_path, monkeyp
     class Model:
         def encode(self,texts,**kwargs):return np.ones((len(texts),embed.DIM),dtype=np.float32)/16
     monkeypatch.setattr(embed,'isit_oturumu',lambda:Model())
-    result=coordinator.run_scan(con,path,str(root))
+    result=coordinator.run_scan(con,path,str(root), require_vectors=False)
     assert result['complete'] and result['documents_done']==result['documents_total']==3
     assert con.execute('SELECT count(*) FROM embeddings WHERE model_ver=? AND dim=?',(embed.MODEL_VER,embed.DIM)).fetchone()[0] == 3
-    assert con.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH 'sirnak'").fetchone()[0] == 3
+    assert con.execute("SELECT count(*) FROM segments WHERE kind NOT IN ('name_only','context')").fetchone()[0] == 3
     assert not con.execute("SELECT 1 FROM jobs WHERE status IN ('pending','running','dead')").fetchone()
     vectors=con.execute('SELECT seg_id,vec FROM embeddings ORDER BY seg_id').fetchall()
-    repeated=coordinator.run_scan(con,path,str(root))
+    repeated=coordinator.run_scan(con,path,str(root), require_vectors=False)
     assert repeated['complete'] and repeated['documents_done']==3 and repeated['done']==0
     assert con.execute('SELECT seg_id,vec FROM embeddings ORDER BY seg_id').fetchall() == vectors
     con.close()

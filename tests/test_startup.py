@@ -35,6 +35,7 @@ def test_legacy_preparation_stays_responsive_and_reports_backup(tmp_path, monkey
     con = vault.open_vault(path, password)
     migrate.ensure_current(con)
     con.execute("DELETE FROM schema_meta WHERE k='archive_version'")
+    con.execute("CREATE VIRTUAL TABLE docs_fts USING fts5(raw_text)")
     con.commit()
     con.close()
     original = backup.create_backup
@@ -71,6 +72,7 @@ def test_cancel_before_migration_preserves_legacy_marker(tmp_path):
     con = vault.open_vault(path, password)
     migrate.ensure_current(con)
     con.execute("DELETE FROM schema_meta WHERE k='archive_version'")
+    con.execute("CREATE VIRTUAL TABLE docs_fts USING fts5(raw_text)")
     con.commit()
     con.close()
     worker = startup.PreparationWorker(path, password, str(tmp_path / 'backups'))

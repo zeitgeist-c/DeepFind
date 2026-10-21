@@ -1,4 +1,4 @@
-"""Hibrit arama testleri (FAZ 3)."""
+"""Controlled vector fixtures and semantic ranking contracts."""
 from __future__ import annotations
 
 import os
@@ -63,19 +63,19 @@ def _kodla_b(metinler):
 def test_hibrit_vektorle_yeniden_siralar(tmp_path):
     con = _kasa(tmp_path)
     _duzen(con)
-    sonuc = rank.search_hybrid(con, "kedi", kodla=_kodla_b)
+    sonuc = rank.search_semantic(con, "kedi", kodla=_kodla_b)
     assert sonuc["results"]
     assert sonuc["results"][0]["name"] == "b_belge.txt"
     con.close()
 
 
-def test_hibrit_vektor_yoksa_fts_doner(tmp_path):
+def test_vektor_yoksa_bos_sonuc(tmp_path):
     con = _kasa(tmp_path)
     _duzen(con)
     con.execute("DELETE FROM embeddings")
     con.commit()
-    hibrit = rank.search_hybrid(con, "kedi", kodla=_kodla_b)
-    duz = rank.search_ranked(con, "kedi")
+    hibrit = rank.search_semantic(con, "kedi", kodla=_kodla_b)
+    duz = {"results": []}
     assert [r["name"] for r in hibrit["results"]] == [r["name"] for r in duz["results"]]
     con.close()
 
@@ -83,7 +83,7 @@ def test_hibrit_vektor_yoksa_fts_doner(tmp_path):
 def test_hibrit_bicim_sozlesmesi(tmp_path):
     con = _kasa(tmp_path)
     _duzen(con)
-    sonuc = rank.search_hybrid(con, "kedi", kodla=_kodla_b)
+    sonuc = rank.search_semantic(con, "kedi", kodla=_kodla_b)
     assert set(sonuc) >= {"results", "suggestions", "class_counts", "empty", "has_more", "offset"}
     ilk = sonuc["results"][0]
     assert set(ilk) >= {"file_id", "path", "name", "score", "score_class", "snippet", "why"}

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from evrakci import coordinator, migrate, rank, schema, theme, vault  # noqa: E402
 from evrakci.preview import Onizleme  # noqa: E402
-from evrakci.vocab import ensure_v5  # noqa: E402
+from evrakci.migrate import ensure_v5  # noqa: E402
 from evrakci.migrate import ensure_v7  # noqa: E402
 
 PW = "arayuz-sifresi-1234"
@@ -62,7 +62,7 @@ def _pdf(kok, ad, metin, sayfalar=1):
 
 
 @pytest.fixture()
-def pencere(tmp_path):
+def pencere(tmp_path, monkeypatch):
     _app()
     kok = str(tmp_path / "arsiv")
     os.makedirs(kok)
@@ -76,7 +76,11 @@ def pencere(tmp_path):
     con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?, ?)",
                 (kok, os.path.normpath(kok).lower()))
     con.commit()
-    coordinator.run_scan(con, db, kok)
+    coordinator.run_scan(con, db, kok, require_vectors=False)
+    from semantic_helpers import seed_vectors,FixedSession
+    from evrakci import embed
+    seed_vectors(con)
+    monkeypatch.setattr(embed,'hazir_oturum',lambda:FixedSession())
     con.close()
     from evrakci.app import AnaPencere
     pen = AnaPencere(db, PW)
@@ -149,6 +153,18 @@ def test_bos_sorgu_tum_arsivi_listelemez(pencere):
     assert pencere.sonuc_model.rowCount() == 0
 
 
+def test_model_ready_retries_waiting_query(pencere,monkeypatch):
+    from evrakci import engine
+    from semantic_helpers import FixedSession
+    pencere.arama_kutu.setText('bakım sözleşmeleri')
+    pencere._waiting_for_model=True
+    monkeypatch.setattr(engine,'hazir_oturum',lambda:FixedSession())
+    pencere.model_timer.timeout.emit()
+    _wait_search(pencere)
+    assert not pencere._waiting_for_model
+    assert pencere.sonuc_model.rowCount()==1
+
+
 def _wait_thumbs(pencere):
     deadline = time.monotonic() + 60
     while pencere._thumb_loader is not None or pencere._buyuk_loader is not None:
@@ -192,7 +208,7 @@ def _onizleme_pencere(pencere, tmp_path, monkeypatch, sayfalar=1, ad="cok-sayfal
     kok = os.path.join(os.path.dirname(pencere.kasa_yolu), "arsiv")
     yol = _pdf(kok, ad, "Ankara çok sayfa", sayfalar=sayfalar)
     time.sleep(3.0)
-    coordinator.run_scan(pencere.con, pencere.kasa_yolu, kok)
+    coordinator.run_scan(pencere.con, pencere.kasa_yolu, kok, require_vectors=False)
     dizin = str(tmp_path / "thumbs")
     os.makedirs(dizin, exist_ok=True)
     monkeypatch.setattr(thumbs, "onbellek_dizini", lambda: dizin)
@@ -215,11 +231,13 @@ def _ikinci_belge(pencere):
     time.sleep(3.0)
     # Tarayıcı yeni dosyayı kararlılık penceresi geçene kadar "pending" tutar.
     for _ in range(4):
-        coordinator.run_scan(pencere.con, pencere.kasa_yolu, kok)
+        coordinator.run_scan(pencere.con, pencere.kasa_yolu, kok, require_vectors=False)
         if pencere.con.execute(
                 "SELECT count(*) FROM files WHERE index_status='ok'").fetchone()[0] >= 2:
             break
         time.sleep(1.0)
+    from semantic_helpers import seed_vectors
+    seed_vectors(pencere.con)
     return yol
 
 
@@ -744,13 +762,12 @@ def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     docs = (("C:\\a\\b.pdf", "SilinenBelge", 1),
             ("C:\\b\\c.pdf", "SilinenBelge", 1),
             ("D:\\x\\d.pdf", "DisDosya", 1))
-    for p, text, freq in docs:
-        con.execute("INSERT INTO files(path, name, ext) VALUES (?,?,?)", (p, os.path.basename(p), ".pdf"))
-        fid = con.execute("SELECT file_id FROM files WHERE path=?", (p,)).fetchone()[0]
-        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,?,?,?,?)",
-                    (fid,"text",1,"Sayfa 1",text))
-        con.execute("INSERT INTO vocabulary(term,freq) VALUES (?,?) ON CONFLICT(term) DO UPDATE SET freq=freq+excluded.freq",
-                    (text.lower(),freq))
+    for p,text,freq in docs:
+        con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",(p,os.path.basename(p),".pdf"))
+        fid=con.execute("SELECT file_id FROM files WHERE path=?",(p,)).fetchone()[0]
+        con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,'text',1,'Sayfa 1',?)",(fid,text))
+    from semantic_helpers import seed_vectors
+    seed_vectors(con)
     con.commit()
     con.close()
 
@@ -767,21 +784,18 @@ def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     assert kalan == ["D:\\x\\d.pdf"], kalan
     koklar = [r[0] for r in con.execute("SELECT display_path FROM roots").fetchall()]
     assert "C:\\" not in koklar and "D:\\" in koklar
-    assert con.execute("SELECT freq FROM vocabulary WHERE term='disdosya'").fetchone() == (1,)
-    assert con.execute("SELECT term FROM vocabulary WHERE term='silinenbelge'").fetchone() is None
     con.close()
 
 
 def test_kok_kaldir_worker_gui_kilitlemez(tmp_path, monkeypatch):
     """Kök kaldırma QThread üzerinde çalışırken ana thread olay çevrimine yanıt verir."""
     from evrakci.app import KokKaldirIsci
-    from evrakci import vocab
     from PySide6.QtCore import QThread, QTimer
-    original_rebuild = vocab.rebuild_vocab
-    def slow_rebuild(*args, **kwargs):
-        time.sleep(0.2)
-        return original_rebuild(*args, **kwargs)
-    monkeypatch.setattr(vocab, "rebuild_vocab", slow_rebuild)
+    original_open = vault.open_vault
+    def slow_open(*args, **kwargs):
+        time.sleep(.2)
+        return original_open(*args, **kwargs)
+    monkeypatch.setattr(vault,"open_vault",slow_open)
     db = str(tmp_path / "k.db")
     con = vault.open_vault(db, PW)
     schema.ensure_schema(con)
@@ -825,36 +839,6 @@ def test_kok_kaldir_worker_gui_kilitlemez(tmp_path, monkeypatch):
     con.close()
 
 
-def test_kok_kaldir_geri_alir_hata_olursa(tmp_path, monkeypatch):
-    """Sözlük hatasında kök ve dosya kayıtları aynı transaction ile korunur."""
-    from evrakci.app import KokKaldirIsci
-    from evrakci import vocab
-    db = str(tmp_path / "k.db")
-    con = vault.open_vault(db, PW)
-    schema.ensure_schema(con)
-    ensure_v5(con)
-    ensure_v7(con)
-    con.execute("INSERT INTO roots(display_path,canonical_path) VALUES (?,?)", ("C:\\", "c:\\"))
-    con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",
-                ("C:\\gizli\\a.pdf", "a.pdf", ".pdf"))
-    con.commit()
-    before = con.execute("SELECT count(*) FROM files").fetchone()[0]
-    con.close()
-
-    def fail(*args, **kwargs):
-        raise RuntimeError("synthetic vocabulary failure")
-    monkeypatch.setattr(vocab, "rebuild_vocab", fail)
-    worker = KokKaldirIsci(db, PW, "C:\\")
-    errors, done = [], []
-    worker.hata.connect(errors.append)
-    worker.bitti.connect(done.append)
-    worker.kos()
-    assert errors == ["RuntimeError"] and not done
-
-    con = vault.open_vault(db, PW)
-    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == before
-    assert con.execute("SELECT count(*) FROM roots WHERE display_path='C:\\'").fetchone()[0] == 1
-    con.close()
 
 
 def test_haric_ui_islemi_arka_planda_ve_geri_acilir(pencere, monkeypatch):
@@ -910,9 +894,6 @@ def test_haric_isci_atomik_surucu_koku_temizligi(tmp_path):
         folded = body.lower()
         con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,?,?,?,?)",
                     (fid,"text",1,"Sayfa 1",body))
-        for term in (name.lower(), folded):
-            con.execute("INSERT INTO vocabulary(term,freq) VALUES (?,1) "
-                        "ON CONFLICT(term) DO UPDATE SET freq=freq+1", (term,))
     con.commit(); con.close()
 
     worker = HaricIsci(db, PW, "C:\\")
@@ -924,9 +905,6 @@ def test_haric_isci_atomik_surucu_koku_temizligi(tmp_path):
     con = vault.open_vault(db, PW)
     assert con.execute("SELECT count(*) FROM segments").fetchone()[0] == 1
     assert con.execute("SELECT count(*) FROM files WHERE index_status='excluded'").fetchone()[0] == 2
-    assert con.execute("SELECT freq FROM vocabulary WHERE term='namekeep'").fetchone() == (1,)
-    assert con.execute("SELECT freq FROM vocabulary WHERE term='keepname'").fetchone() == (1,)
-    assert con.execute("SELECT freq FROM vocabulary WHERE term='bodyremove'").fetchone() == (1,)
     con.close()
 
 

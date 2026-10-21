@@ -8,7 +8,7 @@ from evrakci import consume
 def test_tuket_tasir(tmp_path):
     import sqlite3
     from evrakci import migrate, schema
-    from evrakci.vocab import ensure_v5
+    from evrakci.migrate import ensure_v5
     gelen = tmp_path / "gelen"
     gelen.mkdir()
     hedef = tmp_path / "arsiv"
@@ -32,7 +32,7 @@ def test_tuket_tasir(tmp_path):
 def test_tuket_cakisansa_numara_verir(tmp_path):
     import sqlite3
     from evrakci import migrate, schema
-    from evrakci.vocab import ensure_v5
+    from evrakci.migrate import ensure_v5
     gelen = tmp_path / "gelen"
     gelen.mkdir()
     hedef = tmp_path / "arsiv"
@@ -56,7 +56,7 @@ def test_tuket_cakisansa_numara_verir(tmp_path):
 def test_tuket_kararsiz_ve_desteksiz_bekler(tmp_path):
     import sqlite3
     from evrakci import migrate, schema
-    from evrakci.vocab import ensure_v5
+    from evrakci.migrate import ensure_v5
     gelen = tmp_path / "gelen"
     gelen.mkdir()
     hedef = tmp_path / "arsiv"

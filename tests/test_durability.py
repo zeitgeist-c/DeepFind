@@ -1,4 +1,5 @@
 """A4 testleri: kuyruk, kurtarma, kilit, haric, kaynak-yazmama. Sentetik veri."""
+from semantic_helpers import indexed_content
 import os
 import sys
 import time
@@ -9,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from evrakci import coordinator, exclusions, extract, job_queue as queue, scan, schema, search, vault  # noqa: E402
 from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.vocab import ensure_v5  # noqa: E402
+from evrakci.migrate import ensure_v5  # noqa: E402
 
 PW = "test-sifresi-12345"
 
@@ -59,12 +60,12 @@ def test_scn01_kesinti_tekrarsiz(tmp_path):
         _pdf(kok, f"b{i}.pdf", f"belge numara {i} Ankara")
     time.sleep(2.5)  # kararlilik esigi disi: kararli dosyalar
     con, db = _kasa(tmp_path)
-    s1 = coordinator.run_scan(con, db, kok)
+    s1 = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert s1["result"] == "complete" and s1["found"] == 4, s1
     assert s1["done"] == 4, s1
     n_seg = con.execute("SELECT count(*) FROM segments").fetchone()[0]
     # ikinci tarama: ayni surumler tekrar islenmez
-    s2 = coordinator.run_scan(con, db, kok)
+    s2 = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert s2["found"] == 4 and q_pending(con) == 0, s2
     assert con.execute("SELECT count(*) FROM segments").fetchone()[0] == n_seg
     # yarim is birak ve kurtar
@@ -87,14 +88,14 @@ def test_degisen_dosya_yeni_surun(tmp_path):
     p = _pdf(kok, "degisen.pdf", "eski icerik Kayseri")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
-    assert search.search(con, "Kayseri")
+    coordinator.run_scan(con, db, kok, require_vectors=False)
+    assert indexed_content(con, "Kayseri")
     _pdf(kok, "degisen.pdf", "yeni icerik Trabzon")
     time.sleep(2.5)  # yeni surum kararli hale gelsin
-    s = coordinator.run_scan(con, db, kok)
+    s = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert s["result"] == "complete", s
-    assert search.search(con, "Trabzon"), "yeni icerik bulunmali"
-    assert not search.search(con, "Kayseri"), "eski icerik normal aramada olmamali"
+    assert indexed_content(con, "Trabzon"), "yeni icerik bulunmali"
+    assert not indexed_content(con, "Kayseri"), "eski icerik normal aramada olmamali"
     con.close()
 
 
@@ -122,13 +123,13 @@ def test_exc01_haric_temizligi(tmp_path):
     _pdf(alt, "sakli.pdf", "sakli belge Ankara")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
-    assert len(_belgeler(search.search(con, "sakli"))) == 1
+    coordinator.run_scan(con, db, kok, require_vectors=False)
+    assert len(_belgeler(indexed_content(con, "sakli"))) == 1
     exclusions.add(con, alt)
     n = exclusions.purge_rule(con, alt)
     assert n == 1, n
-    assert search.search(con, "sakli") == [], "haric icerik aramada olmamali"
-    assert len(_belgeler(search.search(con, "acik"))) == 1
+    assert indexed_content(con, "sakli") == [], "haric icerik aramada olmamali"
+    assert len(_belgeler(indexed_content(con, "acik"))) == 1
     con.close()
 
 
@@ -140,8 +141,8 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
     time.sleep(2.5)
     once = _dizin_anlik(kok)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
-    search.search(con, "kaynak_guvenlik")
+    coordinator.run_scan(con, db, kok, require_vectors=False)
+    indexed_content(con, "kaynak_guvenlik")
     con.close()
     sonra = _dizin_anlik(kok)
     assert once == sonra, "kaynak dizinde dosya/mtime degisti!"
@@ -202,13 +203,13 @@ def test_scn04_silinen_missing(tmp_path):
     _pdf(kok, "kalacak.pdf", "kalici belge Edirne")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
-    assert search.search(con, "gidici")
+    coordinator.run_scan(con, db, kok, require_vectors=False)
+    assert indexed_content(con, "gidici")
     os.remove(p)
-    s = coordinator.run_scan(con, db, kok)
+    s = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert s["result"] == "complete" and s["missing"] == 1, s
-    assert search.search(con, "gidici") == [], "silinen normal sonucta olmamali"
-    assert len(_belgeler(search.search(con, "kalici"))) == 1
+    assert indexed_content(con, "gidici") == [], "silinen normal sonucta olmamali"
+    assert len(_belgeler(indexed_content(con, "kalici"))) == 1
     con.close()
 
 
@@ -222,9 +223,9 @@ def test_saf02_salt_okunur_kaynak(tmp_path):
     try:
         once = _dizin_anlik(kok)
         con, db = _kasa(tmp_path)
-        s = coordinator.run_scan(con, db, kok)
+        s = coordinator.run_scan(con, db, kok, require_vectors=False)
         assert s["result"] == "complete" and s["done"] == 1, s
-        assert search.search(con, "saltokunur")
+        assert indexed_content(con, "saltokunur")
         con.close()
         assert _dizin_anlik(kok) == once, "salt-okunur kaynaga yazildi!"
     finally:
@@ -265,10 +266,10 @@ def test_scn06_iptal_devam_tutarliligi(tmp_path):
     def erken_dur():
         cagrilar.append(1)
         return len(cagrilar) > 2  # kesif basinda dur: cancelled + kaldi yerden devam
-    s1 = coordinator.run_scan(con, db, kok, stop=erken_dur)
+    s1 = coordinator.run_scan(con, db, kok, stop=erken_dur, require_vectors=False)
     assert s1["result"] == "cancelled", s1
-    s2 = coordinator.run_scan(con, db, kok)
+    s2 = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert s2["result"] == "complete", s2
     assert s1["done"] + s2["done"] == 4, (s1, s2)  # kayip is yok
-    assert len(search.search(con, "iptal")) == 4
+    assert len(indexed_content(con, "iptal")) == 4
     con.close()

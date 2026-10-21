@@ -8,6 +8,7 @@ Kontrat:
 - Sifre degisiminde kurtarma anahtari kendiliginden guncellenir.
 - Kurtarma kaynaga (belgelere) dokunmaz.
 """
+from semantic_helpers import indexed_content
 import os
 import sys
 import time
@@ -118,8 +119,8 @@ def test_kurtarma_kasayi_acar_ve_yeni_sifre_kurar(tmp_path):
     _pdf(kok, "belge.pdf", "Ankara kurtarma testi 2024")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
-    assert search.search(con, "kurtarma")
+    coordinator.run_scan(con, db, kok, require_vectors=False)
+    assert indexed_content(con, "kurtarma")
     anahtar = recovery.new_key()
     recovery.write_container(db, PW, anahtar)
     con.close()
@@ -129,7 +130,7 @@ def test_kurtarma_kasayi_acar_ve_yeni_sifre_kurar(tmp_path):
 
     # yeni sifre calisir, indeks yerinde
     con2 = vault.open_vault(db, YENI)
-    assert search.search(con2, "kurtarma"), "kurtarma sonrasi indeks korunmali"
+    assert indexed_content(con2, "kurtarma"), "kurtarma sonrasi indeks korunmali"
     con2.close()
     # eski sifre artik acmaz
     with pytest.raises(Exception):
@@ -165,7 +166,7 @@ def test_kurtarma_islem_kaynaga_dokunmaz(tmp_path):
             st = os.stat(p)
             once[p] = (st.st_size, st.st_mtime_ns)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
+    coordinator.run_scan(con, db, kok, require_vectors=False)
     anahtar = recovery.new_key()
     recovery.write_container(db, PW, anahtar)
     con.close()

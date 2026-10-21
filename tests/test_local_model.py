@@ -11,8 +11,8 @@ from test_hibrit import _kasa, _duzen, _kodla_b, _dosya, _vektor
 def test_semantic_without_keyword_match(tmp_path):
     con = _kasa(tmp_path); _duzen(con)
     try:
-        assert not rank.search_ranked(con, 'evcil hayvan')['results']
-        rows = rank.search_hybrid(con,'evcil hayvan',kodla=_kodla_b)['results']
+        assert not rank.search_semantic(con, 'evcil hayvan')['results']
+        rows = rank.search_semantic(con,'evcil hayvan',kodla=_kodla_b)['results']
         assert rows and rows[0]['name'] == 'b_belge.txt'
         assert rows[0]['score_class'] == 'semantic'
     finally: con.close()
@@ -21,13 +21,13 @@ def test_semantic_without_keyword_match(tmp_path):
 def test_filters_applied_to_vector_candidates(tmp_path):
     con = _kasa(tmp_path); _duzen(con)
     try:
-        assert not rank.search_hybrid(con,'evcil hayvan',ext='.pdf',kodla=_kodla_b)['results']
-        assert not rank.search_hybrid(con,'evcil hayvan',folder='forbidden',kodla=_kodla_b)['results']
-        assert not rank.search_hybrid(con,'evcil hayvan',year=2021,kodla=_kodla_b)['results']
-        assert not rank.search_hybrid(con,'evcil hayvan',tag='private',kodla=_kodla_b)['results']
+        assert not rank.search_semantic(con,'evcil hayvan',ext='.pdf',kodla=_kodla_b)['results']
+        assert not rank.search_semantic(con,'evcil hayvan',folder='forbidden',kodla=_kodla_b)['results']
+        assert not rank.search_semantic(con,'evcil hayvan',year=2021,kodla=_kodla_b)['results']
+        assert not rank.search_semantic(con,'evcil hayvan',tag='private',kodla=_kodla_b)['results']
         fid = con.execute("SELECT file_id FROM files WHERE name='b_belge.txt'").fetchone()[0]
         rank.tags_many(con,[fid],'private')
-        rows=rank.search_hybrid(con,'evcil hayvan',tag='private',kodla=_kodla_b)['results']
+        rows=rank.search_semantic(con,'evcil hayvan',tag='private',kodla=_kodla_b)['results']
         assert [r['file_id'] for r in rows] == [fid]
     finally: con.close()
 
@@ -37,31 +37,30 @@ def test_merge_precedes_pagination(tmp_path):
     try:
         _dosya(con,'c_belge.txt','hayvan oyuncakları')
         _vektor(con,'oyuncakları',1)
-        first=rank.search_hybrid(con,'kedi',limit=1,kodla=_kodla_b)
-        second=rank.search_hybrid(con,'kedi',limit=1,offset=1,kodla=_kodla_b)
-        whole=rank.search_hybrid(con,'kedi',limit=50,kodla=_kodla_b)
+        first=rank.search_semantic(con,'kedi',limit=1,kodla=_kodla_b)
+        second=rank.search_semantic(con,'kedi',limit=1,offset=1,kodla=_kodla_b)
+        whole=rank.search_semantic(con,'kedi',limit=50,kodla=_kodla_b)
         assert first['has_more']
         assert [first['results'][0]['file_id'],second['results'][0]['file_id']] == [r['file_id'] for r in whole['results'][:2]]
         assert len({r['file_id'] for r in whole['results']}) == len(whole['results'])
     finally: con.close()
 
 
-def test_explicit_phrase_and_exclusion_do_not_leak_vectors(tmp_path):
+def test_quotes_and_exclusions_use_semantic_search(tmp_path):
     con = _kasa(tmp_path); _duzen(con)
     try:
         for query in ['"evcil hayvan"', 'kedi -tasması']:
-            a=rank.search_hybrid(con,query,kodla=_kodla_b)
-            b=rank.search_ranked(con,query)
-            assert a['results']==b['results']
+            a=rank.search_semantic(con,query,kodla=_kodla_b)
+            assert a['results'] and a['semantic']
     finally: con.close()
 
 
-def test_broken_encoder_preserves_lexical_search(tmp_path):
+def test_broken_encoder_reports_unavailable(tmp_path):
     con = _kasa(tmp_path); _duzen(con)
     try:
         bad=lambda _: np.full((1,256),np.nan)
-        r=rank.search_hybrid(con,'kedi',kodla=bad)
-        assert len(r['results'])==2 and r['semantic_error']
+        r=rank.search_semantic(con,'kedi',kodla=bad)
+        assert not r['results'] and r['semantic_error']
     finally: con.close()
 
 
@@ -69,7 +68,7 @@ def test_old_vectors_never_mixed_with_new_model(tmp_path):
     con = _kasa(tmp_path); _duzen(con)
     try:
         con.execute("UPDATE embeddings SET model_ver='eg2-text-256-v1'"); con.commit()
-        assert not rank.search_hybrid(con,'evcil hayvan',kodla=_kodla_b)['results']
+        assert not rank.search_semantic(con,'evcil hayvan',kodla=_kodla_b)['results']
     finally: con.close()
 
 

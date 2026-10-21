@@ -39,11 +39,11 @@ def test_batch_limit_processes_at_most_n(tmp_path):
         os.utime(p, (past, past))
     con = database(tmp_path / "kasa.db")
     try:
-        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), limit=1)
+        stats = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), limit=1, require_vectors=False)
         assert stats["done"] == 1
         assert stats["result"] == "partial"
         assert q.pending_count(con) >= 1
-        stats2 = C.run_scan(con, str(tmp_path / "kasa.db"), str(root))
+        stats2 = C.run_scan(con, str(tmp_path / "kasa.db"), str(root), require_vectors=False)
         assert stats2["done"] >= 2
         assert q.pending_count(con) == 0
     finally:

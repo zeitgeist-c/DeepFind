@@ -53,7 +53,7 @@ def main():
     licenses = package / "licenses"
     licenses.mkdir(exist_ok=True)
     deps = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx", "defusedxml",
-            "rapidfuzz", "pillow", "pyside6-essentials", "shiboken6",
+            "pillow", "pyside6-essentials", "shiboken6",
             "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy", "pyclipper",
             "shapely", "omegaconf", "pyyaml", "six", "requests", "tqdm", "colorlog",
             "protobuf", "flatbuffers", "idna", "certifi", "urllib3", "charset-normalizer"]

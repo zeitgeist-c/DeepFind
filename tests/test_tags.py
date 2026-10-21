@@ -11,7 +11,7 @@ from evrakci import coordinator as C
 from evrakci import migrate, rank, schema
 from evrakci.extract import ExtractResult, Segment
 from evrakci.scan import Entry
-from evrakci.vocab import ensure_v5
+from evrakci.migrate import ensure_v5
 
 
 def database(path=None):
@@ -53,7 +53,10 @@ def test_yeni_tarama_otomatik_etiketler():
         con.close()
 
 
-def test_etiket_filtresi_daraltir():
+def test_etiket_filtresi_daraltir(monkeypatch):
+    from semantic_helpers import seed_vectors,FixedSession
+    from evrakci import embed
+    monkeypatch.setattr(embed,"hazir_oturum",lambda:FixedSession())
     con = database()
     try:
         f1, _ = _yaz(con, "C:/a/bir.pdf", "")
@@ -61,11 +64,12 @@ def test_etiket_filtresi_daraltir():
         C.write_revision(con, f1, "100:1", ExtractResult([Segment("pdf_page", 1, "S1", "ortak kelime alfa")]), "")
         C.write_revision(con, f2, "100:1", ExtractResult([Segment("pdf_page", 1, "S1", "ortak kelime beta")]), "")
         rank.set_tag(con, f1, "muhasebe")
-        tum = rank.search_ranked(con, "ortak")
+        seed_vectors(con)
+        tum = rank.search_semantic(con, "ortak")
         assert len(tum["results"]) == 2
-        dar = rank.search_ranked(con, "ortak", tag="muhasebe")
+        dar = rank.search_semantic(con, "ortak", tag="muhasebe")
         assert [r["path"] for r in dar["results"]] == ["C:/a/bir.pdf"]
-        assert rank.search_ranked(con, "ortak", tag="yok")["results"] == []
+        assert rank.search_semantic(con, "ortak", tag="yok")["results"] == []
     finally:
         con.close()
 

@@ -10,7 +10,6 @@ dependencies = [
   "xlrd==2.0.2",
   "python-docx==1.2.0",
   "defusedxml==0.7.1",
-  "rapidfuzz==3.14.6",
   "Pillow==12.3.0",
   "PySide6-Essentials==6.11.2",
   "rapidocr==3.10.0",

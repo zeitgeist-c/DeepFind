@@ -30,8 +30,7 @@ def open_vault(path: str, password: str) -> sqlcipher3.Connection:
         if not row or not str(row[0]).startswith("4."):
             raise RuntimeError(f"beklenmeyen cipher_version: {row}")
         con.execute("PRAGMA journal_mode=WAL")
-        # v9: FTS trigger'lari fold() UDF'i ile katlanmis metin yazar; her
-        # bağlantıda tanımlı olmasi sart (tanimsizsa trigger INSERT'i hata verir).
+        # Legacy snapshots may still contain fold() triggers before migration.
         nz.install(con)
         return con
     except Exception:

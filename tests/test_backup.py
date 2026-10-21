@@ -1,4 +1,5 @@
 """A7 testleri: sifreli yedek/restore, parola, kilit, migration saglamligi."""
+from semantic_helpers import indexed_content
 import os
 import sys
 import time
@@ -9,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from evrakci import backup, coordinator, exclusions, schema, search, vault  # noqa: E402
 from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.vocab import ensure_v5  # noqa: E402
+from evrakci.migrate import ensure_v5  # noqa: E402
 
 PW = "yedek-sifresi-1234"
 
@@ -46,8 +47,8 @@ def test_bak01_yedek_restore_tutarli(tmp_path):
     _pdf(kok, "belge.pdf", "Ankara yedek testi 2024")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
-    assert search.search(con, "yedek")
+    coordinator.run_scan(con, db, kok, require_vectors=False)
+    assert indexed_content(con, "yedek")
     yb = str(tmp_path / "backups")
     y = backup.create_backup(con, db, PW, yb, forbid_under=[kok])
     assert os.path.isfile(y) and os.path.isfile(y + ".json")
@@ -56,13 +57,13 @@ def test_bak01_yedek_restore_tutarli(tmp_path):
     # kasayi boz: icerigi sil
     con.execute("DELETE FROM segments")
     con.commit()
-    assert search.search(con, "yedek") == []
+    assert indexed_content(con, "yedek") == []
     con.close()
     # geri yukle (baglantilar kapali)
     rap = backup.restore_replace(db, PW, y, str(tmp_path / "staging"))
     assert rap["kasa_counts"]["files"] == 1, rap
     con = vault.open_vault(db, PW)
-    assert search.search(con, "yedek"), "restore sonrasi arama calismali"
+    assert indexed_content(con, "yedek"), "restore sonrasi arama calismali"
     con.close()
 
 
@@ -72,7 +73,7 @@ def test_bak02_yanlis_sifre_bozuk_yedek_kasayi_ezemez(tmp_path):
     _pdf(kok, "belge.pdf", "Ankara koruma testi")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
+    coordinator.run_scan(con, db, kok, require_vectors=False)
     y = backup.create_backup(con, db, PW, str(tmp_path / "backups"))
     con.close()
     with pytest.raises(Exception):
@@ -83,7 +84,7 @@ def test_bak02_yanlis_sifre_bozuk_yedek_kasayi_ezemez(tmp_path):
     with pytest.raises(Exception):
         backup.restore_replace(db, PW, sahte, str(tmp_path / "staging"))
     con = vault.open_vault(db, PW)
-    assert search.search(con, "koruma"), "mevcut kasa bozulmamis olmali"
+    assert indexed_content(con, "koruma"), "mevcut kasa bozulmamis olmali"
     con.close()
 
 
@@ -105,19 +106,19 @@ def test_bak03_eski_yedek_harici_geri_acamaz(tmp_path):
     _pdf(alt, "sakli.pdf", "sakli belge Ankara")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
+    coordinator.run_scan(con, db, kok, require_vectors=False)
     y_eski = backup.create_backup(con, db, PW, str(tmp_path / "backups"))
     # sonra: gizli klasor haric + purge
     exclusions.add(con, alt)
     exclusions.purge_rule(con, alt)
-    assert search.search(con, "sakli") == []
+    assert indexed_content(con, "sakli") == []
     con.close()
     # eski yedegi geri yukle -> haric kural korunur, icerik donmez
     rap = backup.restore_replace(db, PW, y_eski, str(tmp_path / "staging"))
     assert alt in rap["korunan_kurallar"] or any(alt in k for k in rap["korunan_kurallar"]), rap
     con = vault.open_vault(db, PW)
-    assert search.search(con, "sakli") == [], "haric icerik aktif aramaya donmemeli"
-    assert search.search(con, "acik"), "haric disi icerik durmali"
+    assert indexed_content(con, "sakli") == [], "haric icerik aktif aramaya donmemeli"
+    assert indexed_content(con, "acik"), "haric disi icerik durmali"
     con.close()
 
 
@@ -202,7 +203,7 @@ def test_bak_kaynaga_dokunmaz(tmp_path):
     time.sleep(2.5)
     once = _anlik(kok)
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
+    coordinator.run_scan(con, db, kok, require_vectors=False)
     yb = str(tmp_path / "backups")
     y = backup.create_backup(con, db, PW, yb, forbid_under=[kok])
     backup.prune(None, yb)

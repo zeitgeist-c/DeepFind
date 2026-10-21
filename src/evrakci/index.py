@@ -1,4 +1,4 @@
-"""Indeks yazimi: dosya + segment + FTS tek transaction'da. Tek DB yazicisi."""
+"""Indeks yazimi: dosya + segment tek transaction'da. Tek DB yazicisi."""
 from __future__ import annotations
 
 import unicodedata
@@ -9,7 +9,6 @@ from .scan import Entry
 
 
 def index_entry(con, entry: Entry, res: ExtractResult, context: str = "") -> int:
-    nz.install(con)  # FTS trigger'i fold() UDF'ine bagli (v9)
     cur = con.execute("BEGIN IMMEDIATE")
     try:
         con.execute(

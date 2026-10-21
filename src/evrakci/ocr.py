@@ -4,7 +4,7 @@ Sozlesme:
 - Temel motor: RapidOCR (PP-OCR modelleri, ONNX Runtime). Cloud/LLM yok, ek dil
   indirme yok — modeller rapidocr paketinin icinde gelir ve Turkceyi okur.
 - Gereksiz OCR yok: yeterli dogal metni olan sayfa atlanir (OCR-01).
-- Motor/model eksikligi ve bellek: kontrollu erteleme, klasik arama surer (OCR-03).
+- Motor/model eksikligi ve bellek: kontrollu erteleme; içerik eksikliği görünür.
 - Gecici turevler: kontrollu temp dizini, is/cokme sonrasi temizlik.
 - OCR isleri spawn isci sürecinde kosar (workers.run_work); ana arayuz modeli
   yuklemez, bekci thread siniri asan sureci oldurur.

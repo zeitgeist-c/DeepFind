@@ -4,7 +4,7 @@ Windows için yerel, şifreli belge arama uygulaması. PDF, XLSX/XLS, DOCX, ODT,
 
 ## Kurulum ve güncelleme
 
-`Evrakçı-0.10.5.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
+`Evrakçı-0.10.6.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
 
 Ayarlar → Güncellemeler ile yeni sürüm denetlenir; açılıştan sonra günde bir kez de sessiz denetim yapılır. İndirme SHA-256 ile, kurulum EXE'si sürüm kaydıyla doğrulanır. Güncelleme sabit AppId üzerinden aynı kurulumu yükseltir; kısayollar ve kaldırıcı aynı uygulamayı gösterir. UAC onayı istenebilir. Başarısız kurulumda önceki programı yeniden açma yolu vardır; canlı kasa kurulum tarafından değiştirilmez.
 
@@ -20,13 +20,13 @@ Güncel kasanın arama indeksi her açılışta yeniden kurulmaz. Eski şema yar
 
 ## Anlamsal arama ve GPU
 
-Tek anlamsal model EmbeddingGemma 2 Q8_0'dır (256 boyutlu, L2 normalize). Dosya/kelime araması ve bağımsız anlamsal adaylar birleşir, filtrelenir, sıralanır ve sonra sayfalanır. Örneğin “ev kiralama anlaşması”, içerikte yalnız “kira sözleşmesi” yazan belgeyi bulabilir. Tırnaklı ifade, OR/VEYA ve dışlamalı sorgular tam arama kurallarını korur. Benzerlik sonucu kesin bilgi veya doğrulanmış cevap değildir.
+Tek arama yöntemi EmbeddingGemma 2 Q8_0 ile anlamsal aramadır (256 boyutlu, L2 normalize). Kötü adlandırılmış dosyaları içeriklerini tarif ederek bulun. Örneğin “ev kiralama anlaşması”, içerikte yalnız “kira sözleşmesi” yazan belgeyi bulabilir. Sonuçlar içerik benzerliğine göre sıralanır; her belge için en ilgili bölüm ve sayfa gösterilir. Klasör/tür/yıl/etiket filtreleri korunur. Tırnak, OR/VEYA veya eksi işareti artık kelime arama operatörü değildir; tarifin parçasıdır. Benzerlik kesin doğruluk garantisi değildir.
 
 Ayarlar → Yerel anlamsal arama bölümünde kullanılan motor, aygıt, hatalar ve indeks kapsamı görünür. Otomatik seçim önce kurulu CUDA motorunu, ardından Vulkan'ı, sonra CPU'yu dener. Vulkan/CPU ana pakettedir. NVIDIA CUDA bileşeni isteğe bağlı indirilir (yaklaşık 663 MB sıkıştırılmış indirme); sürüm ve SHA-256 sabitlidir. Uygun NVIDIA donanımı/sürücüsü gerekir. Her kartın çalışacağı garanti edilmez; CPU geri dönüşü ve hatalar görünürdür.
 
 Model tek yerel alt süreçte paylaşılır. İletişim yalnız 127.0.0.1 üzerinde geçici erişim anahtarıyla yürür; belge içeriği harici servise gönderilmez. Uzun metinler token sınırına göre örtüşmeli bölünür. Kilit/çıkışta model süreci kapatılır; Windows süreç sahipliği uygulama çökmesinde de alt süreci kapatır.
 
-Yeni modelin vektörleri önceki ONNX vektörleriyle karıştırılmaz. Eski kasadaki eksikler sonraki taramada tamamlanır; bu sırada klasik arama kullanılabilir. Güncelleme indeksi veya kaynak belgeleri silmez.
+Yeni modelin vektörleri önceki ONNX vektörleriyle karıştırılmaz. Eski kasadaki eksikler sonraki taramada tamamlanır. Model hazır değilse durum açıkça bildirilir; kelime aramasına dönüş yapılmaz. Güncelleme indeksi veya kaynak belgeleri silmez.
 
 Gemini yardımcısı, API anahtarı/model ayarları, otomatik özet ve üretilmiş soru-cevap kaldırılmıştır. Embedding modeli yalnız arama temsili üretir.
 
@@ -51,11 +51,13 @@ Sürümün tek kaynağı `src/evrakci/version.py` dosyasıdır. Python bağıml�
 ```powershell
 $env:PYTHONPATH = 'src'
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe eval/embedding_acceptance.py
+.\.venv\Scripts\python.exe eval/semantic_acceptance.py
 .\.venv\Scripts\python.exe packaging/build.py
 .\.venv\Scripts\python.exe eval/package_check.py
 ```
 
-Eski kasalarda eksik embedding tablosu ve indeksi otomatik hazırlanır; metin indeksi ve mevcut vektörler korunur. Eksik veya yanlış boyutlu vektörler normal taramada tamamlanır. Kalıcı başarısız işler varken tarama tamamlandı sayılmaz.
+Eski kasalarda eksik embedding tablosu ve indeksi otomatik hazırlanır; belge metni ve mevcut vektörler korunur; eski FTS/sözlük kaldırılır. Eksik veya yanlış boyutlu vektörler normal taramada tamamlanır. Kalıcı başarısız işler varken tarama tamamlandı sayılmaz.
 
-Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.5.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
+Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.6.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
+
+0.10.6 ile kelime indeksi, yazım önerisi sözlüğü ve tarama sonundaki sözlük bakımı kaldırılmıştır. Yeni kasalar yalnız metin, kaynak/sayfa bağlantıları ve vektörleri tutar. Eski kasadan geçişte önce doğrulanmış şifreli yedek alınır; FTS yeniden kurulmaz. Dosya içerikleri bir kez taranır, değişmeyen dosyalar yeniden OCR/vektör üretmez. Model yokken anlamsal indeks tamamlandı sayılmaz.

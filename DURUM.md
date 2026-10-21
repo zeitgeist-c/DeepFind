@@ -1,5 +1,20 @@
 # Evrakçı — DURUM
 
+## 0.10.6: yalnız içerik vektörleriyle arama — 21.10.2026
+
+Kullanıcı kötü adlandırılmış dosyaları içeriklerini tarif ederek bulmak için
+yalnız embedding aramasını seçti. FTS, fuzzy sözlük, hibrit sıralama ve sözlük
+bakımı kaldırıldı. OCR, metin/sayfa bağlantıları, filtreler ve şifreli kasa
+korunur. v10 geçişi eski indeksi yeniden üretmez; model/vektör eksikse GUI
+taraması tamamlandı sayılmaz. Bu bilgisayardaki eski kasa ayrıca açık kullanıcı
+izniyle kapalıyken sıfırlandı; kaynak belgeler, modeller ve ayrı yedekler korundu.
+
+Gerçek CPU ve AMD Vulkan kabulünde altı tarifin 5/6'sı ilk sırada, 6/6'sı ilk
+üçte doğru belgeyi buldu. Kitap kopyası ilk tarama 72,95 sn, değişmeyen ikinci
+tarama 0,0069 sn; 421 vektör, FTS/sözlük yok. Bu küçük deney şirket arşivinin
+tamamının kabulü değildir. Güncel ayrıntı TESLIM-0.10.6.md; test/paket/yayın
+kanıtları build altındaki sürüm raporlarıdır.
+
 ## 0.10.5: tarama sonu sözlük beklemesi ve boş sayfalar — 21.10.2026
 
 Sözlük ham arşivi tekrar okumak yerine FTS terim/frekansını kullanır; değişmeyen

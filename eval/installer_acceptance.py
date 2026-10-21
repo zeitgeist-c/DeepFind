@@ -34,12 +34,12 @@ def main():
             run = subprocess.run([str(setup),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',f'/DIR={target}'],timeout=300)
             assert (run.returncode == 0) == success, run.returncode
         compile_setup('/DTestPrevious')
-        install('0.9.0')
-        assert (target/'Evrakçı-0.9.0.exe').is_file()
+        install('0.10.4')
+        assert (target/'Evrakçı-0.10.4.exe').is_file()
         # The small package must refuse before replacing any app file.
         compile_setup('/DUpdatePackage')
         install(__version__, success=False)
-        assert (target/'Evrakçı-0.9.0.exe').is_file()
+        assert (target/'Evrakçı-0.10.4.exe').is_file()
         assert not (target/f'Evrakçı-{__version__}.exe').exists()
         result['missing_model_blocks_before_upgrade']=True
         legacy=target/'legacy-model/embeddinggemma-2-Q8_0.gguf'
@@ -53,23 +53,23 @@ def main():
         with model.open('rb') as f: assert hashlib.file_digest(f,'sha256').hexdigest()==MODEL_SHA256
         before=model.stat().st_mtime_ns
         assert not legacy.exists()
-        assert not (target/'Evrakçı-0.9.0.exe').exists()
-        assert not (target/'Evrakçı-0.9.0.bat').exists()
+        assert not (target/'Evrakçı-0.10.4.exe').exists()
+        assert not (target/'Evrakçı-0.10.4.bat').exists()
         assert sentinel.read_text(encoding='utf-8')=='preserve' and unknown.is_file()
         result['legacy_model_moved_and_old_launchers_removed']=True
         install(__version__)
         assert model.stat().st_mtime_ns==before
         result['incremental_keeps_model']=True
-        # A full installer repairs corruption and also cleans a 0.10.0 launcher.
-        shutil.copyfile(ROOT/'dist/Evrakçı-0.10.0/Evrakçı-0.10.0.exe',target/'Evrakçı-0.10.0.exe')
-        shutil.copyfile(ROOT/'dist/Evrakçı-0.10.0/Evrakçı-0.10.0.bat',target/'Evrakçı-0.10.0.bat')
+        # A full installer repairs corruption and also cleans a 0.10.2 launcher.
+        shutil.copyfile(ROOT/'dist/Evrakçı-0.10.2/Evrakçı-0.10.2.exe',target/'Evrakçı-0.10.2.exe')
+        shutil.copyfile(ROOT/'dist/Evrakçı-0.10.2/Evrakçı-0.10.2.bat',target/'Evrakçı-0.10.2.bat')
         model.write_bytes(b'corrupt')
         compile_setup()
         install(__version__)
         with model.open('rb') as f: assert hashlib.file_digest(f,'sha256').hexdigest()==MODEL_SHA256
-        assert not (target/'Evrakçı-0.10.0.exe').exists()
-        assert not (target/'Evrakçı-0.10.0.bat').exists()
-        result['full_setup_repairs_model_and_cleans_0_10_0']=True
+        assert not (target/'Evrakçı-0.10.2.exe').exists()
+        assert not (target/'Evrakçı-0.10.2.bat').exists()
+        result['full_setup_repairs_model_and_cleans_0_10_2']=True
         smoke=target/'acceptance-smoke.json'
         subprocess.run([str(target/f'Evrakçı-{__version__}.exe'),'--package-smoke',str(smoke)],check=True,timeout=300)
         report=json.loads(smoke.read_text(encoding='utf-8'))

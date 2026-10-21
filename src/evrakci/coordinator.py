@@ -176,7 +176,7 @@ def build_manifest(con, root: str) -> tuple:
 
 def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
                      context: str = "") -> None:
-    """Dosya + revizyon + segment + FTS tek transaction (DB-01: yarim FTS yok)."""
+    """Dosya, revizyon ve içerik bölümlerini tek transaction'da değiştir."""
     import unicodedata
     from . import normalize as nz
     if 'start_offset' not in {r[1] for r in con.execute('PRAGMA table_info(segments)')}:
@@ -455,10 +455,11 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
 
 
 def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None, limit=None,
-             *, inventory_only=False, prepared=None, lock_held=False, fresh_inventory=False) -> dict:
+             *, inventory_only=False, prepared=None, lock_held=False, fresh_inventory=False, require_vectors=True) -> dict:
     """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi.
-    limit: bu calistirmada en fazla kac dosya islenir (kalan is pending kalir)."""
-    nz.install(con)  # segment yazim/silim trigger'lari fold() UDF'ine bagli (v9)
+    limit: bu calistirmada en fazla kac dosya islenir (kalan is pending kalir).
+    require_vectors=False is for extraction-only diagnostics, never the GUI."""
+    nz.install(con)  # Old snapshots can contain legacy triggers until migrated.
     stats = {"found": 0, "done": 0, "changed": 0, "unstable": 0, "failed": 0,
              "missing": 0, "ocr_done": 0, "ocr_deferred": 0, "ocr_failed": 0,
              "embed_done": 0,
@@ -671,7 +672,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             return stats
         stats['inventory_ready'] = True
         from .scan_progress import DocumentProgress
-        documents = DocumentProgress(con,run_id,gom_mod.model_var_mi())
+        documents = DocumentProgress(con,run_id,require_vectors)
         phase('content','extract')
         report('Belge işleme başlıyor', root, force=True)
         # --- kuyruk isleme ---
@@ -741,7 +742,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             from . import embed as embedding
             ot = embedding.isit_oturumu()
             if ot is None:
-                report('Vektör motoru açılamadı; klasik arama sürüyor', root, force=True)
+                report('Vektör motoru açılamadı; anlamsal dizin tamamlanmadı', root, force=True)
             while ot is not None:
                 if stop and stop():
                     stats['result'] = 'cancelled'

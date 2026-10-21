@@ -23,7 +23,7 @@ def test_inventory_completes_before_any_source_content_is_read(tmp_path, monkeyp
         counts.append(con.execute('SELECT count(*) FROM scan_manifest').fetchone()[0])
         return original(con,*args,**kwargs)
     monkeypatch.setattr(C,'_process_job',checked)
-    result=C.run_scan(con,str(tmp_path/'vault.db'),str(root))
+    result=C.run_scan(con,str(tmp_path/'vault.db'),str(root), require_vectors=False)
     assert counts and set(counts)=={40}
     assert result['documents_total']==40 and result['documents_done']==40
     con.close()
@@ -31,6 +31,10 @@ def test_inventory_completes_before_any_source_content_is_read(tmp_path, monkeyp
 
 def test_worker_counts_all_roots_once_and_reuses_snapshot(tmp_path, monkeypatch):
     from evrakci.app import TaramaIsci
+    from evrakci import gom,embed
+    from semantic_helpers import FixedSession
+    monkeypatch.setattr(gom,'model_var_mi',lambda:True)
+    monkeypatch.setattr(embed,'isit_oturumu',lambda **kwargs:FixedSession())
     roots=[tmp_path/'first',tmp_path/'second'];files(roots[0],2);files(roots[1],3)
     path=str(tmp_path/'vault.db');password='synthetic-counted-scan-1234'
     con=vault.open_vault(path,password);migrate.ensure_current(con);con.close()
@@ -124,7 +128,7 @@ def test_multi_window_document_is_counted_once(tmp_path, monkeypatch):
         return extract.ExtractResult([extract.Segment('para',None,'Parça',f'Sözleşme bölüm {cursor}')],
                                     next_cursor=cursor+1 if cursor<2 else None)
     monkeypatch.setattr(extract,'extract_window',window)
-    events=[];result=C.run_scan(con,str(tmp_path/'vault.db'),str(root),progress=events.append)
+    events=[];result=C.run_scan(con,str(tmp_path/'vault.db'),str(root),progress=events.append, require_vectors=False)
     assert cursors==[0,1,2]
     assert result['documents_done']==1 and result['documents_total']==1
     assert all(e['phase_done']<=1 for e in events if e.get('phase_key')=='content')
@@ -139,6 +143,6 @@ def test_inaccessible_folder_never_claims_complete_inventory(tmp_path,monkeypatc
         return original(path)
     monkeypatch.setattr(os,'scandir',denied)
     con=database(tmp_path/'vault.db')
-    result=C.run_scan(con,str(tmp_path/'vault.db'),str(root))
+    result=C.run_scan(con,str(tmp_path/'vault.db'),str(root), require_vectors=False)
     assert result['found']==2 and not result['inventory_complete'] and not result['complete']
     con.close()

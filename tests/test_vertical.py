@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from evrakci import extract, index, scan, schema, search, vault  # noqa: E402
 from evrakci.migrate import ensure_v6  # noqa: E402
-from evrakci.vocab import ensure_v5  # noqa: E402
+from evrakci.migrate import ensure_v5  # noqa: E402
 
 PW = "test-sifresi-12345"
 
@@ -68,20 +68,9 @@ def test_dikey_akis(tmp_path):
     assert len(girisler) == 4
     for e in girisler:
         index.index_entry(con, e, extract.extract(e.path, e.ext, e.size))
-    # sorgu 1: iki kelime ayni belgede
-    r1 = search.search(con, "Ankara Ayşe")
-    assert r1 and r1[0]["name"].endswith(".pdf"), r1
-    assert "Ankara" in r1[0]["snippet"] and "Ayşe" in r1[0]["snippet"]
-    assert r1[0]["page"] == 1
-    # sorgu 2: xlsx hucre
-    r2 = search.search(con, "Ayşe Yılmaz")
-    assert any(x["ext"] == ".xlsx" for x in r2), r2
-    # sorgu 3: doc ad/yol
-    r3 = search.search(con, "eski-arşiv")
-    assert r3 and r3[0]["ext"] == ".doc", r3
-    # guvenli sorgu: FTS enjeksiyonu calismaz, hata da vermez
-    r4 = search.search(con, 'vergi" OR 1=1 --')
-    assert isinstance(r4, list)
+    assert con.execute('SELECT count(*) FROM files').fetchone()[0] == 4
+    assert con.execute("SELECT count(*) FROM segments WHERE kind NOT IN ('name_only','context')").fetchone()[0] >= 4
+    assert not con.execute("SELECT 1 FROM sqlite_master WHERE name='docs_fts'").fetchone()
     con.close()
 
 

@@ -76,7 +76,7 @@ def test_izleme_taramayi_tetikler(tmp_path, monkeypatch):
     from openpyxl import Workbook
     from evrakci import coordinator as C
     from evrakci import migrate, schema
-    from evrakci.vocab import ensure_v5
+    from evrakci.migrate import ensure_v5
     monkeypatch.setattr(watch, "DEBOUNCE_SEC", 1)
     root = tmp_path / "kaynak"
     root.mkdir()
@@ -90,7 +90,7 @@ def test_izleme_taramayi_tetikler(tmp_path, monkeypatch):
         def tara(dirs):
             c2 = sqlite3.connect(db)
             try:
-                C.run_scan(c2, db, dirs[0])
+                C.run_scan(c2, db, dirs[0], require_vectors=False)
             finally:
                 c2.close()
 

@@ -13,9 +13,9 @@ DEFAULT_VAULT = os.path.join(APPDATA, "Evrakci", "Data", "evrakci.db")
 def _load():
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from evrakci import vault, schema, scan, extract, index, search  # noqa: E402
-    from evrakci import coordinator, exclusions, history, rank, vocab  # noqa: E402
+    from evrakci import coordinator, exclusions, history, rank  # noqa: E402
     from evrakci.migrate import ensure_v4  # noqa: E402
-    return vault, schema, scan, extract, index, search, rank, history, vocab, \
+    return vault, schema, scan, extract, index, search, rank, history, None, \
         coordinator, exclusions, ensure_v4
 
 
@@ -123,7 +123,16 @@ def cmd_ara(args) -> int:
     _vault, _schema, _s3, _e4, _i5, _v1search, rank, history, _v9, _c10, _e11, _m4 = _load()
     con = _open_db(args)
     kw = {"year": args.yil, "ext": args.tur} if (args.yil or args.tur) else {}
-    out = rank.search_ranked(con, args.sorgu, limit=int(args.limit), **kw)
+    from evrakci import embed
+    embed.isit_oturumu()
+    try:
+        out = rank.search_semantic(con, args.sorgu, limit=int(args.limit), **kw)
+    finally:
+        embed.close()
+    if out.get('semantic_error'):
+        print(out['semantic_error'],flush=True)
+        con.close()
+        return 4
     filt = f"|yil={args.yil}|tur={args.tur}" if kw else ""
     history.save(con, args.sorgu, filt)
     con.close()

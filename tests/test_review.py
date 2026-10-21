@@ -1,4 +1,5 @@
 """Denetimde bulunan veri ve parola regresyonları; yalnız yapay veri."""
+from semantic_helpers import indexed_content
 import os
 import sys
 
@@ -8,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from evrakci import backup, coordinator, extract, schema, search, vault
 from evrakci.migrate import ensure_v7
-from evrakci.vocab import ensure_v5
+from evrakci.migrate import ensure_v5
 
 PW = "denetim-sifresi-1234"
 APP = None
@@ -33,17 +34,17 @@ def test_scanning_second_root_preserves_first_and_reappearance(tmp_path, monkeyp
         p = root / "belge.docx"
         p.write_bytes(b"sentetik")
         os.utime(p, (1_700_000_000, 1_700_000_000))
-        coordinator.run_scan(con, db, str(root))
-    assert len(search.search(con, "denetim")) == 2
+        coordinator.run_scan(con, db, str(root), require_vectors=False)
+    assert len(indexed_content(con, "denetim")) == 2
     p = roots[0] / "belge.docx"
     data = p.read_bytes()
     p.unlink()
-    coordinator.run_scan(con, db, str(roots[0]))
-    assert len(search.search(con, "denetim")) == 1
+    coordinator.run_scan(con, db, str(roots[0]), require_vectors=False)
+    assert len(indexed_content(con, "denetim")) == 1
     p.write_bytes(data)
     os.utime(p, (1_700_000_000, 1_700_000_000))
-    coordinator.run_scan(con, db, str(roots[0]))
-    assert len(search.search(con, "denetim")) == 2
+    coordinator.run_scan(con, db, str(roots[0]), require_vectors=False)
+    assert len(indexed_content(con, "denetim")) == 2
     rows = con.execute("SELECT s.rev_id,r.rev_id FROM segments s JOIN file_revisions r ON r.file_id=s.file_id AND r.active=1").fetchall()
     assert rows and all(a == b for a, b in rows)
     con.close()
@@ -171,7 +172,7 @@ def test_failed_password_verification_keeps_original(tmp_path, monkeypatch):
     con.close()
 
 
-def test_filename_is_searchable_even_when_content_differs(tmp_path):
+def test_filename_does_not_supply_a_lexical_fallback(tmp_path):
     con, db = make_vault(tmp_path)
     from evrakci import rank
     from evrakci.scan import Entry
@@ -179,7 +180,7 @@ def test_filename_is_searchable_even_when_content_differs(tmp_path):
     fid = coordinator.ensure_file(con, Entry(p, os.path.basename(p), ".docx", 10, 1))
     coordinator.write_revision(con, fid, "10:1", extract.ExtractResult(
         [extract.Segment("para", None, "Paragraf 1", "İçerik tamamen farklı.")]))
-    assert rank.search_ranked(con, "Ankara vergi")["results"]
+    assert not rank.search_semantic(con, "Ankara vergi")["results"]
     con.close()
 
 

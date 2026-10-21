@@ -71,7 +71,7 @@ def set_backend(name):
 def hazir_oturum(yol=None):
     if _SESSION is not None:
         if _SESSION.alive(): return _SESSION
-        _STATUS.update(state='Model süreci durdu', backend='', device='', error='Motoru yeniden başlatın; klasik arama sürüyor.')
+        _STATUS.update(state='Model süreci durdu', backend='', device='', error='Anlamsal arama için motoru yeniden başlatın.')
     return None
 
 

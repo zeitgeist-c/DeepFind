@@ -19,7 +19,7 @@ def model_yolu() -> str:
 
 
 def model_var_mi(yol: str | None = None) -> bool:
-    """Uretim modeli diskte mi? Yoksa gom kuyrugu kurulmaz (FTS aynen)."""
+    """Üretim modeli diskte mi? Model yoksa anlamsal tarama eksik kalır."""
     import os
 
     return os.path.isfile(yol or embed_mod._varsayilan_model_yolu())

@@ -4,30 +4,13 @@ import pytest
 from evrakci import schema,migrate,index,rank,coordinator,extract,vault
 from evrakci.scan import Entry
 from evrakci.extract import Segment,ExtractResult
-from evrakci.vocab import ensure_v5
+from evrakci.migrate import ensure_v5
 
 def database():
     con=sqlite3.connect(':memory:'); schema.ensure_schema(con); ensure_v5(con); migrate.ensure_current(con); return con
 
-def test_large_archive_does_not_lose_intersection_or_filtered_matches():
-    con=database()
-    for n in range(510):
-        entry=Entry(f'C:/archive/{n:04}.pdf',f'{n}.pdf','.pdf',1,1)
-        index.index_entry(con,entry,ExtractResult([Segment('pdf_page',1,'Sayfa 1','tahsilat makbuzu' if n==509 else 'tahsilat')]))
-    result=rank.search_ranked(con,'tahsilat makbuzu')['results']
-    assert len(result)==1 and result[0]['name']=='509.pdf'
-    assert rank.search_ranked(con,'tahsilat',folder='0509')['results'][0]['name']=='509.pdf'
-    assert rank.search_ranked(con,'tahsilat',offset=500)['results']
-    con.close()
 
 
-def test_phrase_query_and_identifiers():
-    con=database()
-    for n,text in enumerate(['tahsilat makbuzu 54321 18.750 TL','makbuzu önce tahsilat sonra 54321']):
-        index.index_entry(con,Entry(f'{n}.pdf',f'{n}.pdf','.pdf',1,1),ExtractResult([Segment('pdf_page',1,'Sayfa 1',text)]))
-    assert [r['name'] for r in rank.search_ranked(con,'"tahsilat makbuzu"')['results']]==['0.pdf']
-    assert rank.search_ranked(con,'54321 18.750')['results'][0]['name']=='0.pdf'
-    con.close()
 
 
 def test_excel_windows_keep_last_row_and_source_unchanged(tmp_path):
@@ -66,7 +49,7 @@ def test_image_missing_ocr_stays_partial_and_queued(tmp_path,monkeypatch):
     past=time.time()-10; os.utime(image,(past,past))
     db=str(tmp_path/'index.db'); con=vault.open_vault(db,'synthetic-archive-1234'); migrate.ensure_current(con)
     monkeypatch.setattr(ocr,'engine_ok',lambda *args:(False,['rapidocr-zinciri']))
-    result=coordinator.run_scan(con,db,str(root))
+    result=coordinator.run_scan(con,db,str(root), require_vectors=False)
     assert not result['complete']
     assert con.execute('SELECT index_status FROM files').fetchone()[0]=='partial'
     assert con.execute("SELECT count(*) FROM jobs WHERE kind='ocr'").fetchone()[0]==1
@@ -83,12 +66,12 @@ def test_windowed_extraction_can_resume_after_cancellation(tmp_path,monkeypatch)
         nonlocal stopped
         result=original(*args,**kwargs); stopped=True; return result
     monkeypatch.setattr(coordinator,'_process_job',process)
-    coordinator.run_scan(con,db,str(root),stop=lambda:stopped)
+    coordinator.run_scan(con,db,str(root),stop=lambda:stopped, require_vectors=False)
     assert con.execute('SELECT cursor FROM jobs').fetchone()[0]==1000
     monkeypatch.setattr(coordinator,'_process_job',original)
-    result=coordinator.run_scan(con,db,str(root))
+    result=coordinator.run_scan(con,db,str(root), require_vectors=False)
     assert result['complete']
-    assert rank.search_ranked(con,'1099')['results']
+    assert con.execute("SELECT 1 FROM segments WHERE raw_text LIKE '%1099%'").fetchone()
     con.close()
 
 def test_pdf_windows_include_page_after_legacy_limit(tmp_path):
@@ -139,7 +122,8 @@ def test_failed_migration_restores_verified_previous_vault(tmp_path,monkeypatch)
     db=str(tmp_path/'old.db'); password='synthetic-upgrade-1234'
     con=vault.open_vault(db,password); migrate.ensure_current(con)
     index.index_entry(con,Entry('old.pdf','old.pdf','.pdf',1,1),ExtractResult([Segment('pdf_page',1,'Sayfa 1','tahsilat korunmalı')]))
-    con.execute("DELETE FROM schema_meta WHERE k='archive_version'"); con.commit(); con.close()
+    con.execute("DELETE FROM schema_meta WHERE k='archive_version'")
+    con.execute("CREATE VIRTUAL TABLE docs_fts USING fts5(raw_text)"); con.commit(); con.close()
     original=migrate.ensure_current
     def failed(con, progress=None):
         con.execute('DELETE FROM segments'); con.commit(); raise RuntimeError('synthetic migration failure')
@@ -147,4 +131,4 @@ def test_failed_migration_restores_verified_previous_vault(tmp_path,monkeypatch)
     with pytest.raises(RuntimeError,match='synthetic migration failure'): AnaPencere(db,password)
     monkeypatch.setattr(migrate,'ensure_current',original)
     con=vault.open_vault(db,password)
-    assert rank.search_ranked(con,'tahsilat')['results']; con.close()
+    assert con.execute("SELECT 1 FROM segments WHERE raw_text LIKE '%tahsilat%'").fetchone(); con.close()

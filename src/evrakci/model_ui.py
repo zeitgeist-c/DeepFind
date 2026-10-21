@@ -63,6 +63,9 @@ def install(window, layout):
         if state.get('device'): text += '\n' + state['device']
         if state['error']: text += '\n' + state['error']
         window.model_status.setText(text)
+        if getattr(window, '_waiting_for_model', False) and engine.hazir_oturum() is not None:
+            window._waiting_for_model = False
+            window._ara_simdi()
     window.model_retry.clicked.connect(restart)
     window.model_backend.currentIndexChanged.connect(restart)
     window.cuda_install.clicked.connect(download)

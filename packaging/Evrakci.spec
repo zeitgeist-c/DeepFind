@@ -35,7 +35,7 @@ a = Analysis([str(root / "src/evrakci/__main__.py")], pathex=[str(root / "src")]
                                        "onnxruntime.capi.onnxruntime_pybind11_state",
                                        ],
              hookspath=[], hooksconfig={}, runtime_hooks=[],
-             excludes=["torch", "transformers", "tokenizers", "huggingface_hub", "hf_xet", "safetensors",
+             excludes=["rapidfuzz", "torch", "transformers", "tokenizers", "huggingface_hub", "hf_xet", "safetensors",
                        "onnxruntime.tools", "onnxruntime.quantization", "pytest", "IPython", "matplotlib"], noarchive=False)
 # Qt'nin Windows ICU bağımlılığı PATH'teki Poppler ICU ile aynı dosya adını taşır.
 # Bu wheel Windows'un ICU API'sini kullanır; yabancı icuuc.dll onu gölgelememeli.

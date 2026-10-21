@@ -7,7 +7,7 @@ import threading
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from evrakci import coordinator, vault, schema, migrate, job_queue as queue, remember
-from evrakci.vocab import ensure_v5
+from evrakci.migrate import ensure_v5
 
 PW = "sentetik-surum-test-1234"
 
@@ -50,7 +50,7 @@ def test_discovery_counts_before_processing_and_scopes_queue(tmp_path, monkeypat
             discovered_when_processing.append(con.execute("SELECT count(*) FROM scan_selected").fetchone()[0])
             return original(*args, **kwargs)
         monkeypatch.setattr(coordinator, '_process_job', process)
-        result = coordinator.run_scan(con, db, str(root), progress=snapshots.append)
+        result = coordinator.run_scan(con, db, str(root), progress=snapshots.append, require_vectors=False)
         assert result['done'] == 40 and result['complete']
         # 0.10.3: the requested fixed denominator requires full inventory first.
         assert discovered_when_processing and set(discovered_when_processing) == {40}
@@ -75,12 +75,12 @@ def test_cancel_preserves_completed_files_and_pending_work(tmp_path, monkeypatch
             cancel.set()
             return result
         monkeypatch.setattr(coordinator, '_process_job', process)
-        result = coordinator.run_scan(con, db, str(root), stop=cancel.is_set)
+        result = coordinator.run_scan(con, db, str(root), stop=cancel.is_set, require_vectors=False)
         assert result['result'] == 'cancelled' and result['done'] > 0
         assert con.execute('SELECT count(*) FROM segments').fetchone()[0] > 0
         assert result['missing'] == 0
         monkeypatch.setattr(coordinator, '_process_job', original)
-        resumed = coordinator.run_scan(con, db, str(root))
+        resumed = coordinator.run_scan(con, db, str(root), require_vectors=False)
         assert resumed['complete']
     finally:
         con.close()

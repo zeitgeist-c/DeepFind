@@ -16,13 +16,8 @@ def prepare_connection(path, password, backup_dir, progress=None):
     snapshot = None
     try:
         fts = con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
-        marker = con.execute("SELECT 1 FROM schema_meta WHERE k='archive_version'").fetchone() if fts else None
-        legacy_shape = bool(fts) and ('folded_text' in {r[1] for r in con.execute('PRAGMA table_info(segments)')} or bool(con.execute(
-            "SELECT 1 FROM sqlite_master WHERE name='docs_fts_folded'").fetchone()))
-        v9_pending = bool(fts) and con.execute(
-            "SELECT count(*) FROM schema_meta WHERE k='fts_folded'").fetchone()[0] == 0 \
-            and con.execute("SELECT count(*) FROM segments").fetchone()[0] > 0
-        if fts and ('remove_diacritics 0' not in fts[0] or not marker or v9_pending or legacy_shape):
+        # Snapshot older vaults before removing their derived keyword objects.
+        if fts:
             diagnostics.record('migration_backup_begin')
             try:
                 snapshot = backup.create_backup(con, path, password, backup_dir,

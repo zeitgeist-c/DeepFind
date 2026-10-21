@@ -18,7 +18,7 @@ def run(report_path):
     from openpyxl import Workbook
     from . import schema, vault, theme
     from .migrate import ensure_v8, get_setting, set_setting
-    from .vocab import ensure_v5, rebuild_vocab
+    from .migrate import ensure_v5
     from .index import index_entry
     from .scan import Entry
     from .workers import run_work
@@ -69,7 +69,11 @@ def run(report_path):
             ensure_v8(con)
             stat = source.stat()
             index_entry(con, Entry(str(source), source.name, ".xlsx", stat.st_size, stat.st_mtime_ns), result)
-            rebuild_vocab(con)
+            from . import embed as model, gom as embedding_jobs
+            session=model.isit_oturumu()
+            assert session is not None,model.status()
+            fid=con.execute('SELECT file_id FROM files').fetchone()[0]
+            embedding_jobs.isle_dosya(con,fid,lambda texts:session.encode(texts,gorev='belge'))
             con.close()
             checkpoint("window")
             pen = AnaPencere(db, password)
@@ -183,11 +187,7 @@ def run(report_path):
             assert pen.tarama_bar.value() == int(snapshot['documents_done']*100/snapshot['documents_total'])
             from .embed import MODEL_VER, DIM
             assert pen.con.execute('SELECT count(*) FROM embeddings WHERE model_ver=? AND dim=?', (MODEL_VER,DIM)).fetchone()[0] > 0
-            from .vocab import rebuild_vocab
-            statements=[];pen.con.set_trace_callback(statements.append)
-            rebuild_vocab(pen.con)
-            pen.con.set_trace_callback(None)
-            assert not any('DELETE FROM VOCABULARY' in sql.upper() for sql in statements)
+            assert not pen.con.execute("SELECT 1 FROM sqlite_master WHERE name IN ('docs_fts','vocabulary')").fetchone()
             checkpoint('archive-file-list-image-ocr')
             from .app import EKRANLAR
             pen.nav.setCurrentRow(EKRANLAR.index('Taranmış Evraklar'))
@@ -195,8 +195,8 @@ def run(report_path):
             while pen._jobs:
                 app.processEvents(); time.sleep(.01); assert time.monotonic()<deadline
             assert any(row[1]==ocr_image for row in pen.file_rows)
-            from .rank import search_ranked
-            assert any(row['path']==ocr_image for row in search_ranked(pen.con,'Ankara belge')['results'])
+            from .rank import search_semantic
+            assert any(row['path']==ocr_image for row in search_semantic(pen.con,'Ankara belge')['results'])
             checkpoint('root-remove-worker')
             # Kök kaldırma: ayrı thread'de çalışır, GUI yanıt verir, temizlik doğru.
             from evrakci.app import KokKaldirIsci
@@ -237,7 +237,6 @@ def run(report_path):
             fid = pen.con.execute("SELECT file_id FROM files WHERE path=?", (p3,)).fetchone()[0]
             pen.con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) "
                             "VALUES (?,?,?,?,?)", (fid,"text",1,"Sayfa 1","BodyRemoved"))
-            pen.con.execute("INSERT INTO vocabulary(term,freq) VALUES ('namesurvives',1),('bodyremoved',1)")
             pen.con.commit()
             worker = HaricIsci(db, password, k3)
             th2 = QThread(); worker.moveToThread(th2); th2.started.connect(worker.kos)
@@ -251,8 +250,6 @@ def run(report_path):
             assert excluded == [(k3,1)], excluded
             assert pen.con.execute("SELECT index_status FROM files WHERE file_id=?",(fid,)).fetchone()[0]=='excluded'
             assert pen.con.execute("SELECT count(*) FROM segments WHERE file_id=?",(fid,)).fetchone()[0]==0
-            assert pen.con.execute("SELECT term FROM vocabulary WHERE term='namesurvives'").fetchone()
-            assert pen.con.execute("SELECT term FROM vocabulary WHERE term='bodyremoved'").fetchone() is None
             pen._nav_toggle()
             assert pen.nav.horizontalScrollBar().maximum() == 0
             pen._nav_toggle()
@@ -268,8 +265,8 @@ def run(report_path):
             pen.con.execute("INSERT INTO segments(file_id,kind,label,raw_text) VALUES (?,'para','Belge','kira sözleşmesi aylık ödeme')", (synthetic_id,))
             pen.con.commit()
             embedding_jobs.isle_dosya(pen.con,synthetic_id,lambda texts:session.encode(texts,gorev='belge'))
-            from .rank import search_hybrid
-            result = search_hybrid(pen.con,'ev kiralama anlaşması')
+            from .rank import search_semantic
+            result = search_semantic(pen.con,'ev kiralama anlaşması')
             assert any(r['file_id']==synthetic_id and r['score_class']=='semantic' for r in result['results']), result
             report['embedding_backend'] = model.status()
             model_process = session.proc
@@ -297,7 +294,8 @@ def run(report_path):
             old_fid = old_con.execute("INSERT INTO files(path,name,ext) VALUES ('c:/synthetic/startup.txt','startup.txt','.txt')").lastrowid
             old_con.executemany("INSERT INTO segments(file_id,kind,label,raw_text) VALUES (?,'body','Sayfa','Şırnak sözleşme')", [(old_fid,)] * 601)
             old_con.execute("DELETE FROM schema_meta WHERE k='archive_version'")
-            old_con.execute("DELETE FROM schema_meta WHERE k='fts_folded'")
+            old_con.execute("CREATE VIRTUAL TABLE docs_fts USING fts5(raw_text)")
+            old_con.execute("INSERT INTO docs_fts(raw_text) VALUES ('legacy synthetic')")
             old_con.execute("UPDATE schema_meta SET v='8' WHERE k='schema_version'")
             old_con.commit(); old_con.close()
             opening = OpeningDialog(old_db, password, str(Path(temp) / 'startup-backups'))
@@ -307,7 +305,7 @@ def run(report_path):
             opening.worker.progress.connect(lambda phase, done, total: counts.append((phase, done, total)))
             assert opening.prepare() == QDialog.Accepted
             assert {'backup', 'verify', 'schema'} <= set(phases)
-            assert ('fts', 0, 601) in counts and ('fts', 601, 601) in counts
+            assert 'fts' not in phases
             checkpoint('startup-index-once')
             for _ in range(3):
                 repeated = OpeningDialog(old_db, password, str(Path(temp) / 'startup-backups'))
@@ -316,12 +314,13 @@ def run(report_path):
                 assert repeated.prepare() == QDialog.Accepted
                 assert not {'fts', 'backup', 'verify'} & set(repeated_phases)
             verified = vault.open_vault(old_db, password)
-            assert verified.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH 'sirnak'").fetchone()[0] == 601
+            assert verified.execute("SELECT count(*) FROM segments").fetchone()[0] == 601
+            assert not verified.execute("SELECT 1 FROM sqlite_master WHERE name='docs_fts'").fetchone()
             verified.close()
             from . import gom as _gom
             report["vektor_model"] = bool(_gom.model_var_mi())
             checkpoint('vektor-model-durumu')
-            report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "FTS", "async-search",
+            report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "semantic-only-schema", "async-search",
                                            "excel-preview", "pdf-preview-loading", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
@@ -331,7 +330,7 @@ def run(report_path):
                                            'vektor-model-durumu', 'real-semantic-search', 'model-process-closed-on-lock',
                                            'startup-index-once', 'startup-counted-progress',
                                            'scan-inventory-and-percentages', 'scan-pause-resume',
-                                           'legacy-embedding-schema-repair', 'indexed-vocabulary-and-unchanged-skip'])
+                                           'legacy-embedding-schema-repair', 'no-dictionary-maintenance'])
     except Exception as error:
         import traceback
         report["stage"] = current_stage

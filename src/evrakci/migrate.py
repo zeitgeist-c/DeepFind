@@ -48,6 +48,37 @@ EXTRACTOR_VERSION = "archive-034"
 OCR_VERSION = "rapid-2"  # Entirely blank pages are successful coverage, not NO_TEXT.
 
 
+SCHEMA_V5_EXTRA = """
+CREATE TABLE IF NOT EXISTS file_hashes(
+  file_id INTEGER PRIMARY KEY REFERENCES files(file_id) ON DELETE CASCADE,
+  signature TEXT NOT NULL,
+  sha256 TEXT,
+  hash_status TEXT NOT NULL DEFAULT 'pending',
+  verified_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS history(
+  query_id INTEGER PRIMARY KEY,
+  query TEXT NOT NULL,
+  filters TEXT NOT NULL DEFAULT '',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  used_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS file_years(
+  file_id INTEGER NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+  year TEXT NOT NULL,
+  source TEXT NOT NULL,
+  evidence TEXT,
+  UNIQUE(file_id, year)
+);
+"""
+
+
+def ensure_v5(con):
+    ensure_v4(con)
+    con.executescript(SCHEMA_V5_EXTRA)
+    con.commit()
+
+
 def ensure_v6(con) -> None:
     """OCR metadata: segment duzeyinde yontem + guven (hata/durum degil, yontem bilgisi)."""
     ensure_v4(con)
@@ -128,47 +159,16 @@ def ensure_v8(con) -> None:
 
 
 def ensure_current(con, progress=None) -> None:
-    """Run the legacy backfill only for vaults that have not completed it."""
+    """Prepare metadata and migrate directly to vector-only schema v10."""
     from . import schema
-    from . import normalize
-    from .vocab import ensure_v5
-
-    version = None
-    if con.execute("SELECT 1 FROM sqlite_master WHERE name='schema_meta'").fetchone():
-        row = con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
-        version = int(row[0]) if row else None
-    if version is not None and version > 9:
-        raise RuntimeError("Kasa daha yeni bir sürümle oluşturulmuş; bu sürümle açılamaz.")
-    if version is not None and version < 7:
-        # Older startup paths wrote a lower version during their idempotent
-        # checks. The completed v5 marker plus v7 tables prove no backfill is
-        # needed, even if a previous launch stopped after rewriting the marker.
-        marker = con.execute("SELECT v FROM schema_meta WHERE k='normalizer_version'").fetchone()
-        tables = {row[0] for row in con.execute(
-            "SELECT name FROM sqlite_master WHERE name IN "
-            "('roots','settings','docs_fts_folded','jobs','vocabulary')"
-        )}
-        if (marker and marker[0] == normalize.NORMALIZER_VERSION and
-                {'roots', 'settings', 'docs_fts_folded', 'jobs', 'vocabulary'} <= tables and
-                'folded_text' in {row[1] for row in con.execute("PRAGMA table_info(segments)")}):
-            con.execute("UPDATE schema_meta SET v='7' WHERE k='schema_version'")
-            con.commit()
-            version = 7
-    if version is None or version < 7:
-        schema.ensure_schema(con)
-        ensure_v5(con)
-    # A version marker does not prove optional vector objects exist in an
-    # older vault. Repair additively without rebuilding its existing FTS.
-    schema.ensure_embeddings(con)
+    schema.ensure_schema(con)
+    ensure_v5(con)
     ensure_v8(con)
-    archive = con.execute("SELECT v FROM schema_meta WHERE k='archive_version'").fetchone()
-    if not archive or archive[0] != '034':
-        ensure_archive(con)
-    ensure_v9(con, progress=progress)
-    from .vocab import ensure_tracking
-    ensure_tracking(con)
+    ensure_archive(con)
+    ensure_v10(con, progress=progress)
     con.execute("DELETE FROM settings WHERE k IN ('gemini_api_key','ai_model')")
     con.commit()
+
 
 def ensure_archive(con):
     """Additive archive capabilities; existing index and version remain readable."""
@@ -218,68 +218,33 @@ def sqlite_supports_drop_column(con) -> bool:
     return ver >= (3, 35)
 
 
-def ensure_v9(con, progress=None) -> None:
-    """v9: tek katlanmis FTS. docs_fts trigger'lari fold() UDF'i ile katlanmis
-    metin yazar; `segments.folded_text` kolonu ve `docs_fts_folded` tablosu
-    kaldirilir (her belgede 1 ham kopya + tek FTS — ~8-9 GB kazanc).
+def ensure_v10(con, progress=None):
+    """Remove derived lexical objects without re-tokenizing document text.
 
-    Idempotent; startup.open_vault akisi migration oncesi otomatik yedek alir.
-    VACUUM burada degil, ayrica (sadece kapanista / CLI) — buyuk kasada dakikalar.
+    Startup never runs VACUUM: freed pages are reused by future vectors.
     """
-    from . import normalize as nz
-    from . import schema as schema_mod
-    nz.install(con)  # fold() olmadan trigger/rebuild yanlis ya da hataya duser
-    version_row = con.execute(
-        "SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
-    version = int(version_row[0]) if version_row else 0
-    cols = {r[1] for r in con.execute("PRAGMA table_info(segments)")}
-    has_folded_col = "folded_text" in cols
-    has_folded_fts = bool(con.execute(
-        "SELECT 1 FROM sqlite_master WHERE name='docs_fts_folded'").fetchone())
-    needs_marker = not con.execute(
-        "SELECT v FROM schema_meta WHERE k=?", (schema_mod.FTS_FOLDED_KEY,)).fetchone()
-
-    triggers = [row[0] or '' for row in con.execute(
-        "SELECT sql FROM sqlite_master WHERE type='trigger' AND name IN ('seg_ai','seg_ad')")]
-    if (not has_folded_col and not has_folded_fts and not needs_marker and
-            len(triggers) == 2 and all('fold(' in sql.lower() for sql in triggers)):
-        # A prior launch may have lowered just the version marker to 8.
-        # The completed folded index and triggers are retained unchanged.
-        if version < 9:
-            con.execute("UPDATE schema_meta SET v='9' WHERE k='schema_version'")
-            con.commit()
+    row=con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
+    obsolete = con.execute("SELECT 1 FROM sqlite_master WHERE name IN "
+        "('docs_fts','docs_fts_folded','vocabulary','vocabulary_build') "
+        "OR (type='trigger' AND (name IN ('seg_ai','seg_ad','segf_ai','segf_ad') OR name GLOB 'vocab_*')) LIMIT 1").fetchone()
+    if row and int(row[0]) >= 10 and not obsolete:
         return
-
-    # 1) docs_fts_folded yardimci tablo + trigger'larini kaldir (shadow tablolar
-    #    FTS5 tarafindan otomatik duser).
-    con.execute("DROP TRIGGER IF EXISTS segf_ai")
-    con.execute("DROP TRIGGER IF EXISTS segf_ad")
-    if has_folded_fts:
-        con.execute("DROP TABLE IF EXISTS docs_fts_folded")
-
-    # 2) Trigger'lari fold() yazan v9 govdesine cevir.
-    schema_mod._folded_triggers(con)
-
-    # 3) Katlanmis indeksi bastan kur (rebuild trigger'a girmez; bkz. rebuild_fts).
-    if needs_marker or version < 9:
-        schema_mod.rebuild_fts(con, progress=progress)
-    schema_mod.mark_folded(con)
-
-    # 4) folded_text kolonunu dusur (SQLite >= 3.35; sqlcipher3 3.51 destekli).
-    if has_folded_col:
-        if sqlite_supports_drop_column(con):
-            if progress: progress('compact_schema', 0, 0)
-            con.execute("ALTER TABLE segments DROP COLUMN folded_text")
-        # Desteklenmiyorsa kolon bos/okunmaz kalir; boyut VACUUM'da serbest kalir.
-
-    con.execute(
-        "INSERT INTO schema_meta(k, v) VALUES ('schema_version', '9') "
-        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END")
-    # Eski tamamlanmis taramalarin kapsam kayitlari bos yer kaplar (~0,25 GB);
-    # surebilen (finished_at NULL) taramalarin kapsami resume icin kalmali.
-    con.execute("DELETE FROM scan_scopes WHERE run_id IN "
-                "(SELECT run_id FROM scan_runs WHERE finished_at IS NOT NULL)")
-    if progress: progress('commit', 0, 0)
+    con.execute('SAVEPOINT semantic_only')
+    try:
+        for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
+            if name in ('seg_ai','seg_ad','segf_ai','segf_ad') or name.startswith('vocab_'):
+                con.execute('DROP TRIGGER "'+name.replace('"','""')+'"')
+        for name in ('docs_fts','docs_fts_folded','vocabulary','vocabulary_build'):
+            con.execute('DROP TABLE IF EXISTS '+name)
+        cols={r[1] for r in con.execute('PRAGMA table_info(segments)')}
+        if 'folded_text' in cols:
+            con.execute('ALTER TABLE segments DROP COLUMN folded_text')
+        con.execute("DELETE FROM schema_meta WHERE k='fts_folded' OR k LIKE 'vocabulary_%'")
+        con.execute("INSERT INTO schema_meta(k,v) VALUES ('schema_version','10') ON CONFLICT(k) DO UPDATE SET v=excluded.v")
+    except BaseException:
+        con.execute('ROLLBACK TO semantic_only');con.execute('RELEASE semantic_only')
+        raise
+    con.execute('RELEASE semantic_only')
     con.commit()
 
 

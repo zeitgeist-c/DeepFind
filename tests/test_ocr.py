@@ -4,6 +4,7 @@ Motor gerçekten kuruluysa (rapidocr + modeller) gercek tanima testleri kosar;
 aksi halde motorlu testler atlanir, sozlesme testleri (triyaj, bellek, temp,
 butce, erteleme) her kosumda dogrulanir.
 """
+from semantic_helpers import indexed_content
 import os
 import sys
 import time
@@ -15,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from evrakci import coordinator, dup, extract, ocr, rank, schema, vault  # noqa: E402
 from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.vocab import ensure_v5  # noqa: E402
+from evrakci.migrate import ensure_v5  # noqa: E402
 
 PW = "test-sifresi-12345"
 MOTOR = ocr.engine_ok()[0]
@@ -76,7 +77,7 @@ def test_triyaj_metinli_sayfada_ocr_yok(tmp_path):
              ["Ankara Ayşe Yılmaz 2024 vergi levhası", "Belge no BV-1001"])
     _bekle()
     con, db = _kasa(tmp_path)
-    st = coordinator.run_scan(con, db, kok)
+    st = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert st["result"] == "complete", st
     n = con.execute("SELECT count(*) FROM segments WHERE kind='ocr_page'").fetchone()[0]
     assert n == 0
@@ -92,7 +93,7 @@ def test_ocr01_taramali_sayfa_okunur(tmp_path):
               ["Ankara Ayşe Yılmaz 2024 vergi levhası", "Belge no BV-1001"])
     _bekle()
     con, db = _kasa(tmp_path)
-    st = coordinator.run_scan(con, db, kok)
+    st = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert st["result"] == "complete", st
     assert st["ocr_done"] == 1, st
     rows = con.execute(
@@ -102,7 +103,7 @@ def test_ocr01_taramali_sayfa_okunur(tmp_path):
     assert "Ankara" in txt and "Ayşe" in txt, txt
     assert method == "basic", method
     assert (conf or 0) > 0
-    out = rank.search_ranked(con, "Ankara Ayşe vergi levhası")
+    out = {"results": indexed_content(con,"Ankara")}
     assert out["results"] and out["results"][0]["name"] == "tarama.pdf", out
     con.close()
 
@@ -114,11 +115,11 @@ def test_motor_eksikse_klasik_akis_surer(tmp_path, monkeypatch):
     _bekle()
     monkeypatch.setattr(ocr, "engine_ok", lambda: (False, ["rapidocr-zinciri"]))
     con, db = _kasa(tmp_path)
-    st = coordinator.run_scan(con, db, kok)
+    st = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert st["result"] == "complete", st
     n = con.execute("SELECT count(*) FROM segments WHERE kind='ocr_page'").fetchone()[0]
     assert n == 0
-    out = rank.search_ranked(con, "Ankara Ayşe rapor")
+    out = {"results": indexed_content(con,"Ankara")}
     assert out["results"], out
     con.close()
 
@@ -130,7 +131,7 @@ def test_motor_eksik_ocr_isi_ertelenir(tmp_path, monkeypatch):
     _bekle()
     monkeypatch.setattr(ocr, "engine_ok", lambda: (False, ["rapidocr-zinciri"]))
     con, db = _kasa(tmp_path)
-    coordinator.run_scan(con, db, kok)
+    coordinator.run_scan(con, db, kok, require_vectors=False)
     row = con.execute("SELECT index_status, error_code FROM files").fetchone()
     # dosya govde aramada kalir; OCR isi kuyrukta bekler
     assert row[0] in ("partial", "pending"), row
@@ -207,7 +208,7 @@ def test_kopya_hash_taramada_kablolu(tmp_path):
     shutil.copy(os.path.join(kok, "a.pdf"), os.path.join(kok, "b.pdf"))
     _bekle()
     con, db = _kasa(tmp_path)
-    st = coordinator.run_scan(con, db, kok)
+    st = coordinator.run_scan(con, db, kok, require_vectors=False)
     assert st["hashed"] == 2, st
     g = dup.groups(con)
     assert len(g) == 1 and len(g[0]["paths"]) == 2, g

@@ -38,9 +38,9 @@ def _counts(con) -> dict:
         except Exception:
             out[t] = -1
     try:
-        out["fts"] = con.execute("SELECT count(*) FROM docs_fts").fetchone()[0]
+        out["embeddings"] = con.execute("SELECT count(*) FROM embeddings").fetchone()[0]
     except Exception:
-        out["fts"] = -1
+        out["embeddings"] = -1
     try:
         out["schema"] = con.execute(
             "SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()[0]
@@ -70,13 +70,15 @@ def verify_backup(backup_path: str, password: str, progress=None) -> dict:
         except Exception:
             ok = False
         counts = _counts(con)
-        # ornek arama: FTS calisiyor mu (bosa karsi degil, sema kaniti)
+        # Verify a readable index in both current and legacy snapshots.
         try:
-            con.execute("SELECT rowid FROM docs_fts LIMIT 1").fetchall()
-            fts_ok = True
+            tables={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            target='embeddings' if 'embeddings' in tables else 'docs_fts'
+            con.execute('SELECT rowid FROM '+target+' LIMIT 1').fetchall()
+            index_ok = True
         except Exception:
-            fts_ok = False
-        return {"ok": bool(ok and fts_ok), "integrity": rows if ok else [],
+            index_ok = False
+        return {"ok": bool(ok and index_ok), "integrity": rows if ok else [],
                 "counts": counts}
     finally:
         con.close()

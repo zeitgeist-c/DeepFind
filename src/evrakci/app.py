@@ -31,7 +31,6 @@ from . import migrate, rank, scheduler as sched, theme, vault, remember, diagnos
 from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
-from .vocab import rebuild_vocab
 from .auth import ParolaDialog, MOD_KURTARMA
 from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
                  sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate, GorselKutusu,
@@ -40,7 +39,7 @@ from . import archive_ui
 
 EKRANLAR = ["Ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar"]
 SAYFA_ACIKLAMA = {
-    "Ara": "Anlamıyla, dosya adıyla veya içeriğiyle arayın; belgeler bu bilgisayarda kalır.",
+    "Ara": "Aradığınız belgenin içeriğini tarif edin; belgeler bu bilgisayarda kalır.",
     "Kaynaklar": "Taranacak klasörleri ve kapsam dışında kalan yolları yönetin.",
     "Tarama": "Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.",
     "Geçmiş": "Önceki aramalarınıza tek tıkla dönün.",
@@ -91,7 +90,7 @@ class AramaIsci(QThread):
             req = self.request
             q, year, ext, folder = req[0], req[1], req[2], req[3]
             tag = req[4] if len(req) > 4 else None
-            out = rank.search_hybrid(con, q, year=year, ext=ext, limit=50,
+            out = rank.search_semantic(con, q, year=year, ext=ext, limit=50,
                                      folder=folder or None, offset=getattr(self,"offset",0),
                                      tag=tag or None)
             if not self.stop.is_set():
@@ -246,25 +245,6 @@ class TaramaIsci(QObject):
                         toplam["result"] = "partial"
                     if self._dur.is_set():
                         toplam["result"] = "cancelled"
-                    if not self._dur.is_set():
-                        self.report_progress(dict(self.snapshot(),stage="Arama sözlüğü güncelleniyor",path="",phase_key='dictionary',phase_done=0,phase_total=0),{})
-                        try:
-                            rebuild_vocab(con, stop=self.stop_requested, progress=lambda done,total:
-                                self.report_progress(dict(self.snapshot(),stage="Arama sözlüğü güncelleniyor",phase_key='dictionary',phase_done=done,phase_total=total),{}))
-                        except InterruptedError:
-                            toplam['complete'] = False
-                            toplam['result'] = 'cancelled'
-                            con.execute("UPDATE scan_runs SET result='cancelled',error_code='VOCAB_CANCELLED' WHERE run_id=(SELECT max(run_id) FROM scan_runs)")
-                            con.commit()
-                        except Exception as error:
-                            diagnostics.record("vocabulary_error", type(error).__name__)
-                            toplam["complete"] = False
-                            toplam["result"] = "partial"
-                            con.execute(
-                                "UPDATE scan_runs SET result='partial', error_code='VOCAB_ERROR' "
-                                "WHERE run_id=(SELECT max(run_id) FROM scan_runs)"
-                            )
-                            con.commit()
                 diagnostics.record("scan_finished", toplam.get("result", "unknown"))
                 self.bitti.emit(dict(toplam))
             finally:
@@ -286,7 +266,7 @@ class TaramaIsci(QObject):
 
 
 class KokKaldirIsci(QObject):
-    """Kök kaldırma: boşaltma + sözlük yenileme GUI'yi kilitlemeden ayrı thread'de."""
+    """Kökü ve ona bağlı metin/vektörleri GUI'yi kilitlemeden kaldır."""
     bitti = Signal(int)   # silinen dosya sayısı
     hata = Signal(str)
 
@@ -301,7 +281,6 @@ class KokKaldirIsci(QObject):
         scan_lock = None
         try:
             from . import vault as v
-            from .vocab import rebuild_vocab
             scan_lock = coordinator.ScanLock(self.kasa_yolu)
             scan_lock.__enter__()
             con = v.open_vault(self.kasa_yolu, self._sifre)
@@ -331,7 +310,6 @@ class KokKaldirIsci(QObject):
                                 "(SELECT file_id FROM temp.evrakci_remove_files)")
                 con.execute("DELETE FROM files WHERE file_id IN "
                             "(SELECT file_id FROM temp.evrakci_remove_files)")
-                rebuild_vocab(con, transactional=True)
             con.commit()
             self.bitti.emit(sil)
         except Exception as e:  # noqa: BLE001
@@ -513,7 +491,7 @@ class AnaPencere(QMainWindow):
 
             threading.Thread(target=lambda: _embed.isit_oturumu(cancel=lambda: self._locked or self._exiting), daemon=True).start()
         except Exception:
-            pass  # model yoksa aramalar FTS yapar
+            diagnostics.record('model_warmup_start_failed')
         self._schedule_timer = QTimer(self)
         self._schedule_timer.timeout.connect(self._zamanlayici_kontrol)
         self._schedule_timer.start(60_000)
@@ -1160,7 +1138,7 @@ class AnaPencere(QMainWindow):
         self.arama_kutu = QLineEdit()
         self.arama_kutu.setObjectName("search")
         self.arama_kutu.setAccessibleName("Belge arama")
-        self.arama_kutu.setPlaceholderText("Arşivinizde arayın…   Örneğin: Ankara vergi 2024")
+        self.arama_kutu.setPlaceholderText("Aradığınız içeriği tarif edin… Örneğin: makinelerin bakım sözleşmeleri")
         self.arama_kutu.setToolTip("Alan sözdizimi: " + sorgu.YARDIM
                                    + "\nAlan dışı sözcükler içerik aramasına girer.")
         self.arama_kutu.setClearButtonEnabled(True)
@@ -1959,6 +1937,7 @@ class AnaPencere(QMainWindow):
             return
         self.search_progress.hide()
         out = message["out"]
+        self._waiting_for_model = bool(out.get('engine_status') and out.get('semantic_error'))
         self.search_more.setVisible(out.get("has_more",False))
         res = out["results"]
         self.sonuclar = res
@@ -1971,7 +1950,7 @@ class AnaPencere(QMainWindow):
         self.sonuc_izgara.selectionModel().clearSelection()
         if not res:
             self.search_empty.title.setText("Eşleşen belge bulunamadı")
-            self.search_empty.text.setText("Farklı bir kelime deneyin veya arama filtrelerini genişletin.")
+            self.search_empty.text.setText("Aradığınız içeriği başka bir şekilde tarif edin veya filtreleri genişletin.")
         self._satirlari_yaz()
         self._secim_guncelle_bulk()
         if not res:
@@ -1982,8 +1961,10 @@ class AnaPencere(QMainWindow):
                                (f" • {', '.join(out['suggestions'][:3])}" if out["suggestions"] else ""))
         if out.get('semantic_error'):
             self.oneri.setText(self.oneri.text() + ' • Anlamsal arama kullanılamadı: ' + out['semantic_error'])
+        elif out.get('index_message'):
+            self.oneri.setText(out['index_message'])
         elif out.get('semantic'):
-            self.oneri.setText(self.oneri.text() + ' • Anlamsal + tam arama')
+            self.oneri.setText(self.oneri.text() + ' • Anlamsal arama')
         self._filtre_cipleri()
         try:
             import json
@@ -2754,7 +2735,7 @@ class AnaPencere(QMainWindow):
                     text += f' • bu aşamada kalan ~{remaining//60} dk {remaining%60:02d} sn'
                 elif done < total:
                     text += ' • kalan süre hesaplanıyor…'
-            elif data.get('phase_key') in ('finalize','dictionary'):
+            elif data.get('phase_key') in ('finalize',):
                 text += '\nSon kontroller sürüyor.'
             self.scan_clock.setText(text)
 
@@ -2785,7 +2766,7 @@ class AnaPencere(QMainWindow):
         phase_done,phase_total = data.get('phase_done',0),data.get('phase_total',0)
         self.scan_phase_bar.setVisible(bool(ready and phase_total))
         if ready and phase_total:
-            caption = {'content':'İçerik okuma','ocr':'OCR','embedding':'Vektör dizini','dictionary':'Arama sözlüğü'}.get(data.get('phase_key'),'Bu aşama')
+            caption = {'content':'İçerik okuma','ocr':'OCR','embedding':'Vektör dizini'}.get(data.get('phase_key'),'Bu aşama')
             self.scan_phase_bar.setRange(0,100)
             self.scan_phase_bar.setFormat(caption + ': %p%')
             self.scan_phase_bar.setValue(min(100,int(phase_done*100/phase_total)))
@@ -3866,8 +3847,6 @@ class AnaPencere(QMainWindow):
         self._job_pending.clear()
         self._list_cache.clear()
         for worker in self._jobs: worker.stop.set()
-        from .vocab import clear_cache
-        clear_cache()
         self._thumblari_durdur()
         self._buyuk_gorsel_yukle(None)
         self.preview_dialog.hide()
