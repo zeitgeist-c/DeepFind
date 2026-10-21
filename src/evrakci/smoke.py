@@ -92,7 +92,7 @@ def run(report_path):
             pen.arama_kutu.setText("Ankara denetim")
             pen._ara_simdi()
             deadline = time.monotonic() + 30
-            while pen._search_thread is not None:
+            while pen._search_thread is not None or getattr(pen, '_waiting_for_model', False):
                 app.processEvents()
                 time.sleep(0.01)
                 assert time.monotonic() < deadline
