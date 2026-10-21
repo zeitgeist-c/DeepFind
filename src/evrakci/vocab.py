@@ -46,7 +46,7 @@ def ensure_v5(con) -> None:
     # uzerinden fold() UDF'i ile katlanmis icerik tasiyor (migrate.ensure_v9).
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END",
         (SCHEMA_VERSION,),
     )
     con.execute(

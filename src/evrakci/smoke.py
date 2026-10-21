@@ -272,13 +272,30 @@ def run(report_path):
             old_db = str(Path(temp) / 'startup-legacy.db')
             old_con = vault.open_vault(old_db, password)
             ensure_current(old_con)
+            old_fid = old_con.execute("INSERT INTO files(path,name,ext) VALUES ('c:/synthetic/startup.txt','startup.txt','.txt')").lastrowid
+            old_con.executemany("INSERT INTO segments(file_id,kind,label,raw_text) VALUES (?,'body','Sayfa','Şırnak sözleşme')", [(old_fid,)] * 601)
             old_con.execute("DELETE FROM schema_meta WHERE k='archive_version'")
+            old_con.execute("DELETE FROM schema_meta WHERE k='fts_folded'")
+            old_con.execute("UPDATE schema_meta SET v='8' WHERE k='schema_version'")
             old_con.commit(); old_con.close()
             opening = OpeningDialog(old_db, password, str(Path(temp) / 'startup-backups'))
             phases = []
+            counts = []
             opening.worker.progress.connect(lambda phase, *_: phases.append(phase))
+            opening.worker.progress.connect(lambda phase, done, total: counts.append((phase, done, total)))
             assert opening.prepare() == QDialog.Accepted
             assert {'backup', 'verify', 'schema'} <= set(phases)
+            assert ('fts', 0, 601) in counts and ('fts', 601, 601) in counts
+            checkpoint('startup-index-once')
+            for _ in range(3):
+                repeated = OpeningDialog(old_db, password, str(Path(temp) / 'startup-backups'))
+                repeated_phases = []
+                repeated.worker.progress.connect(lambda phase, *_: repeated_phases.append(phase))
+                assert repeated.prepare() == QDialog.Accepted
+                assert not {'fts', 'backup', 'verify'} & set(repeated_phases)
+            verified = vault.open_vault(old_db, password)
+            assert verified.execute("SELECT count(*) FROM docs_fts WHERE docs_fts MATCH 'sirnak'").fetchone()[0] == 601
+            verified.close()
             from . import gom as _gom
             report["vektor_model"] = bool(_gom.model_var_mi())
             checkpoint('vektor-model-durumu')
@@ -289,7 +306,8 @@ def run(report_path):
                                            "packaged-turkish-ocr", "durable-scan-history",
                                            'search-workbench-local-model-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration', 'root-remove-worker', 'exclusion-worker',
-                                           'vektor-model-durumu', 'real-semantic-search', 'model-process-closed-on-lock'])
+                                           'vektor-model-durumu', 'real-semantic-search', 'model-process-closed-on-lock',
+                                           'startup-index-once', 'startup-counted-progress'])
     except Exception as error:
         import traceback
         report["stage"] = current_stage

@@ -1,5 +1,14 @@
 # Evrakçı — DURUM
 
+## 0.10.2: her açılışta indeks yeniden kurma hatası — 21.10.2026
+
+Kök neden: ensure_current → ensure_v8 güncel 9 sürümünü 8 yapıyor, ensure_v9
+bunun üzerine FTS indeksini yeniden kuruyordu. Şema işaretleri artık yalnız
+yükselir. Tamamlanmış v9 şekli ve trigger/FTS işaretleri eski bir sürüm
+işaretinden onarılır; güncel kasada yeniden kurma yapılmaz. Gerçek dönüşüm
+256 bölümlük atomik partilerle ölçülür, aşama yüzdesi ve yaklaşık kalan süre
+gösterilir. Kanıt ve kabul sınırları TESLIM-0.10.2.md içindedir.
+
 ## 0.10.1: kurulum ve güncelleme — 21.10.2026
 
 Model setup içinde gelir ve programın `_internal/embedding` dizinine kurulur.

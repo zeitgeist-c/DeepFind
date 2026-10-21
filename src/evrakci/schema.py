@@ -132,13 +132,13 @@ def ensure_schema(con) -> None:
         mark_embed(con)
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END",
         (SCHEMA_VERSION,),
     )
     con.commit()
 
 
-def rebuild_fts(con) -> int:
+def rebuild_fts(con, progress=None) -> int:
     """Harici-icerik FTS'ini fold() UDF'iyle bastan kurar.
 
     NOT: FTS5 'rebuild' komutu trigger'lari ATLAR ve icerik tablosundan HAM
@@ -146,8 +146,30 @@ def rebuild_fts(con) -> int:
     baglanticida fold() tanimli olmali (normalize.install)."""
     from . import normalize as nz
     nz.install(con)
-    con.execute("INSERT INTO docs_fts(docs_fts) VALUES('delete-all')")
-    con.execute("INSERT INTO docs_fts(rowid, label, raw_text) "
-                "SELECT seg_id, fold(label), fold(raw_text) FROM segments")
+    con.execute('SAVEPOINT rebuild_folded_fts')
+    try:
+        total = con.execute('SELECT count(*) FROM segments').fetchone()[0]
+        if progress: progress('fts', 0, total)
+        con.execute("INSERT INTO docs_fts(docs_fts) VALUES('delete-all')")
+        last = None
+        done = 0
+        while True:
+            rows = con.execute('SELECT seg_id FROM segments ORDER BY seg_id LIMIT 256').fetchall() if last is None else con.execute(
+                'SELECT seg_id FROM segments WHERE seg_id > ? ORDER BY seg_id LIMIT 256', (last,)).fetchall()
+            if not rows: break
+            end = rows[-1][0]
+            if last is None:
+                con.execute('INSERT INTO docs_fts(rowid,label,raw_text) SELECT seg_id,fold(label),fold(raw_text) FROM segments WHERE seg_id <= ?', (end,))
+            else:
+                con.execute('INSERT INTO docs_fts(rowid,label,raw_text) SELECT seg_id,fold(label),fold(raw_text) FROM segments WHERE seg_id > ? AND seg_id <= ?', (last,end))
+            last = end
+            done += len(rows)
+            if progress: progress('fts', done, total)
+        if progress: progress('commit', 0, 0)
+    except BaseException:
+        con.execute('ROLLBACK TO rebuild_folded_fts')
+        con.execute('RELEASE rebuild_folded_fts')
+        raise
+    con.execute('RELEASE rebuild_folded_fts')
     con.commit()
-    return con.execute("SELECT count(*) FROM docs_fts").fetchone()[0]
+    return done

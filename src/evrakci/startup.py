@@ -17,10 +17,12 @@ def prepare_connection(path, password, backup_dir, progress=None):
     try:
         fts = con.execute("SELECT sql FROM sqlite_master WHERE name='docs_fts'").fetchone()
         marker = con.execute("SELECT 1 FROM schema_meta WHERE k='archive_version'").fetchone() if fts else None
+        legacy_shape = bool(fts) and ('folded_text' in {r[1] for r in con.execute('PRAGMA table_info(segments)')} or bool(con.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='docs_fts_folded'").fetchone()))
         v9_pending = bool(fts) and con.execute(
             "SELECT count(*) FROM schema_meta WHERE k='fts_folded'").fetchone()[0] == 0 \
             and con.execute("SELECT count(*) FROM segments").fetchone()[0] > 0
-        if fts and ('remove_diacritics 0' not in fts[0] or not marker or v9_pending):
+        if fts and ('remove_diacritics 0' not in fts[0] or not marker or v9_pending or legacy_shape):
             diagnostics.record('migration_backup_begin')
             try:
                 snapshot = backup.create_backup(con, path, password, backup_dir,
@@ -32,7 +34,7 @@ def prepare_connection(path, password, backup_dir, progress=None):
             progress('schema', 0, 0)
         diagnostics.record('schema_begin')
         try:
-            migrate.ensure_current(con)
+            migrate.ensure_current(con, progress=progress)
         except Exception:
             con.close()
             con = None
@@ -43,6 +45,7 @@ def prepare_connection(path, password, backup_dir, progress=None):
             raise
         diagnostics.record('schema_ready')
         migrate.recover_scan_runs(con)
+        if progress: progress('ready', 1, 1)
         return con
     except Exception:
         if con is not None:
@@ -92,12 +95,16 @@ class OpeningDialog(QDialog):
         self.detail = QLabel('Büyük arşiv hazırlanırken lütfen bekleyin.')
         self.detail.setWordWrap(True)
         self.bar = QProgressBar()
+        self.bar.setStyleSheet('QProgressBar { min-height: 24px; max-height: 24px; text-align: center; }')
+        self.bar.setTextVisible(True)
         self.bar.setRange(0, 0)
         layout.addWidget(self.status)
         layout.addWidget(self.detail)
         layout.addWidget(self.bar)
         self._baslangic = 0.0
         self._son_oran = None
+        self._stage = ''
+        self._stage_started = 0.0
         self._saat = QTimer(self)
         self._saat.setInterval(500)
         self._saat.timeout.connect(self._suren_guncelle)
@@ -106,14 +113,21 @@ class OpeningDialog(QDialog):
         self.worker.finished.connect(self.complete)
 
     def update_progress(self, stage, done, total):
+        if stage != self._stage:
+            self._stage, self._stage_started = stage, time.monotonic()
         texts = {'backup': 'Güncelleme öncesi güvenli yedek alınıyor…',
                  'verify': 'Yedeğin bütünlüğü doğrulanıyor…',
-                 'schema': 'İndeks yapısı güncelleniyor…',
+                 'schema': 'Kasa sürümü kontrol ediliyor…',
+                 'fts': 'Arama indeksi bir kez dönüştürülüyor…',
+                 'compact_schema': 'Eski indeks sütunu kaldırılıyor…',
+                 'commit': 'İndeks değişiklikleri diske kaydediliyor…',
+                 'ready': 'Kasa hazır.',
                  'restore': 'Önceki kasa geri yükleniyor…'}
         self.status.setText(texts.get(stage, 'Şifreli kasa açılıyor…'))
         if total:
             self.bar.setRange(0, 100)
-            oran = int(done * 100 / total)
+            oran = max(0, min(100, int(done * 100 / total)))
+            self.bar.setFormat('Bu aşama: %p%')
             self.bar.setValue(oran)
             self._son_oran = (done, total)
             self.detail.setText(self._ayrinti())
@@ -126,14 +140,18 @@ class OpeningDialog(QDialog):
         gecen = time.monotonic() - self._baslangic if self._baslangic else 0.0
         saat = self._sure_yaz(gecen)
         if not self._son_oran:
-            return (f'Geçen süre: {saat}. Bu aşamanın süresi kasa büyüklüğüne bağlıdır. '
+            return (f'Geçen süre: {saat}. Bu aşamanın yüzdesi ölçülemiyor. '
                     'Kaynak evraklar değiştirilmez.')
         done, total = self._son_oran
         oran = int(done * 100 / total) if total else 0
-        metin = f'%{oran} • {done}/{total} adım • geçen: {saat}'
-        if done > 0 and gecen > 1:
-            kalan = gecen / done * (total - done)
+        unit = 'bölüm' if self._stage == 'fts' else ('sayfa' if self._stage == 'backup' else 'adım')
+        metin = f'Bu aşama %{oran} • {done}/{total} {unit} • Geçen süre: {saat}'
+        stage_elapsed = time.monotonic() - self._stage_started
+        if done > 0 and stage_elapsed > 1:
+            kalan = stage_elapsed / done * (total - done)
             metin += f' • kalan ~{self._sure_yaz(kalan)}'
+        elif done < total:
+            metin += ' • kalan süre hesaplanıyor…'
         return metin + '. Kaynak evraklar değiştirilmez.'
 
     @staticmethod

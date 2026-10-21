@@ -4,7 +4,7 @@ Windows için yerel, şifreli belge arama uygulaması. PDF, XLSX/XLS, DOCX, ODT,
 
 ## Kurulum ve güncelleme
 
-`Evrakçı-0.10.1.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
+`Evrakçı-0.10.2.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
 
 Ayarlar → Güncellemeler ile yeni sürüm denetlenir; açılıştan sonra günde bir kez de sessiz denetim yapılır. İndirme SHA-256 ile, kurulum EXE'si sürüm kaydıyla doğrulanır. Güncelleme sabit AppId üzerinden aynı kurulumu yükseltir; kısayollar ve kaldırıcı aynı uygulamayı gösterir. UAC onayı istenebilir. Başarısız kurulumda önceki programı yeniden açma yolu vardır; canlı kasa kurulum tarafından değiştirilmez.
 
@@ -13,6 +13,10 @@ Tam kurulum modeli programla birlikte `C:\Program Files\Evrakçı\_internal\embe
 Eski sürümlerle uyum için ZIP de üretilir. ZIP içindeki EXE'nin yanında `_internal` ve `licenses` korunmalıdır; tek başına EXE taşınamaz. ZIP'ten kurulu düzene geçişte güncelleyici tam installer seçer. 0.10.1 ve sonraki istemciler kurulum EXE’si olmadan ZIP ile güncellenmez. 0.9.0 ve daha eski ZIP güncelleyicilerden bu düzene geçiş için tam EXE’yi bir kez çalıştırın. Sonraki güncellemeler uygulamanın içinden aynı kurulum dizinine uygulanır. Eski yayın paketleri korunur. Başarılı kurulum, eski sürüm numarası ile EXE sürüm kaydı eşleşen EXE/BAT çiftlerini kaldırır; bilinmeyen dosyaları korur. Ayrıca yalnız SHA-256 özeti bilinen 0.9 ONNX modelini ve artık kullanılmayan uygulama bağımlılıklarını temizler; tanınmayan dosyalar korunur. Canlı kasa, kaynak evraklar ve yedekler bu temizliğe dahil değildir.
 
 Yayın kaynağı `zeitgeist-c/Evrakci-Releases` deposudur. Yerel derleme veya Git etiketi oluşturmak dış yayın yapıldığı anlamına gelmez.
+
+## Açılış
+
+Güncel kasanın arama indeksi her açılışta yeniden kurulmaz. Eski şema yardımcıları sürüm numarasını düşüremez. Gerçek bir indeks dönüşümü gerekirse önce güvenli yedek alınır; işlenen/toplam bölüm sayısı, aşama yüzdesi ve o aşamanın ölçülen hızından yaklaşık kalan süre gösterilir. Yedekleme sayfa sayısını kullanır. Doğrulama/sütun kaldırma/disk kaydı gibi toplamı ölçülemeyen aşamalar açık durum ve geçen süreyle gösterilir; bunlara yapay yüzde atanmaz. Yeni/değişen dosyaların normal taraması devam eder.
 
 ## Anlamsal arama ve GPU
 
@@ -50,4 +54,4 @@ $env:PYTHONPATH = 'src'
 .\.venv\Scripts\python.exe eval/package_check.py
 ```
 
-Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.1.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
+Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.2.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.

@@ -141,7 +141,7 @@ def test_failed_migration_restores_verified_previous_vault(tmp_path,monkeypatch)
     index.index_entry(con,Entry('old.pdf','old.pdf','.pdf',1,1),ExtractResult([Segment('pdf_page',1,'Sayfa 1','tahsilat korunmalı')]))
     con.execute("DELETE FROM schema_meta WHERE k='archive_version'"); con.commit(); con.close()
     original=migrate.ensure_current
-    def failed(con):
+    def failed(con, progress=None):
         con.execute('DELETE FROM segments'); con.commit(); raise RuntimeError('synthetic migration failure')
     monkeypatch.setattr(migrate,'ensure_current',failed)
     with pytest.raises(RuntimeError,match='synthetic migration failure'): AnaPencere(db,password)

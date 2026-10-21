@@ -61,7 +61,7 @@ def ensure_v6(con) -> None:
         pass
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END",
         ("6",),
     )
     con.execute(
@@ -90,7 +90,7 @@ def ensure_v7(con) -> None:
     con.executescript(SCHEMA_V7_SQL)
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END",
         ("7",),
     )
     con.commit()
@@ -112,6 +112,8 @@ SCAN_RUN_COLUMNS = {
 def ensure_v8(con) -> None:
     """Add encrypted scan checkpoints without replacing existing file/job records."""
     version = con.execute("SELECT v FROM schema_meta WHERE k='schema_version'").fetchone()
+    if version and int(version[0]) >= 8:
+        return
     if not version or int(version[0]) < 7:
         ensure_v7(con)
     columns = {row[1] for row in con.execute("PRAGMA table_info(scan_runs)")}
@@ -120,12 +122,12 @@ def ensure_v8(con) -> None:
             con.execute(f"ALTER TABLE scan_runs ADD COLUMN {name} {definition}")
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', '8') "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v"
+        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END"
     )
     con.commit()
 
 
-def ensure_current(con) -> None:
+def ensure_current(con, progress=None) -> None:
     """Run the legacy backfill only for vaults that have not completed it."""
     from . import schema
     from . import normalize
@@ -156,8 +158,10 @@ def ensure_current(con) -> None:
         schema.ensure_schema(con)
         ensure_v5(con)
     ensure_v8(con)
-    ensure_archive(con)
-    ensure_v9(con)
+    archive = con.execute("SELECT v FROM schema_meta WHERE k='archive_version'").fetchone()
+    if not archive or archive[0] != '034':
+        ensure_archive(con)
+    ensure_v9(con, progress=progress)
     con.execute("DELETE FROM settings WHERE k IN ('gemini_api_key','ai_model')")
     con.commit()
 
@@ -209,7 +213,7 @@ def sqlite_supports_drop_column(con) -> bool:
     return ver >= (3, 35)
 
 
-def ensure_v9(con) -> None:
+def ensure_v9(con, progress=None) -> None:
     """v9: tek katlanmis FTS. docs_fts trigger'lari fold() UDF'i ile katlanmis
     metin yazar; `segments.folded_text` kolonu ve `docs_fts_folded` tablosu
     kaldirilir (her belgede 1 ham kopya + tek FTS — ~8-9 GB kazanc).
@@ -230,8 +234,16 @@ def ensure_v9(con) -> None:
     needs_marker = not con.execute(
         "SELECT v FROM schema_meta WHERE k=?", (schema_mod.FTS_FOLDED_KEY,)).fetchone()
 
-    if version >= 9 and not has_folded_col and not has_folded_fts and not needs_marker:
-        return  # zaten v9
+    triggers = [row[0] or '' for row in con.execute(
+        "SELECT sql FROM sqlite_master WHERE type='trigger' AND name IN ('seg_ai','seg_ad')")]
+    if (not has_folded_col and not has_folded_fts and not needs_marker and
+            len(triggers) == 2 and all('fold(' in sql.lower() for sql in triggers)):
+        # A prior launch may have lowered just the version marker to 8.
+        # The completed folded index and triggers are retained unchanged.
+        if version < 9:
+            con.execute("UPDATE schema_meta SET v='9' WHERE k='schema_version'")
+            con.commit()
+        return
 
     # 1) docs_fts_folded yardimci tablo + trigger'larini kaldir (shadow tablolar
     #    FTS5 tarafindan otomatik duser).
@@ -245,22 +257,24 @@ def ensure_v9(con) -> None:
 
     # 3) Katlanmis indeksi bastan kur (rebuild trigger'a girmez; bkz. rebuild_fts).
     if needs_marker or version < 9:
-        schema_mod.rebuild_fts(con)
+        schema_mod.rebuild_fts(con, progress=progress)
     schema_mod.mark_folded(con)
 
     # 4) folded_text kolonunu dusur (SQLite >= 3.35; sqlcipher3 3.51 destekli).
     if has_folded_col:
         if sqlite_supports_drop_column(con):
+            if progress: progress('compact_schema', 0, 0)
             con.execute("ALTER TABLE segments DROP COLUMN folded_text")
         # Desteklenmiyorsa kolon bos/okunmaz kalir; boyut VACUUM'da serbest kalir.
 
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', '9') "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v")
+        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END")
     # Eski tamamlanmis taramalarin kapsam kayitlari bos yer kaplar (~0,25 GB);
     # surebilen (finished_at NULL) taramalarin kapsami resume icin kalmali.
     con.execute("DELETE FROM scan_scopes WHERE run_id IN "
                 "(SELECT run_id FROM scan_runs WHERE finished_at IS NOT NULL)")
+    if progress: progress('commit', 0, 0)
     con.commit()
 
 
@@ -296,7 +310,7 @@ def ensure_v4(con) -> None:
         pass
     con.execute(
         "INSERT INTO schema_meta(k, v) VALUES ('schema_version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        "ON CONFLICT(k) DO UPDATE SET v=CASE WHEN CAST(schema_meta.v AS INTEGER) < CAST(excluded.v AS INTEGER) THEN excluded.v ELSE schema_meta.v END",
         (SCHEMA_VERSION,),
     )
     con.commit()
