@@ -249,7 +249,13 @@ class TaramaIsci(QObject):
                     if not self._dur.is_set():
                         self.report_progress(dict(self.snapshot(),stage="Arama sözlüğü güncelleniyor",path="",phase_key='dictionary',phase_done=0,phase_total=0),{})
                         try:
-                            rebuild_vocab(con)
+                            rebuild_vocab(con, stop=self.stop_requested, progress=lambda done,total:
+                                self.report_progress(dict(self.snapshot(),stage="Arama sözlüğü güncelleniyor",phase_key='dictionary',phase_done=done,phase_total=total),{}))
+                        except InterruptedError:
+                            toplam['complete'] = False
+                            toplam['result'] = 'cancelled'
+                            con.execute("UPDATE scan_runs SET result='cancelled',error_code='VOCAB_CANCELLED' WHERE run_id=(SELECT max(run_id) FROM scan_runs)")
+                            con.commit()
                         except Exception as error:
                             diagnostics.record("vocabulary_error", type(error).__name__)
                             toplam["complete"] = False
@@ -2779,7 +2785,7 @@ class AnaPencere(QMainWindow):
         phase_done,phase_total = data.get('phase_done',0),data.get('phase_total',0)
         self.scan_phase_bar.setVisible(bool(ready and phase_total))
         if ready and phase_total:
-            caption = {'content':'İçerik okuma','ocr':'OCR','embedding':'Vektör dizini'}.get(data.get('phase_key'),'Bu aşama')
+            caption = {'content':'İçerik okuma','ocr':'OCR','embedding':'Vektör dizini','dictionary':'Arama sözlüğü'}.get(data.get('phase_key'),'Bu aşama')
             self.scan_phase_bar.setRange(0,100)
             self.scan_phase_bar.setFormat(caption + ': %p%')
             self.scan_phase_bar.setValue(min(100,int(phase_done*100/phase_total)))

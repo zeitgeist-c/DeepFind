@@ -1,5 +1,14 @@
 # Evrakçı — DURUM
 
+## 0.10.5: tarama sonu sözlük beklemesi ve boş sayfalar — 21.10.2026
+
+Sözlük ham arşivi tekrar okumak yerine FTS terim/frekansını kullanır; değişmeyen
+içerikte atlanır. İlerleme/iptal eklendi. Tamamen beyaz sayfalar OCR hatası
+sayılmaz; eski NO_TEXT hataları bir kez yeniden kontrol edilir. 421 sayfalık
+verilen kitabın kopyası ayrı kasada Vulkan ile 73,21 sn; sözlük 0,281 sn;
+değişmeyen ikinci tarama 0,0071 sn ölçüldü ve 1/1 tamamlandı. Canlı büyük kasa
+süresi ayrıca doğrulanmadı. Ayrıntı TESLIM-0.10.5.md.
+
 ## 0.10.4: eksik embedding şeması ve tarama doğruluğu — 21.10.2026
 
 Güncel şema işaretli eski kasalarda bulunmayabilen embeddings tablosu ve

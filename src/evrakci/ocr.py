@@ -202,6 +202,16 @@ def ocr_page(pdf_path: str, pageno_0: int, workdir: str) -> OcrPage:
         res.elapsed_ms = int((time.perf_counter() - t0) * 1000)
         return res
     try:
+        from PIL import Image
+        import numpy as np
+        with Image.open(png) as image:
+            pixels = np.asarray(image.convert('L'))
+        # Only an entirely white page is blank. A single sparse line or
+        # faint printed content must still go through OCR.
+        if np.count_nonzero(pixels < 255) == 0:
+            res.method = 'blank'
+            res.elapsed_ms = int((time.perf_counter()-t0)*1000)
+            return res
         text, mean, words = recognize_png(png)
     except RuntimeError as exc:
         import logging

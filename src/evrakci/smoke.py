@@ -183,6 +183,11 @@ def run(report_path):
             assert pen.tarama_bar.value() == int(snapshot['documents_done']*100/snapshot['documents_total'])
             from .embed import MODEL_VER, DIM
             assert pen.con.execute('SELECT count(*) FROM embeddings WHERE model_ver=? AND dim=?', (MODEL_VER,DIM)).fetchone()[0] > 0
+            from .vocab import rebuild_vocab
+            statements=[];pen.con.set_trace_callback(statements.append)
+            rebuild_vocab(pen.con)
+            pen.con.set_trace_callback(None)
+            assert not any('DELETE FROM VOCABULARY' in sql.upper() for sql in statements)
             checkpoint('archive-file-list-image-ocr')
             from .app import EKRANLAR
             pen.nav.setCurrentRow(EKRANLAR.index('Taranmış Evraklar'))
@@ -326,7 +331,7 @@ def run(report_path):
                                            'vektor-model-durumu', 'real-semantic-search', 'model-process-closed-on-lock',
                                            'startup-index-once', 'startup-counted-progress',
                                            'scan-inventory-and-percentages', 'scan-pause-resume',
-                                           'legacy-embedding-schema-repair'])
+                                           'legacy-embedding-schema-repair', 'indexed-vocabulary-and-unchanged-skip'])
     except Exception as error:
         import traceback
         report["stage"] = current_stage

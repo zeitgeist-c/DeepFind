@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS exclusions(
 
 SCHEMA_VERSION = "4"
 EXTRACTOR_VERSION = "archive-034"
-OCR_VERSION = "rapid-1"  # Tesseract 5 → RapidOCR (PP-OCR/ONNX), 2026-10
+OCR_VERSION = "rapid-2"  # Entirely blank pages are successful coverage, not NO_TEXT.
 
 
 def ensure_v6(con) -> None:
@@ -165,6 +165,8 @@ def ensure_current(con, progress=None) -> None:
     if not archive or archive[0] != '034':
         ensure_archive(con)
     ensure_v9(con, progress=progress)
+    from .vocab import ensure_tracking
+    ensure_tracking(con)
     con.execute("DELETE FROM settings WHERE k IN ('gemini_api_key','ai_model')")
     con.commit()
 

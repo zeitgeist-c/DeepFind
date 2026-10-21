@@ -53,6 +53,10 @@ def engine_backfill(con) -> int:
     if not row or row[0] == OCR_VERSION:
         return 0
     bad = "(outcome='low' OR error_code IS NOT NULL)"
+    if row[0] == 'rapid-1' and OCR_VERSION == 'rapid-2':
+        # Revisit only old empty-page failures for this policy change, once.
+        # Other low-quality pages are not forced through another OCR pass.
+        bad = "error_code='NO_TEXT'"
     n = con.execute(
         "INSERT INTO jobs(file_id, signature, kind, status) "
         "SELECT c.file_id, r.signature, 'ocr', 'pending' FROM "

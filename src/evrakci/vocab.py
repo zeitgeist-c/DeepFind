@@ -57,22 +57,46 @@ def ensure_v5(con) -> None:
     con.commit()
 
 
-def rebuild_vocab(con, min_len: int = 2, *, transactional: bool = False) -> int:
+def ensure_tracking(con):
+    con.execute("INSERT INTO schema_meta(k,v) VALUES('vocabulary_content_generation','0') ON CONFLICT(k) DO NOTHING")
+    for table, events in [('segments', ('INSERT','DELETE','UPDATE OF raw_text')), ('files', ('INSERT','DELETE','UPDATE OF name'))]:
+        for i,event in enumerate(events):
+            con.execute(f"CREATE TRIGGER IF NOT EXISTS vocab_{table}_{i} AFTER {event} ON {table} BEGIN "
+                        "UPDATE schema_meta SET v=CAST(v AS INTEGER)+1 WHERE k='vocabulary_content_generation'; END")
+
+
+def rebuild_vocab(con, min_len: int = 2, *, transactional: bool = False, progress=None, stop=None) -> int:
     from collections import Counter
     if transactional and not con.in_transaction:
         raise RuntimeError("transactional vocabulary rebuild requires an active transaction")
+    ensure_tracking(con)
+    generation = con.execute("SELECT v FROM schema_meta WHERE k='vocabulary_content_generation'").fetchone()[0]
+    marker = con.execute("SELECT v FROM schema_meta WHERE k='vocabulary_built_generation'").fetchone()
+    if marker and marker[0] == f'{generation}:{min_len}':
+        if progress: progress(1,1)
+        if not transactional: con.commit()
+        return con.execute('SELECT count(*) FROM vocabulary').fetchone()[0]
+    def check():
+        if stop and stop(): raise InterruptedError('Sözlük güncellemesi iptal edildi')
+    check()
+    con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp.evrakci_vocab_source USING fts5vocab(main, docs_fts, 'col')")
+    total = con.execute('SELECT count(*) FROM files').fetchone()[0] + con.execute("SELECT count(*) FROM temp.evrakci_vocab_source WHERE col='raw_text'").fetchone()[0]
+    done = 0
+    if progress: progress(0,total)
     # Stage in the encrypted database. A crash leaves the prior vocabulary
     # intact; batches keep Python memory bounded for large archives.
     con.execute("CREATE TABLE IF NOT EXISTS vocabulary_build(term TEXT PRIMARY KEY, freq INTEGER NOT NULL)")
     con.execute("DELETE FROM vocabulary_build")
     if not transactional:
         con.commit()
-    for sql in ("SELECT name FROM files", "SELECT raw_text FROM segments"):
+    for sql in ("SELECT name,1 FROM files", "SELECT term,cnt FROM temp.evrakci_vocab_source WHERE col='raw_text'"):
         cursor = con.execute(sql)
         while batch := cursor.fetchmany(200):
+            check()
             counts: Counter = Counter()
-            for (value,) in batch:
-                counts.update(t for t in nz.tokens_folded(value or "") if len(t) >= min_len)
+            for value,freq in batch:
+                for term in nz.tokens_folded(value or ''):
+                    if len(term)>=min_len: counts[term]+=freq
             con.executemany(
                 "INSERT INTO vocabulary_build(term, freq) VALUES (?, ?) "
                 "ON CONFLICT(term) DO UPDATE SET freq=freq+excluded.freq",
@@ -80,6 +104,9 @@ def rebuild_vocab(con, min_len: int = 2, *, transactional: bool = False) -> int:
             )
             if not transactional:
                 con.commit()
+            done += len(batch)
+            if progress: progress(done,total)
+    check()
     count = con.execute("SELECT count(*) FROM vocabulary_build").fetchone()[0]
     if not transactional:
         con.execute("BEGIN IMMEDIATE")
@@ -88,6 +115,7 @@ def rebuild_vocab(con, min_len: int = 2, *, transactional: bool = False) -> int:
         con.execute("INSERT INTO vocabulary(term, freq) SELECT term, freq FROM vocabulary_build")
         con.execute("DELETE FROM vocabulary_build")
         con.execute("INSERT INTO schema_meta(k,v) VALUES ('vocabulary_generation','1') ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1")
+        con.execute("INSERT INTO schema_meta(k,v) VALUES('vocabulary_built_generation',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (f'{generation}:{min_len}',))
         if not transactional:
             con.execute("COMMIT")
     except Exception:

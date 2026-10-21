@@ -444,8 +444,8 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
         con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?",(job['job_id'],)); con.commit()
         return 'continuing'
     previous_low=con.execute("SELECT 1 FROM ocr_coverage WHERE file_id=? AND rev_id=? AND (outcome='low' OR error_code IS NOT NULL) LIMIT 1",(fid,rev_id)).fetchone()
-    if not previous_low and results and all(r.words and not r.error_code and r.mean_conf>=40 for r in results):
-        con.execute("UPDATE files SET index_status='ok',error_code=NULL WHERE file_id=? AND error_code='OCR_PENDING'",(fid,)); con.commit()
+    if not previous_low and results and all(r.method=='blank' or (r.words and not r.error_code and r.mean_conf>=40) for r in results):
+        con.execute("UPDATE files SET index_status='ok',error_code=NULL WHERE file_id=? AND error_code IN ('OCR_PENDING','OCR_LOW_QUALITY')",(fid,)); con.commit()
     # Tum sayfalar timeout/unavailable ise retry; aksi halde tamamla
     q.complete(con, job["job_id"])
     if gom_mod.model_var_mi():
