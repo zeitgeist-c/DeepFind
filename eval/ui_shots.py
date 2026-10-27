@@ -9,8 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from deepfind import coordinator, migrate, schema, theme, vault  # noqa: E402
-from deepfind.migrate import ensure_v7  # noqa: E402
-from deepfind.vocab import ensure_v5  # noqa: E402
+from deepfind.migrate import ensure_v7, ensure_v5  # noqa: E402
 from deepfind.version import __version__
 
 PW = "gorsel-sifre-1234"
