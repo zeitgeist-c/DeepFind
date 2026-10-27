@@ -70,6 +70,10 @@ def parse_release(payload: dict) -> UpdateInfo:
     """Select a verified installer; ZIP assets are only for older clients."""
     tag = str(payload.get("tag_name") or "")
     version = tag[1:] if tag.startswith("v") else tag
+    # Sürüm adı dosya yoluna giriyor (Updates/<ad>-<sürüm>.exe); yalnız
+    # rakam+nokta kabul edilir, aksi halde "../" ile hedef dizin dışına yazılır.
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        raise UpdateError("Yayın sürüm etiketi beklenen biçimde değil.")
     parse_version(version)  # karşılaştıramayacağımız etiketleri reddet
     # Modern clients always use the installer, including portable -> installed
     # migration. ZIP remains a release asset for pre-0.10 clients only.

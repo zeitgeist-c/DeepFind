@@ -94,6 +94,20 @@ def delete_search(con, name: str) -> None:
     con.commit()
 
 
+def _csv_hucre(deger):
+    """CSV formül enjeksiyonunu etkisizleştir.
+
+    Excel/LibreOffice `=,+,-,@` ile başlayan hücreyi formül olarak çalıştırır;
+    dosya adı ve etiketler kullanıcı/kaynak denetiminde olduğundan başına
+    tek tırnak konur (hücre metin olarak okunur, görünen değer değişmez).
+    """
+    metin = "" if deger is None else str(deger)
+    tehlikeli = ("=", "+", "-", "@", chr(9), chr(13))
+    if metin.startswith(tehlikeli):
+        return "'" + metin
+    return metin
+
+
 def results_csv(con, results) -> str:
     """Arama sonuçlarını CSV metni yapar (dosya yazımı çağıranda)."""
     import csv
@@ -102,10 +116,11 @@ def results_csv(con, results) -> str:
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(["dosya", "yol", "tur", "sayfa", "yil", "etiketler", "neden"])
     for r in results:
-        w.writerow([r.get("name", ""), r.get("path", ""), r.get("ext", ""),
-                    r.get("page") or "", ",".join(r.get("years", [])),
-                    ", ".join(file_tags(con, r.get("file_id"))),
-                    " + ".join(r.get("why", []))])
+        w.writerow([_csv_hucre(r.get("name", "")), _csv_hucre(r.get("path", "")),
+                    _csv_hucre(r.get("ext", "")), _csv_hucre(r.get("page") or ""),
+                    _csv_hucre(",".join(r.get("years", []))),
+                    _csv_hucre(", ".join(file_tags(con, r.get("file_id")))),
+                    _csv_hucre(" + ".join(r.get("why", [])))])
     return buf.getvalue()
 
 
