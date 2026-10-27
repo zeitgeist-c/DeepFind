@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import scheduler as sched  # noqa: E402
+from deepfind import scheduler as sched  # noqa: E402
 
 
 def _dt(gun, saat, dk=0):
@@ -47,12 +47,12 @@ def test_cihaz_gecikmesi_deterministik_sinirli():
 
 
 def test_otomatik_baslatma_yaz_sil():
-    ad = "Evrakci-Test-0000"
+    ad = "DeepFind-Test-0000"
     sched.autostart_clear(ad)
     assert sched.autostart_get(ad) is None
-    sched.autostart_set(ad, "C:\\ornek\\evrakci.exe")
+    sched.autostart_set(ad, "C:\\ornek\\deepfind.exe")
     try:
-        assert "evrakci.exe" in (sched.autostart_get(ad) or "")
+        assert "deepfind.exe" in (sched.autostart_get(ad) or "")
     finally:
         assert sched.autostart_clear(ad) is True
     assert sched.autostart_get(ad) is None
@@ -60,17 +60,17 @@ def test_otomatik_baslatma_yaz_sil():
 
 def test_otomatik_baslatma_guncelle_yalniz_kayit_varsa():
     """Güncelleme yeni klasöre taşıyınca kayıt tazelenir; kapalı kayıt açılmaz."""
-    ad = "Evrakci-Test-0001"
+    ad = "DeepFind-Test-0001"
     sched.autostart_clear(ad)
     # Kayıt yokken: dokunulmaz, kayıt oluşturulmaz (kapalı kalır).
-    assert sched.autostart_guncelle(ad, "C:\\yeni\\evrakci.exe") is False
+    assert sched.autostart_guncelle(ad, "C:\\yeni\\deepfind.exe") is False
     assert sched.autostart_get(ad) is None
     # Kayıt varken eski yolu gösteriyorsa tazelenir.
-    sched.autostart_set(ad, "C:\\eski\\evrakci.exe")
+    sched.autostart_set(ad, "C:\\eski\\deepfind.exe")
     try:
-        assert sched.autostart_guncelle(ad, "C:\\yeni\\evrakci.exe") is True
+        assert sched.autostart_guncelle(ad, "C:\\yeni\\deepfind.exe") is True
         assert "yeni" in (sched.autostart_get(ad) or "")
         # Zaten güncelken ikinci kez yazılmaz.
-        assert sched.autostart_guncelle(ad, "C:\\yeni\\evrakci.exe") is False
+        assert sched.autostart_guncelle(ad, "C:\\yeni\\deepfind.exe") is False
     finally:
         sched.autostart_clear(ad)

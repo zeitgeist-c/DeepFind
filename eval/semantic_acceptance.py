@@ -3,9 +3,9 @@ from pathlib import Path
 import sys,json,time,sqlite3
 import numpy as np
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'src'))
-from evrakci import engine,embed,rank,migrate,index
-from evrakci.extract import ExtractResult,Segment
-from evrakci.scan import Entry
+from deepfind import engine,embed,rank,migrate,index
+from deepfind.extract import ExtractResult,Segment
+from deepfind.scan import Entry
 
 def main():
     docs=['elektrik faturası tüketim bedeli 1250 TL','kira sözleşmesi aylık 40000 TL',

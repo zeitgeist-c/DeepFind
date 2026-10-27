@@ -6,7 +6,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import scan as scan_mod
+from deepfind import scan as scan_mod
 
 
 def main():

@@ -7,11 +7,11 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import coordinator as C
-from evrakci import migrate, rank, schema
-from evrakci.extract import ExtractResult, Segment
-from evrakci.scan import Entry
-from evrakci.migrate import ensure_v5
+from deepfind import coordinator as C
+from deepfind import migrate, rank, schema
+from deepfind.extract import ExtractResult, Segment
+from deepfind.scan import Entry
+from deepfind.migrate import ensure_v5
 
 
 def database(path=None):
@@ -55,7 +55,7 @@ def test_yeni_tarama_otomatik_etiketler():
 
 def test_etiket_filtresi_daraltir(monkeypatch):
     from semantic_helpers import seed_vectors,FixedSession
-    from evrakci import embed
+    from deepfind import embed
     monkeypatch.setattr(embed,"hazir_oturum",lambda:FixedSession())
     con = database()
     try:

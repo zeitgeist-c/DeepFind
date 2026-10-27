@@ -8,9 +8,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import backup, coordinator, exclusions, schema, vault  # noqa: E402
-from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.migrate import ensure_v5  # noqa: E402
+from deepfind import backup, coordinator, exclusions, schema, vault  # noqa: E402
+from deepfind.migrate import ensure_v4, ensure_v6  # noqa: E402
+from deepfind.migrate import ensure_v5  # noqa: E402
 
 PW = "yedek-sifresi-1234"
 
@@ -135,8 +135,8 @@ def test_bak_saklama_otomatik7_manuel_korunur(tmp_path):
     yb = str(tmp_path / "backups")
     os.makedirs(yb)
     for i in range(9):
-        open(os.path.join(yb, f"evrakci-indeks-2026010{i}-000000.db"), "wb").close()
-    open(os.path.join(yb, "evrakci-indeks-manuel-eski.db"), "wb").close()
+        open(os.path.join(yb, f"deepfind-indeks-2026010{i}-000000.db"), "wb").close()
+    open(os.path.join(yb, "deepfind-indeks-manuel-eski.db"), "wb").close()
     gone = backup.prune(None, yb)
     assert len(gone) == 2, gone
     kalan = [b["path"] for b in backup.list_backups(yb)]
@@ -216,7 +216,7 @@ def test_bak_kaynaga_dokunmaz(tmp_path):
 
 def test_cli_yedek_tani_parola(tmp_path, capsys):
     """CLI: yedek-al/listele/tani/parola-degistir/geri-yukle uctan uca."""
-    from evrakci import cli as _cli
+    from deepfind import cli as _cli
     kok = str(tmp_path / "arsiv")
     os.makedirs(kok)
     _pdf(kok, "belge.pdf", "Ankara cli yedek 2024")

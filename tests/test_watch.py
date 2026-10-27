@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import watch
+from deepfind import watch
 
 
 def test_onemli_mi_gecicileri_eler():
@@ -74,9 +74,9 @@ def test_izleme_taramayi_tetikler(tmp_path, monkeypatch):
     import sqlite3
     import time as _time
     from openpyxl import Workbook
-    from evrakci import coordinator as C
-    from evrakci import migrate, schema
-    from evrakci.migrate import ensure_v5
+    from deepfind import coordinator as C
+    from deepfind import migrate, schema
+    from deepfind.migrate import ensure_v5
     monkeypatch.setattr(watch, "DEBOUNCE_SEC", 1)
     root = tmp_path / "kaynak"
     root.mkdir()

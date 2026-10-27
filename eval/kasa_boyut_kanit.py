@@ -2,7 +2,7 @@
 Kapi raporu: once/sonra MB + yuzde kazanc + sema dogrulamasi + integrity-check."""
 import os, sys, time, tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from evrakci import vault, migrate, normalize as nz
+from deepfind import vault, migrate, normalize as nz
 
 base = tempfile.mkdtemp(prefix="v9-boyut-")
 db = os.path.join(base, "index.db")

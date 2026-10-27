@@ -1,5 +1,5 @@
 [project]
-name = "evrakci"
+name = "deepfind"
 dynamic = ["version"]
 description = "Yerel sifreli belge bulma araci (V1)"
 requires-python = ">=3.12"
@@ -29,10 +29,10 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = {attr = "evrakci.version.__version__"}
+version = {attr = "deepfind.version.__version__"}
 
 [tool.setuptools.package-data]
-evrakci = ["assets/*.svg"]
+deepfind = ["assets/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

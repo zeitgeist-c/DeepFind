@@ -31,7 +31,7 @@ def run(report_path):
     assert not QIcon(str(Path(__file__).parent / "assets/check-light.svg")).pixmap(16, 16).isNull()
     checkpoint("fixture")
     try:
-        with tempfile.TemporaryDirectory(prefix="evrakci-package-smoke-",ignore_cleanup_errors=True) as temp:
+        with tempfile.TemporaryDirectory(prefix="deepfind-package-smoke-",ignore_cleanup_errors=True) as temp:
             from .wizard import Sihirbaz
             from PySide6.QtWidgets import QWizard
             from PySide6.QtCore import QCoreApplication, QEvent
@@ -199,7 +199,7 @@ def run(report_path):
             assert any(row['path']==ocr_image for row in search_semantic(pen.con,'Ankara belge')['results'])
             checkpoint('root-remove-worker')
             # Kök kaldırma: ayrı thread'de çalışır, GUI yanıt verir, temizlik doğru.
-            from evrakci.app import KokKaldirIsci
+            from deepfind.app import KokKaldirIsci
             from PySide6.QtCore import QThread
             # Ana test kökünü çıkar; k2 temp içinde kalsın ve TemporaryDirectory temizlesin.
             pen.con.execute("DELETE FROM roots WHERE display_path=?", (temp,))
@@ -229,7 +229,7 @@ def run(report_path):
             assert biten == [1], biten
             assert pen.con.execute("SELECT count(*) FROM files WHERE path LIKE ?", (k2 + "%",)).fetchone()[0] == 0
             checkpoint('exclusion-worker')
-            from evrakci.app import HaricIsci
+            from deepfind.app import HaricIsci
             k3 = str(Path(temp) / "disla-koku")
             p3 = os.path.join(k3, "gizli.pdf")
             pen.con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",

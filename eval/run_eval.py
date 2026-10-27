@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from corpus import build, make_queries  # noqa: E402
-from evrakci import coordinator, rank, schema, vault  # noqa: E402
-from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.vocab import ensure_v5, rebuild_vocab  # noqa: E402
+from deepfind import coordinator, rank, schema, vault  # noqa: E402
+from deepfind.migrate import ensure_v4, ensure_v6  # noqa: E402
+from deepfind.vocab import ensure_v5, rebuild_vocab  # noqa: E402
 
 PW = "eval-sifresi-12345"
 HOLDOUT = 0.20
@@ -22,7 +22,7 @@ HOLDOUT = 0.20
 
 def main() -> int:
     import tempfile
-    base = tempfile.mkdtemp(prefix="evrakci-eval-")
+    base = tempfile.mkdtemp(prefix="deepfind-eval-")
     kok = os.path.join(base, "corpus")
     db = os.path.join(base, "kasa.db")
     for f in (db, db + "-wal", db + "-shm", db + "-journal"):

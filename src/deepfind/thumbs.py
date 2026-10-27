@@ -2,7 +2,7 @@
 
 Desen kaynağı (REA): paperless-ngx thumbnail'ı sunucuda dosyaya üretip
 `{id}.webp` olarak saklıyor ve uç nokta ETag ile önbellekliyor; papermerge
-`NodeThumbnail` ile listelerde gösteriyor. Evrakçı karşılığı: anahtar
+`NodeThumbnail` ile listelerde gösteriyor. DeepFind karşılığı: anahtar
 (yol, boyut, mtime) değişmedikçe üretim tekrarlanmaz; ağır render `workers`
 alt sürecinde koşar, arayüz yalnızca hazır dosyayı yükler.
 

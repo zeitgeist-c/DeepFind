@@ -6,9 +6,9 @@ import sys
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from PySide6.QtWidgets import QApplication
-from evrakci import theme
-from evrakci.wizard import Sihirbaz
-from evrakci.version import __version__
+from deepfind import theme
+from deepfind.wizard import Sihirbaz
+from deepfind.version import __version__
 
 
 def main():
@@ -17,9 +17,9 @@ def main():
     QFontDatabase.addApplicationFont("C:/Windows/Fonts/segoeui.ttf")
     QFontDatabase.addApplicationFont("C:/Windows/Fonts/arial.ttf")
     app.setFont(QFont("Segoe UI", 10))
-    output = Path(f"build/review-ui-{__version__}" + os.environ.get("EVRAKCI_REVIEW_SUFFIX", ""))
+    output = Path(f"build/review-ui-{__version__}" + os.environ.get("DEEPFIND_REVIEW_SUFFIX", ""))
     output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="evrakci-wizard-") as temp:
+    with tempfile.TemporaryDirectory(prefix="deepfind-wizard-") as temp:
         folder = Path(temp) / "Örnek belgeler"
         folder.mkdir()
         for mode in ("acik", "koyu"):

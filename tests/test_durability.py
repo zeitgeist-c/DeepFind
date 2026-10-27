@@ -8,9 +8,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import coordinator, exclusions, extract, job_queue as queue, schema, vault  # noqa: E402
-from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.migrate import ensure_v5  # noqa: E402
+from deepfind import coordinator, exclusions, extract, job_queue as queue, schema, vault  # noqa: E402
+from deepfind.migrate import ensure_v4, ensure_v6  # noqa: E402
+from deepfind.migrate import ensure_v5  # noqa: E402
 
 PW = "test-sifresi-12345"
 
@@ -150,25 +150,29 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
     # Izinli istisnalar (plan bolum 16/17): kasa kilidi, kontrollu temp temizligi,
     # salt-okunur PATH aramasi (shutil.which). Kaynak-dizin runtime kaniti yukarida.
     import pathlib
-    src = pathlib.Path(os.path.dirname(__file__), "..", "src", "evrakci")
+    src = pathlib.Path(os.path.dirname(__file__), "..", "src", "deepfind")
     yazan = []
     for f in src.glob("*.py"):
-        if f.name in ("cli.py", "backup.py", "recovery.py", "update.py", "model_indir.py", "installer.py"):
+        if f.name in ("cli.py", "backup.py", "recovery.py", "update.py", "model_indir.py", "installer.py", "paths.py"):
+            # paths.py: uygulama veri kokunu yonetir; tek yazma noktasi
+            # data_root() icindeki shutil.move, eski Evrakci klasorunu DeepFind'e
+            # tasiyan tek seferlik gecistir (kaynak dizine degil %LOCALAPPDATA%
+            # altina dokunur). Kanit: tests/test_paths_migration.py.
             # backup.py / recovery.py: yalniz yonetilen yerel hedeflere yazar
-            # (dest/staging/manifest ve kasa klasorundeki evrakci-kurtarma.*);
+            # (dest/staging/manifest ve kasa klasorundeki deepfind-kurtarma.*);
             # kaynak-dizin kaniti test_backup.py::test_bak_kaynaga_dokunmaz ve
             # test_recovery.py::test_kurtarma_islem_kaynaga_dokunmaz (runtime).
-            # update.py: yalniz %LOCALAPPDATA%/Evrakci/Updates altina yazar
+            # update.py: yalniz %LOCALAPPDATA%/DeepFind/Updates altina yazar
             # (indirme/acma/artik toplama); kaynak-dizin kaniti
             # test_update.py::AcmaTestleri + temizle testleri (runtime).
             # installer.py: yalnız doğrulanmış Updates kurulumunun yanına bekçi yazar;
             # test_local_model.py::test_installer_handoff_uses_managed_path bunu doğrular.
-            # model_indir.py: yalniz %LOCALAPPDATA%/Evrakci/models (ya da
+            # model_indir.py: yalniz %LOCALAPPDATA%/DeepFind/models (ya da
             # cagrida verilen acik yol) altina yazar; kaynak-dizin kaniti
             # test_model_indir.py::test_varsayilan_hedef_yonetilen_alan (runtime).
             continue
         if f.name == "thumbs.py":
-            # thumbs.py: yalniz %LOCALAPPDATA%/Evrakci/thumbs onbellek dizininde
+            # thumbs.py: yalniz %LOCALAPPDATA%/DeepFind/thumbs onbellek dizininde
             # uretir ve budar (os.remove). Kaynak dizine dokunmadigi runtime
             # kanitiyla dogrulanir: test_thumbs.py::test_kucuk_resim_kaynak_dizine_dokunmaz.
             continue
@@ -247,7 +251,7 @@ def test_retry_dead(tmp_path):
 
 
 def test_doc_adaptru_yoksa_ad_yol(tmp_path):
-    from evrakci import doc_adapter
+    from deepfind import doc_adapter
     assert doc_adapter.find_office() is None  # bu makinede LO yok; onkosul raporlanir
     assert doc_adapter.extract_doc_guarded("yok.doc") is None
     r = extract.extract("arsiv.dp", ".doc", 10)

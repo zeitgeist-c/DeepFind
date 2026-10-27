@@ -1,4 +1,4 @@
-# Evrakçı 0.10.6 — yalnız anlamsal arama
+# DeepFind 0.10.6 — yalnız anlamsal arama
 
 Kullanıcı kararı, 21.10.2026: kötü adlandırılmış belgeleri içeriklerini tarif ederek bulmak esastır. Kelime/FTS/fuzzy araması ve sözlük bakımı kaldırılır. OCR, şifreli metin, sayfa/dosya bağlantıları, filtreler ve vektörler korunur.
 

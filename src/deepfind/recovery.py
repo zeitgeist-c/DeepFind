@@ -22,7 +22,7 @@ from pathlib import Path
 # Karışan harfler yok: I, L, O, U ve rakam 0, 1 alfabede bulunmaz.
 ALFABE = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
 PREFIX = "EVKC-"
-ON_EK = "evrakci-kurtarma"
+ON_EK = "deepfind-kurtarma"
 CONTAINER_SUFFIX = ".kurtarma.db"
 KEY_SUFFIX = ".anahtar"
 SURUM = "1"
@@ -246,7 +246,7 @@ def document_text(vault_path: str, anahtar: str, bicimli: bool = False) -> str:
         f"  {ETIKET}  {gruplu}\n\n"
         f"  Kasa    :  {kasa}\n\n"
         "Nasıl kullanılır:\n"
-        "  1) Evrakçı'yı açın, şifre ekranında\n"
+        "  1) DeepFind'yı açın, şifre ekranında\n"
         "     \"Şifremi unuttum\" seçeneğine basın.\n"
         "  2) Yukarıdaki anahtarı yapıştırın (boşluk ve\n"
         "     büyük/küçük harf farkı önemli değildir).\n"

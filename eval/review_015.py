@@ -7,9 +7,9 @@ sys.path.insert(0,str(ROOT/'src'))
 spec=importlib.util.spec_from_file_location('ui_tests',ROOT/'tests/test_ui.py')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 from PySide6.QtCore import Qt
-from evrakci import theme
+from deepfind import theme
 out=ROOT/'build'/'review-015';out.mkdir(exist_ok=True)
-with tempfile.TemporaryDirectory(prefix='evrakci-015-') as tmp:
+with tempfile.TemporaryDirectory(prefix='deepfind-015-') as tmp:
     from PySide6.QtGui import QFont, QFontDatabase
     app=m._app();QFontDatabase.addApplicationFont("C:/Windows/Fonts/segoeui.ttf");app.setFont(QFont("Segoe UI",10))
     fixture=m.pencere.__wrapped__(Path(tmp));pen=next(fixture);pen.show()

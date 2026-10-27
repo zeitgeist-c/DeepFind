@@ -8,7 +8,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import backup, bootstrap, migrate, recovery, schema, vault  # noqa: E402
+from deepfind import backup, bootstrap, migrate, recovery, schema, vault  # noqa: E402
 
 PW = "yeni-sifre-123456789"
 
@@ -90,7 +90,7 @@ def test_pw05_sihirbaz_sifresiz_secenegi():
     """Sihirbazda boş şifre ve 'kullanmayacağım' kutusu kabul edilir."""
     from PySide6.QtWidgets import QApplication
     QApplication.instance() or QApplication([])
-    from evrakci.wizard import Sihirbaz
+    from deepfind.wizard import Sihirbaz
     s = Sihirbaz()
     s.restart()
     s.next()  # şifre sayfası
@@ -121,7 +121,7 @@ def test_pw06_pencere_kilit_yok_ve_sifre_ekle(tmp_path, monkeypatch):
     con = vault.open_vault(db, vault.SIFRESIZ_ANAHTAR)
     migrate.set_setting(con, "kasa_sifresiz", "1")
     con.close()
-    from evrakci import app as app_mod
+    from deepfind import app as app_mod
     pen = app_mod.AnaPencere(db, vault.SIFRESIZ_ANAHTAR)
     try:
         assert pen.sifresiz is True

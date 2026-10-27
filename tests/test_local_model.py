@@ -3,7 +3,7 @@ import json
 import threading
 import numpy as np
 import pytest
-from evrakci import engine, rank, migrate, model_indir, update
+from deepfind import engine, rank, migrate, model_indir, update
 from test_hibrit import _kasa, _duzen, _kodla_b, _dosya, _vektor
 
 
@@ -102,8 +102,8 @@ def test_removed_cloud_settings_cleanup_is_idempotent(tmp_path):
 def test_installer_asset_preferred_and_digest_required():
     sha='a'*64
     payload={'tag_name':'v0.10.0','assets':[
-        {'name':'Evrakci-0.10.0.zip','digest':'sha256:'+sha},
-        {'name':'Evrakci-0.10.0.exe','digest':'sha256:'+sha}]}
+        {'name':'DeepFind-0.10.0.zip','digest':'sha256:'+sha},
+        {'name':'DeepFind-0.10.0.exe','digest':'sha256:'+sha}]}
     assert update.parse_release(payload).asset_name.endswith('.exe')
     payload['assets'][1]['digest']=''
     with pytest.raises(update.UpdateError):update.parse_release(payload)
@@ -115,10 +115,10 @@ def test_nonfinite_and_zero_vectors_rejected():
 
 
 def test_installer_handoff_uses_managed_path(tmp_path,monkeypatch):
-    from evrakci import installer
+    from deepfind import installer
     updates=tmp_path/'Updates'; updates.mkdir()
-    setup=updates/'Evrakçı-0.10.0.exe'; setup.write_bytes(b'synthetic')
-    current=tmp_path/'installed'/'Evrakçı-0.9.0.exe'; current.parent.mkdir()
+    setup=updates/'DeepFind-0.10.0.exe'; setup.write_bytes(b'synthetic')
+    current=tmp_path/'installed'/'DeepFind-0.9.0.exe'; current.parent.mkdir()
     (current.parent/'unins000.exe').write_bytes(b'synthetic')
     calls=[]
     monkeypatch.setattr(installer,'windows_file_version',lambda _:(0,10,0))
@@ -134,13 +134,13 @@ def test_installer_handoff_uses_managed_path(tmp_path,monkeypatch):
 @pytest.mark.parametrize('extra,model_sha,success',[(False,None,True),(True,None,False),(False,'wrong',False)])
 def test_incremental_package_validates_contents(tmp_path,monkeypatch,extra,model_sha,success):
     import zipfile,hashlib
-    archive=tmp_path/'source.evrakci'
+    archive=tmp_path/'source.deepfind'
     with zipfile.ZipFile(archive,'w') as z:
-        z.writestr('Evrakçı-0.10.0.exe',b'synthetic-exe')
-        z.writestr('manifest.json',json.dumps({'program':'Evrakçı','version':'0.10.0','model_sha256':model_sha or model_indir.MODEL_SHA256}))
+        z.writestr('DeepFind-0.10.0.exe',b'synthetic-exe')
+        z.writestr('manifest.json',json.dumps({'program':'DeepFind','version':'0.10.0','model_sha256':model_sha or model_indir.MODEL_SHA256}))
         if extra:z.writestr('../escape',b'bad')
     sha=hashlib.sha256(archive.read_bytes()).hexdigest()
-    info=update.UpdateInfo('0.10.0','Evrakçı-0.10.0.evrakci',archive.as_uri(),sha,archive.stat().st_size,'')
+    info=update.UpdateInfo('0.10.0','DeepFind-0.10.0.deepfind',archive.as_uri(),sha,archive.stat().st_size,'')
     monkeypatch.setattr(model_indir,'paylasilan_hazir',lambda:True)
     monkeypatch.setattr(update,'windows_file_version',lambda _:(0,10,0))
     dest=tmp_path/'Updates'; dest.mkdir()
@@ -149,12 +149,12 @@ def test_incremental_package_validates_contents(tmp_path,monkeypatch,extra,model
         assert result.read_bytes()==b'synthetic-exe'
     else:
         with pytest.raises(update.UpdateError):update.prepare_incremental(info,dest)
-        assert not (dest/'Evrakçı-0.10.0.exe').exists()
-    assert not (dest/'Evrakçı-0.10.0.evrakci').exists()
+        assert not (dest/'DeepFind-0.10.0.exe').exists()
+    assert not (dest/'DeepFind-0.10.0.deepfind').exists()
 
 
 def test_invalid_vectors_do_not_replace_previous_index(tmp_path):
-    from evrakci import gom
+    from deepfind import gom
     con=_kasa(tmp_path); _duzen(con)
     try:
         before=con.execute('SELECT * FROM embeddings ORDER BY seg_id').fetchall()
@@ -165,7 +165,7 @@ def test_invalid_vectors_do_not_replace_previous_index(tmp_path):
 
 
 def test_embedding_cancel_preserves_pending_job(tmp_path):
-    from evrakci import gom,job_queue
+    from deepfind import gom,job_queue
     con=_kasa(tmp_path);_duzen(con)
     try:
         fid=con.execute('SELECT min(file_id) FROM files').fetchone()[0]

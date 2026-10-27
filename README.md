@@ -1,12 +1,12 @@
-# Evrakçı — local encrypted document search for Windows
+# DeepFind — local encrypted document search for Windows
 
 > Türkçe: [README.tr.md](./README.tr.md)
 
 **Describe the document you remember, not the filename you saved it under.**
 
-Evrakçı indexes the documents already sitting in your folders — PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV and scanned JPG/PNG/TIFF — and finds them by meaning. The files never move. The index lives in a SQLCipher-encrypted vault on your machine, and nothing about your documents is sent anywhere.
+DeepFind indexes the documents already sitting in your folders — PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV and scanned JPG/PNG/TIFF — and finds them by meaning. The files never move. The index lives in a SQLCipher-encrypted vault on your machine, and nothing about your documents is sent anywhere.
 
-![Evrakçı · Search](./docs/screenshots/01-ara.png)
+![DeepFind · Search](./docs/screenshots/01-ara.png)
 
 ---
 
@@ -158,7 +158,7 @@ Four groups.
 
 ## Install
 
-1. Download `Evrakçı-<version>.exe` from [Releases](https://github.com/zeitgeist-c/Evrakçı/releases/latest).
+1. Download `DeepFind-<version>.exe` from [Releases](https://github.com/zeitgeist-c/DeepFind/releases/latest).
 2. Run it. The installer carries the text model, the Vulkan/CPU engines and the OCR components, so search works offline immediately.
 3. Choose a vault password and at least one folder on first launch.
 
@@ -183,9 +183,9 @@ Old ONNX vectors are never mixed with the new model's vectors. Gaps from an olde
 
 | What | Where |
 |---|---|
-| Vault | `%LOCALAPPDATA%\Evrakci\Data\evrakci.db` |
-| Backups | `%LOCALAPPDATA%\Evrakci\Backups` |
-| Remembered login | `%LOCALAPPDATA%\Evrakci\Credentials` (DPAPI, per Windows user) |
+| Vault | `%LOCALAPPDATA%\DeepFind\Data\deepfind.db` |
+| Backups | `%LOCALAPPDATA%\DeepFind\Backups` |
+| Remembered login | `%LOCALAPPDATA%\DeepFind\Credentials` (DPAPI, per Windows user) |
 
 - The database is encrypted with SQLCipher; the password is not stored anywhere.
 - Backups do not include the source documents.
@@ -212,7 +212,7 @@ $env:PYTHONPATH = 'src'
 
 `packaging/fetch_engine.py` downloads the official model and engine versions into the project's `build/embedding` area and verifies their digests. BF16 is for developer comparison only; Q8_0 ships.
 
-The version has a single source: `src/evrakci/version.py`. Patch releases go `0.10.1 → 0.10.2 → 0.10.3`.
+The version has a single source: `src/deepfind/version.py`. Patch releases go `0.10.1 → 0.10.2 → 0.10.3`.
 
 Do not pass a real vault password on the command line.
 

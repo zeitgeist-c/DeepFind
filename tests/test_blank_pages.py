@@ -1,5 +1,5 @@
 from PIL import Image
-from evrakci import ocr
+from deepfind import ocr
 
 def test_entirely_white_page_skips_ocr_but_faint_ink_does_not(tmp_path,monkeypatch):
     png=tmp_path/'page.png';image=Image.new('RGB',(100,100),'white');image.save(png)
@@ -15,8 +15,8 @@ def test_entirely_white_page_skips_ocr_but_faint_ink_does_not(tmp_path,monkeypat
 
 def test_old_empty_page_failure_is_retried_once_and_completes(tmp_path,monkeypatch):
     import sqlite3
-    from evrakci import migrate,coordinator as c,ocr_setup,job_queue as q,gom
-    from evrakci.scan import Entry
+    from deepfind import migrate,coordinator as c,ocr_setup,job_queue as q,gom
+    from deepfind.scan import Entry
     p=tmp_path/'blank.pdf';p.write_bytes(b'synthetic-stat-only')
     stat=p.stat();sig=q.signature_of(stat.st_size,stat.st_mtime_ns)
     con=sqlite3.connect(':memory:');migrate.ensure_current(con)

@@ -13,7 +13,7 @@ from . import paths
 
 
 def migrate_vault_filename() -> str | None:
-    """Rename evrakci.db -> deepfind.db if the old name is still in use.
+    """Rename the pre-rename vault file to its current name.
 
     Returns the message to show the user, or None when there was nothing to do.
     """

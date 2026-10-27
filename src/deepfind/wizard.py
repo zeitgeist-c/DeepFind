@@ -37,7 +37,7 @@ class Sihirbaz(QWizard):
         super().__init__(ebeveyn)
         from PySide6.QtWidgets import QApplication
         install_turkish(QApplication.instance())
-        self.setWindowTitle("Evrakçı — İlk kurulum")
+        self.setWindowTitle("DeepFind — İlk kurulum")
         self.setWindowIcon(app_icon())
         self.setWizardStyle(QWizard.ClassicStyle)
         self.setMinimumSize(980, 640)
@@ -66,7 +66,8 @@ class Sihirbaz(QWizard):
         self.setButton(QWizard.CustomButton1, self.theme_button)
         self.tema.currentIndexChanged.connect(self._tema_degistir)
         from PySide6.QtCore import QSettings
-        saved_theme = QSettings("Evrakci", "Appearance").value("theme", "sistem")
+        from . import identity
+        saved_theme = QSettings(identity.APP_IDENTITY, "Appearance").value("theme", "sistem")
         self.tema.setCurrentIndex(max(0, self.tema.findData(saved_theme)))
         self.secim["tema"] = self.tema.currentData()
         rail = QFrame()
@@ -92,11 +93,11 @@ class Sihirbaz(QWizard):
         self._rail = rail
         self.setSideWidget(rail)
 
-        g = _Sayfa("Belgeleriniz.\nTek bir arama.", "Dağınık klasörlerden aradığınız belgeye.\nEvrakçı’yı birkaç kısa adımda kullanıma hazırlayın.")
+        g = _Sayfa("Belgeleriniz.\nTek bir arama.", "Dağınık klasörlerden aradığınız belgeye.\nDeepFind’yı birkaç kısa adımda kullanıma hazırlayın.")
         g.heading.setProperty("hero", True)
         for title, text in [
             ("Adıyla ya da içeriğiyle bulun", "Bir dosya adı, birkaç kelime veya bir yıl yazmanız yeterli."),
-            ("Klasörler sizden, düzen Evrakçı’dan", "Bilgisayarınızdaki ve ağdaki belge klasörlerini seçin."),
+            ("Klasörler sizden, düzen DeepFind’dan", "Bilgisayarınızdaki ve ağdaki belge klasörlerini seçin."),
             ("Size özel bir çalışma alanı", "İsterseniz şifre belirleyin; arama bilgileriniz bu bilgisayarda korunur.")]:
             panel, content = card()
             content.addWidget(label(title, "subheading"))

@@ -8,7 +8,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from evrakci import normalize as nz, snippet as snip
+from deepfind import normalize as nz, snippet as snip
 
 
 def _plain(html):

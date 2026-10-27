@@ -9,8 +9,8 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-from evrakci import coordinator, migrate, schema, vault
-from evrakci.migrate import ensure_v5
+from deepfind import coordinator, migrate, schema, vault
+from deepfind.migrate import ensure_v5
 
 
 def test_cancelled_scan_keeps_index_and_interrupted_run_is_recovered(tmp_path, monkeypatch):
@@ -69,7 +69,7 @@ def test_cancelled_scan_keeps_index_and_interrupted_run_is_recovered(tmp_path, m
 
 
 def test_hash_failure_marks_scan_partial(tmp_path, monkeypatch):
-    from evrakci import dup
+    from deepfind import dup
     root = tmp_path / "archive"
     root.mkdir()
     db = str(tmp_path / "index.db")
@@ -99,7 +99,7 @@ def test_hash_failure_marks_scan_partial(tmp_path, monkeypatch):
 def test_second_launch_wakes_hidden_window():
     from concurrent.futures import ThreadPoolExecutor
     from PySide6.QtWidgets import QApplication
-    from evrakci.app import _serve_activation, _wake_existing
+    from deepfind.app import _serve_activation, _wake_existing
 
     app = QApplication.instance() or QApplication([])
 
@@ -111,7 +111,7 @@ def test_second_launch_wakes_hidden_window():
 
     window = Window()
     app._main_window = window
-    server = _serve_activation(app, "Evrakci-Test-" + uuid.uuid4().hex)
+    server = _serve_activation(app, "DeepFind-Test-" + uuid.uuid4().hex)
     assert server is not None
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:

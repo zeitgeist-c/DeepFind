@@ -1,4 +1,4 @@
-# Evrakçı 0.10.0 — Üçüncü-taraf lisansları
+# DeepFind 0.10.0 — Üçüncü-taraf lisansları
 
 Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.
 

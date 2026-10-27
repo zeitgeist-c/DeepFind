@@ -8,9 +8,9 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import coordinator, extract, ocr, schema, vault  # noqa: E402
-from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.vocab import ensure_v5  # noqa: E402
+from deepfind import coordinator, extract, ocr, schema, vault  # noqa: E402
+from deepfind.migrate import ensure_v4, ensure_v6  # noqa: E402
+from deepfind.vocab import ensure_v5  # noqa: E402
 
 PW = "a6-rapor-sifresi"
 
@@ -46,7 +46,7 @@ def peak_mb():
 
 def main():
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                                        "Temp", "evrakci_a6"))
+                                        "Temp", "deepfind_a6"))
     kok = os.path.join(base, "arsiv")
     os.makedirs(kok, exist_ok=True)
     from reportlab.pdfgen import canvas

@@ -12,23 +12,23 @@ import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from evrakci.version import __version__
+from deepfind.version import __version__
 
 
 def main():
     import re
     assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
-    stem = f"Evrakçı-{__version__}"
+    stem = f"DeepFind-{__version__}"
     if "--archive-only" not in sys.argv:
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         from PySide6.QtWidgets import QApplication
-        from evrakci.theme import app_icon
+        from deepfind.theme import app_icon
         from PIL import Image
         app = QApplication.instance() or QApplication([])
         (ROOT / "build").mkdir(exist_ok=True)
-        png = ROOT / "build/evrakci.png"
+        png = ROOT / "build/deepfind.png"
         app_icon().pixmap(64,64).save(str(png))
-        Image.open(png).save(ROOT / "build/evrakci.ico")
+        Image.open(png).save(ROOT / "build/deepfind.ico")
         build_env = os.environ.copy()
         windows = Path(os.environ["SystemRoot"])
         # Başka programların PATH DLL'leri dağıtıma sızmamalı (Poppler ICU vb.).
@@ -39,7 +39,7 @@ def main():
         build_env["PYINSTALLER_CONFIG_DIR"] = str(work / "cache")
         subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--workpath", str(work),
                         "--distpath", str(work / "dist"),
-                        str(ROOT / "packaging/Evrakci.spec")], cwd=ROOT, env=build_env, check=True)
+                        str(ROOT / "packaging/DeepFind.spec")], cwd=ROOT, env=build_env, check=True)
         package_target = ROOT / "dist" / stem
         if package_target.exists():
             package_target.rename(work / ("previous-" + stem))
@@ -57,7 +57,7 @@ def main():
             "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy", "pyclipper",
             "shapely", "omegaconf", "pyyaml", "six", "requests", "tqdm", "colorlog",
             "protobuf", "flatbuffers", "idna", "certifi", "urllib3", "charset-normalizer"]
-    manifest = {"program": "Evrakçı", "version": __version__, "dependencies": {},
+    manifest = {"program": "DeepFind", "version": __version__, "dependencies": {},
                 "source_commit":subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
                 "source_dirty":bool(subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip())}
     for name in deps:
@@ -78,7 +78,7 @@ def main():
         shutil.copyfile(lgpl, licenses / "LGPL-3.0-only.txt")
     if not (licenses / "LGPL-3.0-only.txt").is_file():
         raise RuntimeError("LGPL lisans metni bulunamadı; paket teslim edilemez")
-    from evrakci.model_indir import gerekli_mi
+    from deepfind.model_indir import gerekli_mi
     if gerekli_mi(str(package / '_internal/embedding/embeddinggemma-2-Q8_0.gguf')):
         raise RuntimeError('GGUF model pakette eksik veya özeti geçersiz')
     shutil.copyfile(ROOT / 'build/embedding/manifest.json', licenses / 'embedding-manifest.json')
@@ -88,7 +88,7 @@ def main():
         raise RuntimeError("RapidOCR ONNX modelleri pakette bulunamadı")
     # Paket dumanı: kurulu EXE gerçekten açılıp OCR zincirini çalıştırabiliyor mu?
     import tempfile
-    smoke_report = Path(tempfile.gettempdir()) / f"evrakci-smoke-{__version__}.json"
+    smoke_report = Path(tempfile.gettempdir()) / f"deepfind-smoke-{__version__}.json"
     if smoke_report.exists():
         smoke_report.unlink()
     proc = subprocess.run([str(package / (stem + ".exe")), "--package-smoke", str(smoke_report)],
@@ -120,20 +120,20 @@ def main():
             if Path(aday).is_file():
                 iscc = aday
                 break
-    subprocess.run([iscc, str(ROOT / "packaging/Evrakci.iss")],
+    subprocess.run([iscc, str(ROOT / "packaging/DeepFind.iss")],
                    cwd=str(ROOT / "packaging"), check=True, timeout=600)
     kurulum = ROOT / (stem + ".exe")
     assert kurulum.is_file(), "kurulum EXE uretilemedi"
     print(json.dumps({"setup": str(kurulum),
                       "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
                      ensure_ascii=False))
-    subprocess.run([iscc, '/DUpdatePackage', str(ROOT / 'packaging/Evrakci.iss')],
+    subprocess.run([iscc, '/DUpdatePackage', str(ROOT / 'packaging/DeepFind.iss')],
                    cwd=str(ROOT / 'packaging'), check=True, timeout=600)
-    from evrakci.model_indir import MODEL_SHA256
-    incremental = ROOT / (stem + '.evrakci')
+    from deepfind.model_indir import MODEL_SHA256
+    incremental = ROOT / (stem + '.deepfind')
     with zipfile.ZipFile(incremental, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.write(ROOT / 'build/update-installer' / (stem + '.exe'), stem + '.exe')
-        archive.writestr('manifest.json', json.dumps({'program':'Evrakçı', 'version':__version__,
+        archive.writestr('manifest.json', json.dumps({'program':'DeepFind', 'version':__version__,
                                                      'model_sha256':MODEL_SHA256},ensure_ascii=False))
     print(json.dumps({'incremental':str(incremental), 'size':incremental.stat().st_size,
                       'sha256':hashlib.sha256(incremental.read_bytes()).hexdigest()},ensure_ascii=False))

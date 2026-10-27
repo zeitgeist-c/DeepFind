@@ -24,9 +24,9 @@ def lisans_dosyalari(dist):
 
 def main():
     sys.path.insert(0, os.path.join(KOK, "src"))
-    from evrakci.version import __version__
+    from deepfind.version import __version__
     sys.path.insert(0, os.path.join(VENV))
-    satir = [f"# Evrakçı {__version__} — Üçüncü-taraf lisansları", "",
+    satir = [f"# DeepFind {__version__} — Üçüncü-taraf lisansları", "",
              "Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.",
              ""]
     for ad in ILGILI:

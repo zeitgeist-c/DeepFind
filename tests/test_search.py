@@ -7,10 +7,10 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import history, normalize, rank  # noqa: E402
-from evrakci import coordinator, dup, schema, vault  # noqa: E402
-from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
-from evrakci.migrate import ensure_v5  # noqa: E402
+from deepfind import history, normalize, rank  # noqa: E402
+from deepfind import coordinator, dup, schema, vault  # noqa: E402
+from deepfind.migrate import ensure_v4, ensure_v6  # noqa: E402
+from deepfind.migrate import ensure_v5  # noqa: E402
 
 PW = "test-sifresi-12345"
 
@@ -124,9 +124,9 @@ def test_dup01_ilk64k_ayri_grup(tmp_path):
 
 def _hafiza():
     import sqlite3
-    from evrakci import index, migrate, schema
-    from evrakci.extract import ExtractResult, Segment
-    from evrakci.scan import Entry
+    from deepfind import index, migrate, schema
+    from deepfind.extract import ExtractResult, Segment
+    from deepfind.scan import Entry
     con = sqlite3.connect(":memory:")
     schema.ensure_schema(con)
     ensure_v5(con)
@@ -151,7 +151,7 @@ def _yollar(r):
 
 
 def test_kayitli_arama_crud():
-    from evrakci import migrate
+    from deepfind import migrate
     con = _hafiza()
     try:
         migrate.ensure_archive(con)

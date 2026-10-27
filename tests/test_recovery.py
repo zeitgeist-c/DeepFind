@@ -17,8 +17,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import (backup, coordinator, recovery, schema, vault)  # noqa: E402
-from evrakci.migrate import ensure_current  # noqa: E402
+from deepfind import (backup, coordinator, recovery, schema, vault)  # noqa: E402
+from deepfind.migrate import ensure_current  # noqa: E402
 
 PW = "kurtarma-sifresi-1234"
 YENI = "yeni-kurtarma-sifresi-5678"

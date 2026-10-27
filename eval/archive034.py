@@ -2,8 +2,8 @@
 import json,os,platform,sqlite3,statistics,tempfile,time
 from pathlib import Path
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
-from evrakci import schema,migrate,rank,vault,theme
-from evrakci.vocab import ensure_v5
+from deepfind import schema,migrate,rank,vault,theme
+from deepfind.vocab import ensure_v5
 
 def pump(app,predicate=lambda:False,seconds=30):
     deadline=time.monotonic()+seconds
@@ -13,7 +13,7 @@ def pump(app,predicate=lambda:False,seconds=30):
     app.processEvents()
 
 def main():
-    from evrakci.version import __version__
+    from deepfind.version import __version__
     output=Path('build/archive'+__version__.replace('.','')); output.mkdir(parents=True,exist_ok=True)
     con=sqlite3.connect(':memory:'); schema.ensure_schema(con); ensure_v5(con); migrate.ensure_current(con)
     count=10000
@@ -26,11 +26,11 @@ def main():
     specific=rank.search_ranked(con,'tahsilat 9999')['results']; assert specific and specific[0]['name']=='9999.pdf'
     p95=sorted(durations)[int(len(durations)*.95)-1]
     from PySide6.QtWidgets import QApplication
-    from evrakci.app import AnaPencere
+    from deepfind.app import AnaPencere
     app=QApplication.instance() or QApplication([])
     from PySide6.QtGui import QFontDatabase
     QFontDatabase.addApplicationFont('C:/Windows/Fonts/segoeui.ttf')
-    with tempfile.TemporaryDirectory(prefix='evrakci-034-eval-') as directory:
+    with tempfile.TemporaryDirectory(prefix='deepfind-034-eval-') as directory:
         db=str(Path(directory)/'index.db'); password='synthetic-eval-034-1234'
         encrypted=vault.open_vault(db,password); migrate.ensure_current(encrypted)
         encrypted.execute("INSERT INTO files(path,name,ext,index_status) VALUES ('C:/synthetic/12345.pdf','12345.pdf','.pdf','ok')")
@@ -39,7 +39,7 @@ def main():
         for mode in ('acik','koyu'):
             for width,height in ((1500,1000),(1050,760)):
                 theme.apply(app,mode); window.resize(width,height); window.nav.setCurrentRow(0); app.processEvents()
-                from evrakci.archive_ui import layout_cards
+                from deepfind.archive_ui import layout_cards
                 layout_cards(window); app.processEvents()
                 for page,name in ((0,'ara'),(1,'ai'),(6,'ayarlar')):
                     window.nav.setCurrentRow(page); pump(app,lambda:bool(window._jobs))

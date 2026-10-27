@@ -29,11 +29,11 @@ MODES = ("sistem", "acik", "koyu")
 def install_turkish(app):
     from PySide6.QtCore import QLocale, QLibraryInfo, QTranslator
     QLocale.setDefault(QLocale(QLocale.Turkish, QLocale.Turkey))
-    if app is not None and not hasattr(app, "_evrakci_translation"):
+    if app is not None and not hasattr(app, "_deepfind_translation"):
         translator = QTranslator(app)
         if translator.load("qtbase_tr", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
             app.installTranslator(translator)
-        app._evrakci_translation = translator
+        app._deepfind_translation = translator
 
 
 def app_icon():
@@ -137,7 +137,7 @@ def pal(**over) -> dict:
     app = QApplication.instance()
     name = "acik"
     if app is not None:
-        name = app.property("evrakci_theme") or "acik"
+        name = app.property("deepfind_theme") or "acik"
     values = dict(TOKENS.get(name, TOKENS["acik"]))
     values.update(over)
     return values
@@ -303,12 +303,13 @@ def apply(app, mode: str) -> str:
     from PySide6.QtGui import QStyleHints
     install_turkish(app)
     from PySide6.QtCore import QSettings
-    QSettings("Evrakci", "Appearance").setValue("theme", mode)
-    app.setProperty("evrakci_theme_mode", mode)
-    if not getattr(app, "_evrakci_scheme_connected", False):
+    from . import identity
+    QSettings(identity.APP_IDENTITY, "Appearance").setValue("theme", mode)
+    app.setProperty("deepfind_theme_mode", mode)
+    if not getattr(app, "_deepfind_scheme_connected", False):
         app.styleHints().colorSchemeChanged.connect(
-            lambda _: apply(app, "sistem") if app.property("evrakci_theme_mode") == "sistem" else None)
-        app._evrakci_scheme_connected = True
+            lambda _: apply(app, "sistem") if app.property("deepfind_theme_mode") == "sistem" else None)
+        app._deepfind_scheme_connected = True
     if app.style().objectName().lower() != "fusion":
         app.setStyle("Fusion")
     dark = False
@@ -318,7 +319,7 @@ def apply(app, mode: str) -> str:
     except Exception:
         pass
     name = resolve(mode, dark)
-    app.setProperty("evrakci_theme", name)
+    app.setProperty("deepfind_theme", name)
     style = stylesheet(TOKENS[name])
     if app.styleSheet() != style:
         app.setStyleSheet(style)

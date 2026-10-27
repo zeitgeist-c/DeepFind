@@ -1,7 +1,7 @@
 """Toplu etiket okuma: N+1 yerine tek sorgu."""
 import sqlite3
 
-from evrakci import rank
+from deepfind import rank
 
 
 def _con():

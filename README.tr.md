@@ -1,12 +1,12 @@
-# Evrakçı — Windows için yerel, şifreli belge arama
+# DeepFind — Windows için yerel, şifreli belge arama
 
 > English: [README.md](./README.md)
 
 **Kaydettiğin dosya adını değil, hatırladığın belgeyi tarif et.**
 
-Evrakçı, klasörlerinde duran belgeleri indeksler — PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV ve taranmış JPG/PNG/TIFF — ve onları anlamına göre bulur. Dosyalar hiç taşınmaz. İndeks makinenin içinde SQLCipher ile şifreli bir kasada durur ve belgelerin hakkında hiçbir şey dışarı gönderilmez.
+DeepFind, klasörlerinde duran belgeleri indeksler — PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV ve taranmış JPG/PNG/TIFF — ve onları anlamına göre bulur. Dosyalar hiç taşınmaz. İndeks makinenin içinde SQLCipher ile şifreli bir kasada durur ve belgelerin hakkında hiçbir şey dışarı gönderilmez.
 
-![Evrakçı · Arama](./docs/screenshots/01-ara.png)
+![DeepFind · Arama](./docs/screenshots/01-ara.png)
 
 ---
 
@@ -158,7 +158,7 @@ Dört grup.
 
 ## Kurulum
 
-1. `Evrakçı-<sürüm>.exe` dosyasını [Releases](https://github.com/zeitgeist-c/Evrakçı/releases/latest) sayfasından indir.
+1. `DeepFind-<sürüm>.exe` dosyasını [Releases](https://github.com/zeitgeist-c/DeepFind/releases/latest) sayfasından indir.
 2. Çalıştır. Kurulum metin modelini, Vulkan/CPU motorlarını ve OCR bileşenlerini taşır; arama hemen çevrimdışı çalışır.
 3. İlk açılışta kasa şifresini ve en az bir klasörü seç.
 
@@ -183,9 +183,9 @@ Eski ONNX vektörleri yeni modelin vektörleriyle karıştırılmaz. Eski kasada
 
 | Ne | Nerede |
 |---|---|
-| Kasa | `%LOCALAPPDATA%\Evrakci\Data\evrakci.db` |
-| Yedekler | `%LOCALAPPDATA%\Evrakci\Backups` |
-| Hatırlanan giriş | `%LOCALAPPDATA%\Evrakci\Credentials` (DPAPI, Windows kullanıcısı başına) |
+| Kasa | `%LOCALAPPDATA%\DeepFind\Data\deepfind.db` |
+| Yedekler | `%LOCALAPPDATA%\DeepFind\Backups` |
+| Hatırlanan giriş | `%LOCALAPPDATA%\DeepFind\Credentials` (DPAPI, Windows kullanıcısı başına) |
 
 - Veritabanı SQLCipher ile şifrelenir; parola hiçbir yerde saklanmaz.
 - Yedekler kaynak belgeleri içermez.
@@ -212,7 +212,7 @@ $env:PYTHONPATH = 'src'
 
 `packaging/fetch_engine.py` resmî model ve motor sürümlerini projenin `build/embedding` alanına indirir ve özetlerini doğrular. BF16 yalnız geliştirici karşılaştırması içindir; dağıtıma Q8_0 girer.
 
-Sürümün tek kaynağı `src/evrakci/version.py` dosyasıdır. Düzeltme sürümleri `0.10.1 → 0.10.2 → 0.10.3` şeklinde ilerler.
+Sürümün tek kaynağı `src/deepfind/version.py` dosyasıdır. Düzeltme sürümleri `0.10.1 → 0.10.2 → 0.10.3` şeklinde ilerler.
 
 Gerçek kasa parolasını komut satırında kullanma.
 

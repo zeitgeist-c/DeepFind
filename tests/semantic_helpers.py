@@ -1,6 +1,6 @@
 """Controlled vectors for UI/metadata tests; real-model acceptance is separate."""
 import numpy as np
-from evrakci import embed
+from deepfind import embed
 
 def indexed_content(con,text):
     """Inspect stored extraction for lifecycle tests, independently of retrieval.

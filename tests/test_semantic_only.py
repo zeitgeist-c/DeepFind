@@ -2,7 +2,7 @@
 import sqlite3
 import numpy as np
 import pytest
-from evrakci import migrate,rank,embed,exclusions
+from deepfind import migrate,rank,embed,exclusions
 from test_hibrit import _duzen,_kasa,_kodla_b,_vektor,_dosya
 
 def test_fresh_schema_has_no_lexical_store():
@@ -90,7 +90,7 @@ def test_query_limits_and_empty_without_model(tmp_path):
     con.close()
 
 def test_gui_scan_cannot_finish_without_content_vectors(tmp_path,monkeypatch):
-    from evrakci import vault,coordinator,gom
+    from deepfind import vault,coordinator,gom
     from test_scan_progress import files
     source=tmp_path/'source';files(source,1)
     path=str(tmp_path/'vault.db')

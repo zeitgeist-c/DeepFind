@@ -33,15 +33,15 @@ def install_directory(current):
                 if root.is_absolute() and (root/'unins000.exe').is_file(): return root
         except OSError:
             continue
-    return Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'Evrakçı'
+    return Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'DeepFind'
 
 
 def spawn_installer(pid, setup, current, vault):
     setup, current = Path(setup).resolve(), Path(current).resolve()
     destination = install_directory(current)
     version = '.'.join(map(str,windows_file_version(setup)))
-    new_exe = destination / f'Evrakçı-{version}.exe'
-    script = setup.parent / 'evrakci-install.ps1'
+    new_exe = destination / f'DeepFind-{version}.exe'
+    script = setup.parent / 'deepfind-install.ps1'
     def quote(text): return "'" + str(text).replace("'", "''") + "'"
     # Start-Process needs a correctly quoted single argument string for Inno.
     arguments = ('/SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="' + str(destination)

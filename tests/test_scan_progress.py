@@ -1,8 +1,8 @@
 import os
 import time
 import numpy as np
-from evrakci import coordinator as C, job_queue as q, vault, migrate
-from evrakci.scan_progress import DocumentProgress
+from deepfind import coordinator as C, job_queue as q, vault, migrate
+from deepfind.scan_progress import DocumentProgress
 from test_scan_resume import database
 
 
@@ -29,8 +29,8 @@ def test_inventory_completes_before_any_source_content_is_read(tmp_path, monkeyp
 
 
 def test_worker_counts_all_roots_once_and_reuses_snapshot(tmp_path, monkeypatch):
-    from evrakci.app import TaramaIsci
-    from evrakci import gom,embed
+    from deepfind.app import TaramaIsci
+    from deepfind import gom,embed
     from semantic_helpers import FixedSession
     monkeypatch.setattr(gom,'model_var_mi',lambda:True)
     monkeypatch.setattr(embed,'isit_oturumu',lambda **kwargs:FixedSession())
@@ -67,7 +67,7 @@ def test_worker_counts_all_roots_once_and_reuses_snapshot(tmp_path, monkeypatch)
 
 
 def test_inventory_cancel_never_reads_content_or_reports_known_total(tmp_path,monkeypatch):
-    from evrakci.app import TaramaIsci
+    from deepfind.app import TaramaIsci
     root=tmp_path/'source';files(root,30)
     path=str(tmp_path/'vault.db');password='synthetic-cancel-1234'
     con=vault.open_vault(path,password);migrate.ensure_current(con);con.close()
@@ -88,7 +88,7 @@ def test_inventory_cancel_never_reads_content_or_reports_known_total(tmp_path,mo
 
 
 def test_document_is_not_complete_while_ocr_or_embedding_is_missing():
-    from evrakci.embed import MODEL_VER
+    from deepfind.embed import MODEL_VER
     con=database()
     fid=con.execute("INSERT INTO files(path,name,ext,index_status) VALUES ('c:/x','x','.pdf','ok')").lastrowid
     sid=con.execute("INSERT INTO segments(file_id,kind,label,raw_text) VALUES (?,'body','Sayfa','test')",(fid,)).lastrowid
@@ -108,7 +108,7 @@ def test_document_is_not_complete_while_ocr_or_embedding_is_missing():
 
 def test_pause_time_is_excluded_from_phase_eta(monkeypatch):
     from types import SimpleNamespace
-    from evrakci import app
+    from deepfind import app
     clock=[100.0];monkeypatch.setattr(app,'time',SimpleNamespace(monotonic=lambda:clock[0]))
     worker=app.TaramaIsci('synthetic.db','synthetic',[])
     worker.report_progress({'phase_key':'content','phase_done':1,'phase_total':10},{})
@@ -119,7 +119,7 @@ def test_pause_time_is_excluded_from_phase_eta(monkeypatch):
 
 
 def test_multi_window_document_is_counted_once(tmp_path, monkeypatch):
-    from evrakci import extract
+    from deepfind import extract
     root=tmp_path/'source';files(root,1)
     con=database(tmp_path/'vault.db');cursors=[]
     def window(path,ext,size,cursor=0):

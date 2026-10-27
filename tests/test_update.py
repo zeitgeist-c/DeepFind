@@ -12,31 +12,31 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import update  # noqa: E402
+from deepfind import update  # noqa: E402
 
 
 GERCEK_YAYIN = {
     "tag_name": "v0.7.0",
     "html_url": "https://github.com/x/y/releases/tag/v0.7.0",
     "assets": [
-        {"name": "Evrakci-0.7.0.exe", "size": 169624127,
+        {"name": "DeepFind-0.7.0.exe", "size": 169624127,
          "digest": "sha256:" + "a" * 64,
          "browser_download_url": "https://x/zip"},
     ],
 }
 
 
-def _zip_uret(kok: Path, surum: str, *, program="Evrakçı", eksik_internal=False,
+def _zip_uret(kok: Path, surum: str, *, program="DeepFind", eksik_internal=False,
               icerik="paket") -> Path:
     """Gerçek kurulum ZIP'i gibi kök klasörlü bir arşiv üret."""
-    zip_yolu = kok / f"Evrakci-{surum}.zip"
+    zip_yolu = kok / f"DeepFind-{surum}.zip"
     with zipfile.ZipFile(zip_yolu, "w") as z:
-        z.writestr(f"Evrakçı-{surum}/manifest.json",
+        z.writestr(f"DeepFind-{surum}/manifest.json",
                    json.dumps({"program": program, "version": surum}))
-        z.writestr(f"Evrakçı-{surum}/Evrakçı-{surum}.exe", b"MZ" + icerik.encode())
-        z.writestr(f"Evrakçı-{surum}/Evrakçı-{surum}.bat", b"@echo off")
+        z.writestr(f"DeepFind-{surum}/DeepFind-{surum}.exe", b"MZ" + icerik.encode())
+        z.writestr(f"DeepFind-{surum}/DeepFind-{surum}.bat", b"@echo off")
         if not eksik_internal:
-            z.writestr(f"Evrakçı-{surum}/_internal/base.dll", b"dll")
+            z.writestr(f"DeepFind-{surum}/_internal/base.dll", b"dll")
     return zip_yolu
 
 
@@ -55,21 +55,21 @@ class SurumTestleri(unittest.TestCase):
 
 class YayinCozumleme(unittest.TestCase):
     def test_ascii_varlik_adiyla_bulunur(self):
-        # GitHub varlık adlarını latinleştirir (Evrakçı -> Evrakci).
+        # GitHub varlık adlarını latinleştirir (DeepFind -> Evrakci).
         info = update.parse_release(GERCEK_YAYIN)
         self.assertEqual(info.version, "0.7.0")
-        self.assertEqual(info.asset_name, "Evrakci-0.7.0.exe")
+        self.assertEqual(info.asset_name, "DeepFind-0.7.0.exe")
         self.assertEqual(info.sha256, "a" * 64)
         self.assertEqual(info.size, 169624127)
 
     def test_unicode_varlik_adiyla_bulunur(self):
         payload = dict(GERCEK_YAYIN, assets=[dict(GERCEK_YAYIN["assets"][0],
-                                                  name="Evrakçı-0.7.0.exe")])
-        self.assertEqual(update.parse_release(payload).asset_name, "Evrakçı-0.7.0.exe")
+                                                  name="DeepFind-0.7.0.exe")])
+        self.assertEqual(update.parse_release(payload).asset_name, "DeepFind-0.7.0.exe")
 
     def test_zip_only_release_does_not_move_installed_program(self):
         payload = dict(GERCEK_YAYIN, assets=[dict(GERCEK_YAYIN['assets'][0],
-                                                  name='Evrakci-0.7.0.zip')])
+                                                  name='DeepFind-0.7.0.zip')])
         with self.assertRaises(update.UpdateError):
             update.parse_release(payload)
 
@@ -95,14 +95,14 @@ class IndirmeTestleri(unittest.TestCase):
         veri = Path(tmp) / "paket.bin"
         veri.write_bytes(icerik)
         return update.UpdateInfo(
-            version="9.9.9", asset_name="Evrakci-9.9.9.zip",
+            version="9.9.9", asset_name="DeepFind-9.9.9.zip",
             download_url=veri.as_uri(), sha256=update._sha256_of(veri),
             size=bildirilen, page_url="")
 
     def test_ozet_dogrulanir(self):
         with tempfile.TemporaryDirectory() as tmp:
             info = self._sunucu(tmp, b"kurulum-icerigi", 15)
-            dest = Path(tmp) / "yeni" / "Evrakci-9.9.9.zip"
+            dest = Path(tmp) / "yeni" / "DeepFind-9.9.9.zip"
             update.download(info, dest)
             self.assertEqual(dest.read_bytes(), b"kurulum-icerigi")
 
@@ -141,8 +141,8 @@ class AcmaTestleri(unittest.TestCase):
             zip_yolu = _zip_uret(kok, "9.9.9")
             hedef = kok / "Updates"
             klasor = update.extract_zip(zip_yolu, hedef, "9.9.9")
-            self.assertEqual(klasor, hedef / "Evrakçı-9.9.9")
-            self.assertTrue((klasor / "Evrakçı-9.9.9.exe").is_file())
+            self.assertEqual(klasor, hedef / "DeepFind-9.9.9")
+            self.assertTrue((klasor / "DeepFind-9.9.9.exe").is_file())
             self.assertTrue((klasor / "_internal").is_dir())
 
     def test_yanlis_surum_manifesti_reddedilir(self):
@@ -172,7 +172,7 @@ class AcmaTestleri(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             kok = Path(tmp)
             hedef = kok / "Updates"
-            eski = hedef / "Evrakçı-9.9.9"
+            eski = hedef / "DeepFind-9.9.9"
             eski.mkdir(parents=True)
             (eski / "eski.txt").write_text("x", encoding="utf-8")
             zip_yolu = _zip_uret(kok, "9.9.9")
@@ -185,7 +185,7 @@ class AcmaTestleri(unittest.TestCase):
             kok = Path(tmp)
             zip_yolu = _zip_uret(kok, "9.9.9", program="Baska")
             info = update.UpdateInfo(
-                version="9.9.9", asset_name="Evrakci-9.9.9.zip",
+                version="9.9.9", asset_name="DeepFind-9.9.9.zip",
                 download_url=zip_yolu.as_uri(),
                 sha256=update._sha256_of(zip_yolu),
                 size=zip_yolu.stat().st_size, page_url="")
@@ -203,33 +203,33 @@ class HazirlamaTestleri(unittest.TestCase):
             kok = Path(tmp)
             zip_yolu = _zip_uret(kok, "9.9.9")
             info = update.UpdateInfo(
-                version="9.9.9", asset_name="Evrakci-9.9.9.zip",
+                version="9.9.9", asset_name="DeepFind-9.9.9.zip",
                 download_url=zip_yolu.as_uri(), sha256=update._sha256_of(zip_yolu),
                 size=zip_yolu.stat().st_size, page_url="")
             with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(kok / "lad")}):
                 klasor = update.prepare(info)
-            self.assertTrue((klasor / "Evrakçı-9.9.9.exe").is_file())
+            self.assertTrue((klasor / "DeepFind-9.9.9.exe").is_file())
             # ZIP yerleşme hazırlığından sonra da duruyor (bekçi betik siler).
-            self.assertTrue((kok / "lad" / "Evrakci" / "Updates" /
-                             "Evrakçı-9.9.9.zip").is_file())
+            self.assertTrue((kok / "lad" / "DeepFind" / "Updates" /
+                             "DeepFind-9.9.9.zip").is_file())
 
 
 class BekciBetikTestleri(unittest.TestCase):
     def test_betik_pid_bekler_yeni_exeyi_baslatir_ve_siler(self):
         with tempfile.TemporaryDirectory() as tmp:
             kok = Path(tmp)
-            hazir = kok / "Updates" / "Evrakçı-9.9.9"
+            hazir = kok / "Updates" / "DeepFind-9.9.9"
             hazir.mkdir(parents=True)
-            exe = hazir / "Evrakçı-9.9.9.exe"
+            exe = hazir / "DeepFind-9.9.9.exe"
             exe.write_bytes(b"MZ")
-            (hazir / "Evrakçı-9.9.9.zip").write_bytes(b"z")  # temizlik hedefi
-            calisan = kok / "kurulu" / "Evrakçı-9.9.8.exe"
+            (hazir / "DeepFind-9.9.9.zip").write_bytes(b"z")  # temizlik hedefi
+            calisan = kok / "kurulu" / "DeepFind-9.9.8.exe"
             calisan.parent.mkdir()
             calisan.write_bytes(b"MZ")
 
-            with mock.patch("evrakci.update.subprocess.Popen") as popen:
+            with mock.patch("deepfind.update.subprocess.Popen") as popen:
                 betik = update.spawn_swap(4242, hazir, calisan,
-                                          "C:\\kasa\\evrakci.db")
+                                          "C:\\kasa\\deepfind.db")
             govde = betik.read_text(encoding="utf-8")
             self.assertIn("PID=4242", govde)
             self.assertIn('" %PID% "', govde)                 # tasklist beklemesi
@@ -237,7 +237,7 @@ class BekciBetikTestleri(unittest.TestCase):
             self.assertIn(str(calisan.parent), govde)         # hedef üst dizin
             self.assertIn("--restarted", govde)
             self.assertIn("--kasa", govde)
-            self.assertIn("Evrakçı-9.9.9.exe", govde)
+            self.assertIn("DeepFind-9.9.9.exe", govde)
             self.assertIn("del ", govde)                      # kendini siler
             self.assertEqual(popen.call_count, 1)
 
@@ -256,10 +256,10 @@ class BekciBetikTestleri(unittest.TestCase):
             with mock.patch.dict(os.environ, {"LOCALAPPDATA": tmp}):
                 import time as _z
                 kok = update.updates_dir()
-                aktif = kok / "Evrakçı-9.9.9"
+                aktif = kok / "DeepFind-9.9.9"
                 aktif.mkdir()
                 (aktif / "calisan.txt").write_text("x", encoding="utf-8")
-                eski = kok / "Evrakçı-9.9.8"
+                eski = kok / "DeepFind-9.9.8"
                 eski.mkdir()
                 (eski / "eski.txt").write_text("x", encoding="utf-8")
                 artik = kok / "artik.zip"
@@ -292,7 +292,7 @@ class AkisTestleri(unittest.TestCase):
 
     def _pencere(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        from evrakci import app as app_module
+        from deepfind import app as app_module
         pencere = app_module.AnaPencere.__new__(app_module.AnaPencere)
         pencere._guncelleme_isci = None
         pencere._guncelleme_thread = None
@@ -324,7 +324,7 @@ class AkisTestleri(unittest.TestCase):
     def test_denetim_sonucu_dugmelere_yansir(self):
         app_module, pencere = self._pencere()
         pencere._guncelleme_sessiz = False
-        info = update.UpdateInfo("9.9.9", "Evrakci-9.9.9.zip", "u", "s",
+        info = update.UpdateInfo("9.9.9", "DeepFind-9.9.9.zip", "u", "s",
                                  169624127, "p")
         app_module.AnaPencere._guncelleme_denetlendi(pencere, info)
         self.assertFalse(pencere.update_denetle_btn.isVisible())

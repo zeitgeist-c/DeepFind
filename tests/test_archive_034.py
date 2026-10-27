@@ -1,10 +1,10 @@
 """Archive completeness, retrieval correctness and bounded UI regressions."""
 import sqlite3,time,os
 import pytest
-from evrakci import schema,migrate,index,coordinator,extract,vault
-from evrakci.scan import Entry
-from evrakci.extract import Segment,ExtractResult
-from evrakci.migrate import ensure_v5
+from deepfind import schema,migrate,index,coordinator,extract,vault
+from deepfind.scan import Entry
+from deepfind.extract import Segment,ExtractResult
+from deepfind.migrate import ensure_v5
 
 def database():
     con=sqlite3.connect(':memory:'); schema.ensure_schema(con); ensure_v5(con); migrate.ensure_current(con); return con
@@ -29,7 +29,7 @@ def test_reindex_failure_preserves_old_content(tmp_path):
     past=time.time()-10; os.utime(file,(past,past))
     con=database(); signature=f'{file.stat().st_size}:{file.stat().st_mtime_ns}'
     fid=index.index_entry(con,Entry(str(file),file.name,'.xlsx',3,1),ExtractResult([Segment('sheet',None,'sheet','eski tahsilat içeriği')]))
-    from evrakci import job_queue as queue
+    from deepfind import job_queue as queue
     queue.enqueue(con,fid,signature); con.commit(); task=queue.claim(con)
     outcome=coordinator._process_job(con,task,[],str(tmp_path),str(root))
     assert outcome=='retry'
@@ -44,7 +44,7 @@ def test_chunk_offsets_cover_entire_source():
 
 def test_image_missing_ocr_stays_partial_and_queued(tmp_path,monkeypatch):
     from PIL import Image
-    from evrakci import ocr
+    from deepfind import ocr
     root=tmp_path/'images'; root.mkdir(); image=root/'receipt.png'; Image.new('RGB',(60,60),'white').save(image)
     past=time.time()-10; os.utime(image,(past,past))
     db=str(tmp_path/'index.db'); con=vault.open_vault(db,'synthetic-archive-1234'); migrate.ensure_current(con)
@@ -96,7 +96,7 @@ def test_docx_windows_preserve_last_paragraph_and_offsets(tmp_path):
 def test_preview_loads_beyond_sixty_sections_and_discards_closed_result(tmp_path):
     os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
     from PySide6.QtWidgets import QApplication
-    from evrakci.preview import Onizleme
+    from deepfind.preview import Onizleme
     app=QApplication.instance() or QApplication([])
     db=str(tmp_path/'preview.db'); password='synthetic-preview-1234'
     con=vault.open_vault(db,password); migrate.ensure_current(con)
@@ -117,7 +117,7 @@ def test_preview_loads_beyond_sixty_sections_and_discards_closed_result(tmp_path
 def test_failed_migration_restores_verified_previous_vault(tmp_path,monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
     from PySide6.QtWidgets import QApplication
-    from evrakci.app import AnaPencere
+    from deepfind.app import AnaPencere
     app=QApplication.instance() or QApplication([])
     db=str(tmp_path/'old.db'); password='synthetic-upgrade-1234'
     con=vault.open_vault(db,password); migrate.ensure_current(con)

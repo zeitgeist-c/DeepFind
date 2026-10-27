@@ -4,8 +4,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import ocr_setup, schema, vault
-from evrakci.migrate import ensure_current, ensure_v7, OCR_VERSION
+from deepfind import ocr_setup, schema, vault
+from deepfind.migrate import ensure_current, ensure_v7, OCR_VERSION
 
 
 def test_ready_without_downloads():
@@ -69,7 +69,7 @@ def test_engine_backfill_requeues_low_quality_once(tmp_path):
 def test_first_run_dialog_waits_for_verify_thread(monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
-    from evrakci import ocr_setup_ui
+    from deepfind import ocr_setup_ui
 
     app = QApplication.instance() or QApplication([])
     state = {"ready": False}

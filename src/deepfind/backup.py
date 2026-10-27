@@ -17,8 +17,8 @@ import os
 import time
 
 AUTO_KEEP = 7
-AUTO_PREFIX = "evrakci-indeks-"
-MANUAL_PREFIX = "evrakci-indeks-manuel-"
+AUTO_PREFIX = "deepfind-indeks-"
+MANUAL_PREFIX = "deepfind-indeks-manuel-"
 
 
 def _stamp() -> str:

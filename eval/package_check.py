@@ -9,13 +9,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from evrakci.version import __version__
+from deepfind.version import __version__
 
 
 def main():
-    stem = "Evrakçı-" + __version__
+    stem = "DeepFind-" + __version__
     archive = ROOT / (stem + ".zip")
-    with tempfile.TemporaryDirectory(prefix="evrakci-package-check-") as directory:
+    with tempfile.TemporaryDirectory(prefix="deepfind-package-check-") as directory:
         with zipfile.ZipFile(archive) as z:
             assert z.testzip() is None
             z.extractall(directory)
@@ -24,8 +24,8 @@ def main():
         assert exe.is_file()
         assert stem + ".exe" in (package / (stem + ".bat")).read_text(encoding="utf-8")
         manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-        assert manifest["version"] == __version__ and manifest["program"] == "Evrakçı"
-        assert len(list((package / "_internal" / "evrakci" / "assets").glob("*.svg"))) == 4
+        assert manifest["version"] == __version__ and manifest["program"] == "DeepFind"
+        assert len(list((package / "_internal" / "deepfind" / "assets").glob("*.svg"))) == 4
         report = Path(directory) / "smoke.json"
         # Duman 60 sn'yi asar: 216 MB soguk acilis + transformers/ORT + model isinma
         # olculdu (~85 sn bu makinede). Esik olcume bagli; davranis degistirmez.

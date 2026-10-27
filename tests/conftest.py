@@ -8,7 +8,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_model_assets(tmp_path, monkeypatch):
-    from evrakci import engine, embed
+    from deepfind import engine, embed
     monkeypatch.setattr(engine, 'asset_root', lambda: tmp_path / 'absent-model-assets')
     monkeypatch.setattr(embed, 'isit_oturumu', lambda *a, **k: None)
     monkeypatch.setattr(embed, 'hazir_oturum', lambda *a, **k: None)

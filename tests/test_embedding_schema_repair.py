@@ -2,7 +2,7 @@ import sqlite3
 import pytest
 import numpy as np
 
-from evrakci import migrate, coordinator, gom, embed, vault, job_queue
+from deepfind import migrate, coordinator, gom, embed, vault, job_queue
 from test_scan_progress import files
 
 

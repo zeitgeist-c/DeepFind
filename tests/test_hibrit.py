@@ -6,8 +6,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import embed, rank, vault  # noqa: E402
-from evrakci import migrate as migrate_mod  # noqa: E402
+from deepfind import embed, rank, vault  # noqa: E402
+from deepfind import migrate as migrate_mod  # noqa: E402
 
 PW = "test-sifresi-12345"
 
@@ -21,9 +21,9 @@ def _kasa(tmp_path):
 
 
 def _dosya(con, ad, metin):
-    from evrakci import extract as ex_mod
-    from evrakci import index as index_mod
-    from evrakci import scan as scan_mod
+    from deepfind import extract as ex_mod
+    from deepfind import index as index_mod
+    from deepfind import scan as scan_mod
 
     giris = scan_mod.Entry(ad, ad, ".txt", 10, 20)
     sonuc = ex_mod.ExtractResult(

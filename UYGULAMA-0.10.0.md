@@ -1,4 +1,4 @@
-# Evrakçı 0.10.0 uygulama planı
+# DeepFind 0.10.0 uygulama planı
 
 Başlangıç: 21.10.2026, temel HEAD `9f51658`. Kullanıcı 21.10.2026 tarihinde inceleme raporundaki kapsamı onayladı. Harici yayın yetkisi verilmedi.
 

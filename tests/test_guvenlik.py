@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from evrakci import rank, update
+from deepfind import rank, update
 
 
 def _payload(tag, name):
@@ -27,11 +27,11 @@ def _payload(tag, name):
 ])
 def test_yayin_surumu_yol_tasimaz(tag):
     with pytest.raises(update.UpdateError):
-        update.parse_release(_payload(tag, "Evrakci-0.11.0.exe"))
+        update.parse_release(_payload(tag, "DeepFind-0.11.0.exe"))
 
 
 def test_gecerli_surum_kabul_edilir():
-    info = update.parse_release(_payload("v0.11.0", "Evrakci-0.11.0.exe"))
+    info = update.parse_release(_payload("v0.11.0", "DeepFind-0.11.0.exe"))
     assert info.version == "0.11.0"
     assert "/" not in info.version and "\\" not in info.version
 

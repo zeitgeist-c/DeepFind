@@ -7,9 +7,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from evrakci import backup, coordinator, extract, schema, vault
-from evrakci.migrate import ensure_v7
-from evrakci.migrate import ensure_v5
+from deepfind import backup, coordinator, extract, schema, vault
+from deepfind.migrate import ensure_v7
+from deepfind.migrate import ensure_v5
 
 PW = "denetim-sifresi-1234"
 APP = None
@@ -57,7 +57,7 @@ def test_drive_root_exclusion_matches_all_files_under_it(tmp_path):
     backslash arıyor ve hiçbir dosyayı dışlayamıyordu; kök kaldırma
     indeks boşaltılamıyordu.
     """
-    from evrakci import exclusions
+    from deepfind import exclusions
     # normpath sürücü kökünü ayraçlı tutar — gerçek canlı durum
     root = os.path.normpath("C:\\")
     assert root == "C:\\" or root == "C:/"
@@ -73,7 +73,7 @@ def test_drive_root_exclusion_matches_all_files_under_it(tmp_path):
 
 def test_purge_rule_handles_drive_root_and_literal_wildcards(tmp_path):
     """Hariç temizliği sürücü kökünde çalışır, SQL wildcard'ını literal alır."""
-    from evrakci import exclusions
+    from deepfind import exclusions
     con, db = make_vault(tmp_path)
     sep = os.sep
     drive = os.path.normpath("C:" + sep)
@@ -116,7 +116,7 @@ def test_drive_root_removal_empties_index(tmp_path):
     App._kok_kaldir'ın veri mantığı: kaldırılan kökün altındaki kayıtlar
     silinir; diğer köklerin kayıtları korunur.
     """
-    from evrakci import exclusions
+    from deepfind import exclusions
     con, db = make_vault(tmp_path)
     con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?, ?)",
                 ("C:\\", os.path.normpath("C:\\").lower()))
@@ -174,8 +174,8 @@ def test_failed_password_verification_keeps_original(tmp_path, monkeypatch):
 
 def test_filename_does_not_supply_a_lexical_fallback(tmp_path):
     con, db = make_vault(tmp_path)
-    from evrakci import rank
-    from evrakci.scan import Entry
+    from deepfind import rank
+    from deepfind.scan import Entry
     p = str(tmp_path / "Ankara-vergi-2024.docx")
     fid = coordinator.ensure_file(con, Entry(p, os.path.basename(p), ".docx", 10, 1))
     coordinator.write_revision(con, fid, "10:1", extract.ExtractResult(
@@ -201,7 +201,7 @@ def test_utf8_budget_removes_excess_segments_and_future_schema_stops(tmp_path, m
 def test_password_confirmation_and_wrong_login_stay_open():
     global APP
     from PySide6.QtWidgets import QApplication, QDialog
-    from evrakci.auth import ParolaDialog
+    from deepfind.auth import ParolaDialog
     app = QApplication.instance() or QApplication([])
     APP = app
     d = ParolaDialog(change=True)

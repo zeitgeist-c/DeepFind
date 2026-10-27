@@ -1,4 +1,4 @@
-"""Vektor motoru testleri (FAZ 1). Gercek model yalnız EVRAKCI_GERCEK_MODEL=1 ile."""
+"""Vektor motoru testleri (FAZ 1). Gercek model yalnız DEEPFIND_GERCEK_MODEL=1 ile."""
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 def test_kirpma_birim_kurede():
-    from evrakci import embed
+    from deepfind import embed
 
     h = np.arange(24, dtype=np.float32).reshape(1, 3, 8)
     m = np.ones((1, 3))
@@ -21,7 +21,7 @@ def test_kirpma_birim_kurede():
 
 
 def test_maske_sifir_satiri_yok_sayar():
-    from evrakci import embed
+    from deepfind import embed
 
     h = np.ones((1, 4, 6), dtype=np.float32)
     m = np.array([[1, 1, 0, 0]])
@@ -31,7 +31,7 @@ def test_maske_sifir_satiri_yok_sayar():
 
 
 def test_sabitler():
-    from evrakci import embed
+    from deepfind import embed
 
     assert embed.DIM == 256
     assert embed.MODEL_VER == "eg2-q8-256-v2"
@@ -39,18 +39,18 @@ def test_sabitler():
     assert embed.BELGE_ONEKI == "title: none | text: "
 
 
-GERCEK = os.environ.get("EVRAKCI_GERCEK_MODEL") == "1"
+GERCEK = os.environ.get("DEEPFIND_GERCEK_MODEL") == "1"
 
 
 def test_isci_oturumu_yoksa_none(tmp_path):
-    from evrakci import embed
+    from deepfind import embed
 
     assert embed.hazir_oturum(str(tmp_path / "yok.onnx")) is None
 
 
 @pytest.mark.skipif(not GERCEK, reason="Gerçek motor ayrı kabul betiğinde sınanır")
 def test_isci_oturumu_onbellekler():
-    from evrakci import embed
+    from deepfind import embed
 
     ot = embed.isit_oturumu()
     assert ot is not None
@@ -59,7 +59,7 @@ def test_isci_oturumu_onbellekler():
 
 
 def _model_var() -> bool:
-    from evrakci import gom
+    from deepfind import gom
 
     return gom.model_var_mi()
 
@@ -69,7 +69,7 @@ def test_gercek_model_dumani():
         return
     import time
 
-    from evrakci import embed
+    from deepfind import embed
 
     ot = embed.Oturum()
     docs = ["elektrik faturasi tutar 1.250 TL", "kira sozlesmesi aylik 40.000 TL"]

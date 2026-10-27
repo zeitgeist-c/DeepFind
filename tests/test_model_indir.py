@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 def test_indir_dogrular(tmp_path):
-    from evrakci import model_indir
+    from deepfind import model_indir
 
     kaynak = tmp_path / "kaynak.onnx"
     kaynak.write_bytes(b"sahte-model-icerigi" * 100)
@@ -27,7 +27,7 @@ def test_indir_dogrular(tmp_path):
 def test_bozuk_oet_reddedilir(tmp_path):
     import pytest
 
-    from evrakci import model_indir
+    from deepfind import model_indir
 
     kaynak = tmp_path / "kaynak.onnx"
     kaynak.write_bytes(b"bozuk-icerik")
@@ -38,7 +38,7 @@ def test_bozuk_oet_reddedilir(tmp_path):
 
 
 def test_gerekli_mi(tmp_path):
-    from evrakci import model_indir
+    from deepfind import model_indir
 
     yol = str(tmp_path / "yok.onnx")
     assert model_indir.gerekli_mi(yol) is True
@@ -47,9 +47,9 @@ def test_gerekli_mi(tmp_path):
 def test_varsayilan_hedef_yonetilen_alan(tmp_path):
     import os
 
-    from evrakci import model_indir
+    from deepfind import model_indir
 
-    from evrakci.engine import shared_model_path
+    from deepfind.engine import shared_model_path
     hedef = model_indir.hedef_yol()
     assert os.path.abspath(hedef) == str(shared_model_path())
     kaynak = str(tmp_path / "arsiv")
@@ -61,7 +61,7 @@ def kwargs_url(p):
 
 
 def test_small_update_accepts_installed_or_legacy_model(tmp_path, monkeypatch):
-    from evrakci import model_indir, engine
+    from deepfind import model_indir, engine
     assets = tmp_path / '_internal' / 'embedding'
     assets.mkdir(parents=True)
     (tmp_path / 'unins000.exe').write_bytes(b'test')
@@ -80,7 +80,7 @@ def test_small_update_accepts_installed_or_legacy_model(tmp_path, monkeypatch):
 
 
 def test_portable_model_cannot_select_small_installer(tmp_path, monkeypatch):
-    from evrakci import model_indir, engine
+    from deepfind import model_indir, engine
     assets = tmp_path / '_internal' / 'embedding'
     monkeypatch.setattr(engine, 'asset_root', lambda: assets)
     monkeypatch.setattr(model_indir, 'gerekli_mi', lambda path=None: path != str(assets / model_indir.MODEL_DOSYA))
@@ -88,8 +88,8 @@ def test_portable_model_cannot_select_small_installer(tmp_path, monkeypatch):
 
 
 def test_runtime_prefers_model_beside_installed_exe(tmp_path, monkeypatch):
-    from evrakci import engine
-    assets = tmp_path / 'Program Files' / 'Evrakçı' / '_internal' / 'embedding'
+    from deepfind import engine
+    assets = tmp_path / 'Program Files' / 'DeepFind' / '_internal' / 'embedding'
     assets.mkdir(parents=True)
     model = assets / engine.MODEL_DOSYA
     model.write_bytes(b'test')

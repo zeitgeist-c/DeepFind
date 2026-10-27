@@ -14,9 +14,9 @@ DEFAULT_VAULT = str(paths.vault_db())
 
 def _load():
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from evrakci import vault, schema, scan, extract, index, search  # noqa: E402
-    from evrakci import coordinator, exclusions, history, rank  # noqa: E402
-    from evrakci.migrate import ensure_v4  # noqa: E402
+    from deepfind import vault, schema, scan, extract, index, search  # noqa: E402
+    from deepfind import coordinator, exclusions, history, rank  # noqa: E402
+    from deepfind.migrate import ensure_v4  # noqa: E402
     return vault, schema, scan, extract, index, search, rank, history, None, \
         coordinator, exclusions, ensure_v4
 
@@ -24,7 +24,7 @@ def _load():
 def _open_db(args):
     """Kasa ac + sema zincirini uygula (v3 -> v7, idempotent)."""
     vault, schema, _s, _e, _i, _se, _r, _h, _v, _c, _x, _m = _load()
-    from evrakci.migrate import ensure_current
+    from deepfind.migrate import ensure_current
     pw = args.sifre
     if not pw:
         # Sifresiz kasa: ic anahtar acar, sormadan devam edilir.
@@ -39,8 +39,8 @@ def _open_db(args):
 
 def cmd_tani(args) -> int:
     """Tani ciktisi: surumler, sayilar, OCR durumu, yedek durumu (sirsiz)."""
-    from evrakci.version import __version__
-    from evrakci import ocr as _ocr
+    from deepfind.version import __version__
+    from deepfind import ocr as _ocr
     con = _open_db(args)
     try:
         meta = {k: v for k, v in con.execute("SELECT k, v FROM schema_meta").fetchall()}
@@ -65,7 +65,7 @@ def cmd_tani(args) -> int:
         ram_mb = _ocr.avail_ram()
     except Exception:
         ram_mb = None
-    print(f"Evrakci {__version__}", flush=True)
+    print(f"DeepFind {__version__}", flush=True)
     print(f"sema={meta.get('schema_version', '?')} "
           f"normalizer={meta.get('normalizer_version', '?')} "
           f"extractor={meta.get('extractor_version', '?')} "
@@ -125,7 +125,7 @@ def cmd_ara(args) -> int:
     _vault, _schema, _s3, _e4, _i5, _v1search, rank, history, _v9, _c10, _e11, _m4 = _load()
     con = _open_db(args)
     kw = {"year": args.yil, "ext": args.tur} if (args.yil or args.tur) else {}
-    from evrakci import embed
+    from deepfind import embed
     embed.isit_oturumu()
     try:
         out = rank.search_semantic(con, args.sorgu, limit=int(args.limit), **kw)
@@ -157,7 +157,7 @@ def cmd_ara(args) -> int:
 
 def cmd_yedek(args) -> int:
     _vault, _schema, *_rest, _m4 = _load()
-    from evrakci import backup as _yb
+    from deepfind import backup as _yb
     con = _open_db(args)
     try:
         y = _yb.create_backup(con, args.kasa, args.sifre or "", args.hedef,
@@ -172,7 +172,7 @@ def cmd_yedek(args) -> int:
 
 
 def cmd_yedek_liste(args) -> int:
-    from evrakci import backup as _yb
+    from deepfind import backup as _yb
     for b in _yb.list_backups(args.hedef):
         print(f"- {os.path.basename(b['path'])} "
               f"({'manuel' if b['manuel'] else 'otomatik'}, {b['boyut'] // 1024} KB)",
@@ -182,7 +182,7 @@ def cmd_yedek_liste(args) -> int:
 
 def cmd_geri_yukle(args) -> int:
     _vault, _schema, *_rest, _m4 = _load()
-    from evrakci import backup as _yb
+    from deepfind import backup as _yb
     con = _open_db(args)  # mevcut sifre dogrulamasi
     con.close()
     rap = _yb.restore_replace(args.kasa, args.sifre or "", args.yedek, args.staging,
@@ -194,7 +194,7 @@ def cmd_geri_yukle(args) -> int:
 
 def cmd_parola(args) -> int:
     _vault, _schema, *_rest, _m4 = _load()
-    from evrakci import backup as _yb
+    from deepfind import backup as _yb
     try:
         rap = _yb.change_password(args.kasa, args.sifre or "", args.yeni, args.hedef)
     except ValueError as e:

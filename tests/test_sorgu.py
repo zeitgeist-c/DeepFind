@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import sorgu  # noqa: E402
+from deepfind import sorgu  # noqa: E402
 
 TURLER = ["tümü", ".pdf", ".xlsx", ".docx"]
 

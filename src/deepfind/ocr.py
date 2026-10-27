@@ -83,7 +83,7 @@ def needs_ocr(text: str | None) -> bool:
 def _rmtree_tmp(path: str) -> None:
     """Yalniz kontrollu temp (ocr-tmp alti) silinir; kaynak silme burada olmaz."""
     import shutil
-    base = os.environ.get("EVRAKCI_TEMP") or ""
+    base = os.environ.get("DEEPFIND_TEMP") or ""
     try:
         ap = os.path.abspath(path)
         if base and not ap.startswith(os.path.abspath(base) + os.sep):
@@ -96,15 +96,15 @@ def _rmtree_tmp(path: str) -> None:
 
 
 def temp_dir(vault_dir: str) -> str:
-    """Kontrollu temp: kasa disi, Evrakci/Temp altinda ise ozel dizin."""
-    base = os.environ.get("EVRAKCI_TEMP") or os.path.join(vault_dir, "ocr-tmp")
+    """Kontrollu temp: kasa disi, DeepFind/Temp altinda ise ozel dizin."""
+    base = os.environ.get("DEEPFIND_TEMP") or os.path.join(vault_dir, "ocr-tmp")
     os.makedirs(base, exist_ok=True)
     return tempfile.mkdtemp(prefix="ocr-", dir=base)
 
 
 def clean_stale(vault_dir: str, max_age_sec: int = 86400) -> int:
     """Cokme sonrasi kalan temp dizinlerini temizle. Donus: silinen sayisi."""
-    base = os.environ.get("EVRAKCI_TEMP") or os.path.join(vault_dir, "ocr-tmp")
+    base = os.environ.get("DEEPFIND_TEMP") or os.path.join(vault_dir, "ocr-tmp")
     n = 0
     try:
         names = os.listdir(base)
@@ -215,7 +215,7 @@ def ocr_page(pdf_path: str, pageno_0: int, workdir: str) -> OcrPage:
         text, mean, words = recognize_png(png)
     except RuntimeError as exc:
         import logging
-        logging.getLogger("evrakci.ocr").warning("OCR sayfa motor hatasi: %s", exc)
+        logging.getLogger("deepfind.ocr").warning("OCR sayfa motor hatasi: %s", exc)
         res.method = "unavailable"
         res.error_code = "ENGINE_UNAVAILABLE"
     except Exception:

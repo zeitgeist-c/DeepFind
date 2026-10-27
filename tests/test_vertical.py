@@ -6,9 +6,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import extract, index, scan, schema, vault  # noqa: E402
-from evrakci.migrate import ensure_v6  # noqa: E402
-from evrakci.migrate import ensure_v5  # noqa: E402
+from deepfind import extract, index, scan, schema, vault  # noqa: E402
+from deepfind.migrate import ensure_v6  # noqa: E402
+from deepfind.migrate import ensure_v5  # noqa: E402
 
 PW = "test-sifresi-12345"
 
@@ -78,12 +78,12 @@ def test_surum_esitligi():
     import tomllib
     with open(os.path.join(os.path.dirname(__file__), "..", "pyproject.toml"), "rb") as f:
         project = tomllib.load(f)
-        assert project["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "evrakci.version.__version__"
+        assert project["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "deepfind.version.__version__"
         assert "version" in project["project"]["dynamic"]
 
 
 def test_router_bayrak_degerini_komut_sanmaz():
-    from evrakci.__main__ import _ilk_komut, main
+    from deepfind.__main__ import _ilk_komut, main
     assert _ilk_komut(["--kasa", "C:/x/k.db", "--sifre", "pw", "tani"]) == "tani"
     assert _ilk_komut(["--kasa", "C:/x/k.db"]) is None
     assert _ilk_komut([]) is None

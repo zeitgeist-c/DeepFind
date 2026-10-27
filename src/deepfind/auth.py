@@ -24,14 +24,14 @@ class ParolaDialog(QDialog):
         self.mode = mode or ("degistir" if change else "giris")
         self.change = self.mode in ("degistir", "ekle")
         pencere, eyebrow, hero, aciklama = {
-            "giris": ("Evrakçı • Kasa kilitli", "Güvenli giriş", "Arşivinize\ngüvenle dönün.",
+            "giris": ("DeepFind • Kasa kilitli", "Güvenli giriş", "Arşivinize\ngüvenle dönün.",
                       "Belgelerinize ulaşmak için yerel kasanızın kilidini açın."),
-            "degistir": ("Evrakçı • Şifre değiştir", "Kasa güvenliği", "Yeni bir şifre belirleyin",
+            "degistir": ("DeepFind • Şifre değiştir", "Kasa güvenliği", "Yeni bir şifre belirleyin",
                          "Mevcut şifrenizi doğrulayın ve yeni şifrenizi iki kez girin."),
-            "ekle": ("Evrakçı • Şifre ekle", "Kasa güvenliği", "Uygulama şifresi ekleyin",
+            "ekle": ("DeepFind • Şifre ekle", "Kasa güvenliği", "Uygulama şifresi ekleyin",
                      "Sonraki açılışlarda kasa bu şifreyle açılır. Şifre en az 12 karakter olmalı "
                      "ve iki kez girilmeli."),
-            "kurtarma": ("Evrakçı • Kurtarma anahtarı", "Kurtarma", "Anahtarla kasayı açın",
+            "kurtarma": ("DeepFind • Kurtarma anahtarı", "Kurtarma", "Anahtarla kasayı açın",
                          "Kasa şifrenizi unuttuysanız kurtarma anahtarınızı yapıştırın; "
                          "ardından yeni bir şifre belirleyeceksiniz."),
         }[self.mode]

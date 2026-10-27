@@ -1,8 +1,8 @@
 import os
 import time
 
-from evrakci import migrate, vault, backup
-from evrakci import startup
+from deepfind import migrate, vault, backup
+from deepfind import startup
 
 
 def test_acilis_yuzde_ve_sayac_gosterir(tmp_path):
@@ -59,11 +59,11 @@ def test_legacy_preparation_stays_responsive_and_reports_backup(tmp_path, monkey
     con = vault.open_vault(path, password)
     assert con.execute("SELECT v FROM schema_meta WHERE k='archive_version'").fetchone()[0] == '034'
     con.close()
-    assert len(list((tmp_path / 'backups').glob('evrakci-*.db'))) == 1
+    assert len(list((tmp_path / 'backups').glob('deepfind-*.db'))) == 1
     # A successful upgrade is recorded; ordinary subsequent opens never repeat it.
     con = startup.prepare_connection(path, password, str(tmp_path / 'backups'))
     con.close()
-    assert len(list((tmp_path / 'backups').glob('evrakci-*.db'))) == 1
+    assert len(list((tmp_path / 'backups').glob('deepfind-*.db'))) == 1
 
 
 def test_cancel_before_migration_preserves_legacy_marker(tmp_path):

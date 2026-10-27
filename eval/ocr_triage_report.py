@@ -6,9 +6,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import scan as scan_mod
-from evrakci.extract import extract_window
-from evrakci.ocr import MIN_TEXT_CHARS, needs_ocr
+from deepfind import scan as scan_mod
+from deepfind.extract import extract_window
+from deepfind.ocr import MIN_TEXT_CHARS, needs_ocr
 
 
 def main():

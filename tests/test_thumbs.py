@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from evrakci import thumbs, workers  # noqa: E402
+from deepfind import thumbs, workers  # noqa: E402
 
 
 def _app():

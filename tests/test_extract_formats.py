@@ -6,8 +6,8 @@ import zipfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import extract
-from evrakci import scan as scan_mod
+from deepfind import extract
+from deepfind import scan as scan_mod
 
 
 def _yaz(path, data: bytes):

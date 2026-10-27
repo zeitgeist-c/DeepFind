@@ -2,12 +2,12 @@
 import os
 import sqlite3
 
-from evrakci import coordinator as C
-from evrakci import migrate, job_queue as q
-from evrakci import schema
-from evrakci.extract import ExtractResult, Segment
-from evrakci.scan import Entry
-from evrakci.migrate import ensure_v5
+from deepfind import coordinator as C
+from deepfind import migrate, job_queue as q
+from deepfind import schema
+from deepfind.extract import ExtractResult, Segment
+from deepfind.scan import Entry
+from deepfind.migrate import ensure_v5
 
 
 def database(path=None):

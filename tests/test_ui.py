@@ -10,10 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from evrakci import coordinator, migrate, rank, schema, theme, vault  # noqa: E402
-from evrakci.preview import Onizleme  # noqa: E402
-from evrakci.migrate import ensure_v5  # noqa: E402
-from evrakci.migrate import ensure_v7  # noqa: E402
+from deepfind import coordinator, migrate, rank, schema, theme, vault  # noqa: E402
+from deepfind.preview import Onizleme  # noqa: E402
+from deepfind.migrate import ensure_v5  # noqa: E402
+from deepfind.migrate import ensure_v7  # noqa: E402
 
 PW = "arayuz-sifresi-1234"
 APP = None
@@ -78,11 +78,11 @@ def pencere(tmp_path, monkeypatch):
     con.commit()
     coordinator.run_scan(con, db, kok, require_vectors=False)
     from semantic_helpers import seed_vectors,FixedSession
-    from evrakci import embed
+    from deepfind import embed
     seed_vectors(con)
     monkeypatch.setattr(embed,'hazir_oturum',lambda:FixedSession())
     con.close()
-    from evrakci.app import AnaPencere
+    from deepfind.app import AnaPencere
     pen = AnaPencere(db, PW)
     yield pen
     try:
@@ -154,7 +154,7 @@ def test_bos_sorgu_tum_arsivi_listelemez(pencere):
 
 
 def test_model_ready_retries_waiting_query(pencere,monkeypatch):
-    from evrakci import engine
+    from deepfind import engine
     from semantic_helpers import FixedSession
     pencere.arama_kutu.setText('bakım sözleşmeleri')
     pencere._waiting_for_model=True
@@ -177,7 +177,7 @@ def test_kucuk_resim_liste_ve_detay_panelinde(pencere, tmp_path, monkeypatch):
     """Arama sonucu satırında ve seçili evrak panelinde küçük resim oluşur."""
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QPixmap
-    from evrakci import thumbs
+    from deepfind import thumbs
     dizin = str(tmp_path / "thumbs")
     monkeypatch.setattr(thumbs, "onbellek_dizini", lambda: dizin)
     os.makedirs(dizin, exist_ok=True)
@@ -204,7 +204,7 @@ def test_kucuk_resim_liste_ve_detay_panelinde(pencere, tmp_path, monkeypatch):
 
 def _onizleme_pencere(pencere, tmp_path, monkeypatch, sayfalar=1, ad="cok-sayfali.pdf"):
     """Kasa köküne çok sayfalı PDF ekler, tarar ve bağımsız Onizleme açar."""
-    from evrakci import thumbs
+    from deepfind import thumbs
     kok = os.path.join(os.path.dirname(pencere.kasa_yolu), "arsiv")
     yol = _pdf(kok, ad, "Ankara çok sayfa", sayfalar=sayfalar)
     time.sleep(3.0)
@@ -368,7 +368,7 @@ def test_filtre_cipleri_kaldirir_ve_yeniden_arar(pencere):
     assert len(cipler) == 2
     assert "Yıl: 2024" in cipler[0].etiket.text()
     # Eski çipler görünür kalmamalı: pencere altında yalnız aktif çipler bulunur.
-    from evrakci.ui import Cip
+    from deepfind.ui import Cip
     assert len(pencere.findChildren(Cip)) == len(cipler)
     # Yıl çipini kaldır: filtre düşer, arama yeniden koşar.
     cipler = _cipler(pencere)
@@ -390,7 +390,7 @@ def test_filtre_cipleri_kaldirir_ve_yeniden_arar(pencere):
 
 def test_gorunum_modu_kalicidir_ve_izgara(pencere):
     """Görünüm modu kalıcıdır; ızgara modunda ızgara yüzeyi etkinleşir."""
-    from evrakci.ui import CardDelegate
+    from deepfind.ui import CardDelegate
     pencere.show()
     pencere.arama_kutu.setText("Ankara vergi levhası")
     pencere._ara_simdi()
@@ -565,7 +565,7 @@ def test_sorgu_hatasi_arama_calistirmaz_ve_imlec_gosterir(pencere):
 
 def test_onizleme_onceki_sonraki_belge(pencere, tmp_path, monkeypatch):
     """Önizlemedeki belge gezinmesi arama sonuçları içinde sıralı ilerler."""
-    from evrakci import thumbs
+    from deepfind import thumbs
     _ikinci_belge(pencere)
     dizin = str(tmp_path / "thumbs")
     os.makedirs(dizin, exist_ok=True)
@@ -596,7 +596,7 @@ def test_onizleme_onceki_sonraki_belge(pencere, tmp_path, monkeypatch):
 
 def test_sihirbaz_sayfa_ve_sifre_kurali():
     _app()
-    from evrakci.wizard import Sihirbaz
+    from deepfind.wizard import Sihirbaz
     s = Sihirbaz()
     assert s.pageIds() and len(s.pageIds()) == 5
     s.restart()
@@ -615,7 +615,7 @@ def test_sihirbaz_sayfa_ve_sifre_kurali():
 
 def test_sihirbaz_ekle_secili_klasor_yenile_ve_kaldir(tmp_path):
     _app()
-    from evrakci.wizard import Sihirbaz
+    from deepfind.wizard import Sihirbaz
     from PySide6.QtWidgets import QWizard
     from PySide6.QtCore import QCoreApplication, QEvent
     s = Sihirbaz()
@@ -708,7 +708,7 @@ def test_pdf_onizleme_sayfa_render(pencere):
 
 def test_oturum_kilit_filtresi_uykuda_kilitler():
     _app()
-    from evrakci.app import OturumKilitFiltresi
+    from deepfind.app import OturumKilitFiltresi
     import ctypes
     from ctypes import wintypes
     cagrildi = []
@@ -728,7 +728,7 @@ def test_oturum_kilit_filtresi_uykuda_kilitler():
 
 def test_tarama_isci_eszamanli_kosar(tmp_path):
     _app()
-    from evrakci.app import TaramaIsci
+    from deepfind.app import TaramaIsci
     kok = str(tmp_path / "arsiv")
     os.makedirs(kok)
     _pdf(kok, "is.pdf", "Ankara işçi testi 2024")
@@ -750,7 +750,7 @@ def test_tarama_isci_eszamanli_kosar(tmp_path):
 
 def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     """Kök kaldırma işçisi sürücü kökünü boşaltır, diğer kökleri korur."""
-    from evrakci.app import KokKaldirIsci
+    from deepfind.app import KokKaldirIsci
     db = str(tmp_path / "k.db")
     con = vault.open_vault(db, PW)
     schema.ensure_schema(con)
@@ -788,7 +788,7 @@ def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
 
 def test_kok_kaldir_worker_gui_kilitlemez(tmp_path, monkeypatch):
     """Kök kaldırma QThread üzerinde çalışırken ana thread olay çevrimine yanıt verir."""
-    from evrakci.app import KokKaldirIsci
+    from deepfind.app import KokKaldirIsci
     from PySide6.QtCore import QThread, QTimer
     original_open = vault.open_vault
     def slow_open(*args, **kwargs):
@@ -842,7 +842,7 @@ def test_kok_kaldir_worker_gui_kilitlemez(tmp_path, monkeypatch):
 
 def test_haric_ui_islemi_arka_planda_ve_geri_acilir(pencere, monkeypatch):
     """Dışla işlemi UI'ı bloklamaz; tamamlanınca form yeniden etkinleşir."""
-    from evrakci import exclusions
+    from deepfind import exclusions
     original = exclusions.purge_rule
     def slow_purge(*args, **kwargs):
         time.sleep(0.2)
@@ -877,7 +877,7 @@ def test_haric_ui_islemi_arka_planda_ve_geri_acilir(pencere, monkeypatch):
 
 def test_haric_isci_atomik_surucu_koku_temizligi(tmp_path):
     """Hariç worker sürücü kökünü temizler; file-name terimleri indeksli kalır."""
-    from evrakci.app import HaricIsci
+    from deepfind.app import HaricIsci
     db = str(tmp_path / "k.db")
     con = vault.open_vault(db, PW)
     schema.ensure_schema(con)
@@ -909,8 +909,8 @@ def test_haric_isci_atomik_surucu_koku_temizligi(tmp_path):
 
 def test_haric_isci_hata_geri_alir_kural_ve_icerik(tmp_path, monkeypatch):
     """Hariç temizleme başarısızsa kural ve içerik birlikte geri alınır."""
-    from evrakci.app import HaricIsci
-    from evrakci import exclusions
+    from deepfind.app import HaricIsci
+    from deepfind import exclusions
     db = str(tmp_path / "k.db")
     con = vault.open_vault(db, PW)
     schema.ensure_schema(con); ensure_v5(con); ensure_v7(con)
@@ -930,8 +930,8 @@ def test_haric_isci_hata_geri_alir_kural_ve_icerik(tmp_path, monkeypatch):
 
 def test_haric_ve_kok_mutasyonlari_scan_kilidini_sayar(tmp_path):
     """Arka plan mutasyonu canlı tarama kilidi varken veriye dokunmaz."""
-    from evrakci import coordinator, exclusions
-    from evrakci.app import HaricIsci, KokKaldirIsci
+    from deepfind import coordinator, exclusions
+    from deepfind.app import HaricIsci, KokKaldirIsci
     db = str(tmp_path / "k.db")
     con = vault.open_vault(db, PW)
     schema.ensure_schema(con); ensure_v5(con); ensure_v7(con)
@@ -953,7 +953,7 @@ def test_haric_ve_kok_mutasyonlari_scan_kilidini_sayar(tmp_path):
 
 
 def test_kurulum_tema_ve_toplu_klasor_islemleri(tmp_path):
-    from evrakci.wizard import Sihirbaz
+    from deepfind.wizard import Sihirbaz
     from PySide6.QtCore import QCoreApplication, QEvent
     s = Sihirbaz()
     try:
@@ -962,7 +962,7 @@ def test_kurulum_tema_ve_toplu_klasor_islemleri(tmp_path):
             folder.mkdir()
             s._ekle_yol(str(folder))
         s.tema.setCurrentIndex(2)
-        assert _app().property('evrakci_theme') == 'koyu'
+        assert _app().property('deepfind_theme') == 'koyu'
         s.kok_liste.selectAll()
         s._kaldir()
         assert not s.secim['kokler']
@@ -977,7 +977,7 @@ def test_kurulum_tema_ve_toplu_klasor_islemleri(tmp_path):
 
 
 def test_dar_gezinme_kapsam_ve_hatirlanan_kilit(pencere, tmp_path, monkeypatch):
-    from evrakci import remember
+    from deepfind import remember
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
     pencere._nav_toggle()
     assert pencere.rail.width() == 86 and pencere.nav.item(0).text() == ''
@@ -995,7 +995,7 @@ def test_dar_gezinme_kapsam_ve_hatirlanan_kilit(pencere, tmp_path, monkeypatch):
     assert not pencere.scan_log.toPlainText()
 
 def test_015_popup_background_and_automatic(pencere, monkeypatch):
-    from evrakci import app as app_module
+    from deepfind import app as app_module
     from PySide6.QtCore import Slot
     class SlowWorker(app_module.TaramaIsci):
         @Slot()
@@ -1031,7 +1031,7 @@ def test_015_time_source_and_layout(pencere, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     monkeypatch.setattr(QMessageBox, "information", lambda *a: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a: None)
-    from evrakci import scheduler as sched
+    from deepfind import scheduler as sched
     monkeypatch.setattr(sched, "autostart_clear", lambda *a: None)
     from PySide6.QtCore import QTime, Qt
     from PySide6.QtWidgets import QPushButton
@@ -1057,7 +1057,7 @@ def test_015_time_source_and_layout(pencere, monkeypatch):
 
 
 def test_015_pause_ack_and_tray_reset(pencere):
-    from evrakci.app import TaramaIsci
+    from deepfind.app import TaramaIsci
     worker = TaramaIsci(pencere.kasa_yolu, PW, [])
     pencere.isci = worker
     pencere._tara_duraklat()

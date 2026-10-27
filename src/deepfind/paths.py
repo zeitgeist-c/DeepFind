@@ -14,8 +14,8 @@ import sys
 from pathlib import Path
 
 APP_DIR_NAME = "DeepFind"
-LEGACY_DIR_NAMES = ("Evrakci", "Evrakçı")
-_MARKER = ".renamed-from-evrakci"
+LEGACY_DIR_NAMES = ("Evrakci", "DeepFind")
+_MARKER = ".renamed-from-deepfind"
 
 
 def _base() -> Path:
@@ -63,7 +63,11 @@ def vault_db() -> Path:
 
 
 def legacy_vault_db() -> Path:
-    """The pre-rename vault filename, used by the one-time DB rename."""
+    """The pre-rename vault filename, inside whichever folder is in use.
+
+    The folder move happens first, so by the time this is called the database is
+    already inside data_root() — but still carrying its old name.
+    """
     return data_root() / "Data" / "evrakci.db"
 
 

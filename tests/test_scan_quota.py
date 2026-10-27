@@ -3,8 +3,8 @@ import os
 
 from test_scan_resume import database
 
-from evrakci import coordinator as C
-from evrakci import job_queue as q
+from deepfind import coordinator as C
+from deepfind import job_queue as q
 
 
 def test_manifest_counts_total_before_work(tmp_path):
@@ -51,8 +51,8 @@ def test_batch_limit_processes_at_most_n(tmp_path):
 
 
 def test_daily_quota_blocks_second_run(tmp_path):
-    from evrakci import migrate as M
-    from evrakci import scheduler as sched
+    from deepfind import migrate as M
+    from deepfind import scheduler as sched
     con = database(tmp_path / "kasa.db")
     try:
         assert sched.quota_left(con, "2026-10-12") is None  # ayar yoksa sinirsiz
@@ -69,7 +69,7 @@ def test_manifest_exports_md(tmp_path):
     (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4 a")
     con = database(tmp_path / "kasa.db")
     try:
-        from evrakci import manifest_export as me
+        from deepfind import manifest_export as me
         rid, total = C.build_manifest(con, str(tmp_path))
         text = me.render_md(con, rid)
         assert total == 1

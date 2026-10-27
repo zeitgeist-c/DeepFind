@@ -6,8 +6,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import embed, vault  # noqa: E402
-from evrakci import migrate as migrate_mod  # noqa: E402
+from deepfind import embed, vault  # noqa: E402
+from deepfind import migrate as migrate_mod  # noqa: E402
 
 PW = "test-sifresi-12345"
 
@@ -37,9 +37,9 @@ def test_model_ver_isaretli(tmp_path):
 
 
 def _dosya(con, ad="belge.txt", metin="elektrik faturasi tutar 1.250 TL"):
-    from evrakci import extract as ex_mod
-    from evrakci import index as index_mod
-    from evrakci import scan as scan_mod
+    from deepfind import extract as ex_mod
+    from deepfind import index as index_mod
+    from deepfind import scan as scan_mod
 
     giris = scan_mod.Entry(ad, ad, ".txt", 10, 20)
     sonuc = ex_mod.ExtractResult(
@@ -60,7 +60,7 @@ def _sabit_kodla(n=256):
 
 
 def test_isle_dosya_yazar(tmp_path):
-    from evrakci import gom
+    from deepfind import gom
 
     con = _kasa(tmp_path)
     fid = _dosya(con)
@@ -73,7 +73,7 @@ def test_isle_dosya_yazar(tmp_path):
 
 
 def test_eski_surum_temizlenir(tmp_path):
-    from evrakci import gom
+    from deepfind import gom
 
     con = _kasa(tmp_path)
     fid = _dosya(con)
@@ -88,7 +88,7 @@ def test_eski_surum_temizlenir(tmp_path):
 
 
 def test_bos_govde_etiketle_yazilir(tmp_path):
-    from evrakci import gom
+    from deepfind import gom
 
     con = _kasa(tmp_path)
     fid = _dosya(con, metin="")
@@ -99,7 +99,7 @@ def test_bos_govde_etiketle_yazilir(tmp_path):
 
 
 def test_imza_degismis_ise_yeniden_kuyruk(tmp_path):
-    from evrakci import gom
+    from deepfind import gom
 
     con = _kasa(tmp_path)
     fid = _dosya(con)
@@ -118,7 +118,7 @@ def test_imza_degismis_ise_yeniden_kuyruk(tmp_path):
 def test_model_kapisi():
     import os
 
-    from evrakci import gom
+    from deepfind import gom
 
     assert gom.model_var_mi(__file__) is True
     assert gom.model_var_mi(os.path.join("yok", "boyle-bir-dosya.onnx")) is False
@@ -127,7 +127,7 @@ def test_model_kapisi():
 def test_vektor_yaz_dagitir(tmp_path):
     import numpy as np
 
-    from evrakci import gom
+    from deepfind import gom
 
     con = _kasa(tmp_path)
     fid = _dosya(con)
@@ -142,10 +142,10 @@ def test_vektor_yaz_dagitir(tmp_path):
 
 
 def test_alt_surec_gom():
-    if not os.environ.get("EVRAKCI_GERCEK_MODEL") == "1":
+    if not os.environ.get("DEEPFIND_GERCEK_MODEL") == "1":
         return
-    from evrakci import embed
-    from evrakci.workers import WorkerSession
+    from deepfind import embed
+    from deepfind.workers import WorkerSession
 
     sess = WorkerSession()
     try:

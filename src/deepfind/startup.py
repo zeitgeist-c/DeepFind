@@ -81,7 +81,7 @@ class PreparationWorker(QThread):
 class OpeningDialog(QDialog):
     def __init__(self, path, password, backup_dir, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Evrakçı • Açılıyor')
+        self.setWindowTitle('DeepFind • Açılıyor')
         self.setMinimumWidth(480)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         layout = QVBoxLayout(self)

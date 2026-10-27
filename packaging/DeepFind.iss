@@ -1,6 +1,6 @@
-; Evrakçı kurulum betiği (Inno Setup 6). Surum build.py tarafindan ver.iss ile verilir.
+; DeepFind kurulum betiği (Inno Setup 6). Surum build.py tarafindan ver.iss ile verilir.
 ; AppId SABİTTİR: asla değiştirme (yükseltme/kaldırma aynı uygulamayı bulmalı).
-#define AppName "Evrakçı"
+#define AppName "DeepFind"
 #include "ver.iss"
 #ifdef TestPrevious
   #undef AppVersion
@@ -18,7 +18,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 VersionInfoVersion={#AppVersion}
 VersionInfoTextVersion={#AppVersion}
-AppPublisher=Evrakçı
+AppPublisher=Geeker
 #ifdef TestInstall
 OutputDir=..\build\test-installer
 #else
@@ -30,7 +30,7 @@ OutputDir=..
 #endif
 DefaultDirName={autopf}\{#AppName}
 #ifdef TestInstall
-DefaultGroupName=Evrakçı kabul testi
+DefaultGroupName=DeepFind kabul testi
 #else
 DefaultGroupName={#AppName}
 #endif
@@ -54,7 +54,7 @@ SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
 UninstallDisplayName={#AppName} {#AppVersion}
-SetupIconFile=..\build\evrakci.ico
+SetupIconFile=..\build\deepfind.ico
 LicenseFile=..\LISANSLAR.md
 
 [Languages]
@@ -113,7 +113,7 @@ begin
 #ifdef TestInstall
   Result := ExpandConstant('{app}\legacy-model\embeddinggemma-2-Q8_0.gguf');
 #else
-  Result := ExpandConstant('{commonappdata}\Evrakçı\models\embeddinggemma-2-Q8_0.gguf');
+  Result := ExpandConstant('{commonappdata}\DeepFind\models\embeddinggemma-2-Q8_0.gguf');
 #endif
 end;
 
@@ -178,11 +178,11 @@ var Entry: TFindRec; Stem, VersionText, ExePath: String;
     NamedVersion, FileVersion, CurrentVersion: Int64;
 begin
   StrToVersion('{#AppVersion}', CurrentVersion);
-  if FindFirst(ExpandConstant('{app}\Evrakçı-*.exe'), Entry) then begin
+  if FindFirst(ExpandConstant('{app}\DeepFind-*.exe'), Entry) then begin
     try
       repeat
         Stem := ChangeFileExt(Entry.Name, '');
-        VersionText := Copy(Stem, Length('Evrakçı-') + 1, MaxInt);
+        VersionText := Copy(Stem, Length('DeepFind-') + 1, MaxInt);
         ExePath := ExpandConstant('{app}\') + Entry.Name;
         if StrictVersion(VersionText) and StrToVersion(VersionText, NamedVersion) then
           if (ComparePackedVersion(NamedVersion, CurrentVersion) < 0) and
@@ -220,8 +220,8 @@ begin
   end;
 #ifndef TestInstall
   if (CurStep = ssDone) and (not ModelNeedsRepair) then begin
-    RemoveVerifiedLegacyModel(ExpandConstant('{localappdata}\Evrakçı\models\eg2-text.onnx'));
-    RemoveVerifiedLegacyModel(ExpandConstant('{commonappdata}\Evrakçı\models\eg2-text.onnx'));
+    RemoveVerifiedLegacyModel(ExpandConstant('{localappdata}\DeepFind\models\eg2-text.onnx'));
+    RemoveVerifiedLegacyModel(ExpandConstant('{commonappdata}\DeepFind\models\eg2-text.onnx'));
     { These are obsolete program dependencies, never source documents/vaults. }
     DelTree(ExpandConstant('{app}\_internal\transformers'), True, True, True);
     DelTree(ExpandConstant('{app}\_internal\tokenizers'), True, True, True);

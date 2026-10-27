@@ -11,7 +11,7 @@ import importlib.util
 import logging
 import threading
 
-log = logging.getLogger("evrakci.rapid")
+log = logging.getLogger("deepfind.rapid")
 
 _lock = threading.Lock()
 _engine = None

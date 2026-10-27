@@ -4,9 +4,9 @@ os.environ['QT_QPA_PLATFORM']='windows'
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'src'))
 spec=importlib.util.spec_from_file_location('ui_tests',ROOT/'tests/test_ui.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 app=m._app()
-with tempfile.TemporaryDirectory(prefix='evrakci-native-015-') as tmp:
+with tempfile.TemporaryDirectory(prefix='deepfind-native-015-') as tmp:
     fixture=m.pencere.__wrapped__(Path(tmp));pen=next(fixture)
-    pen.setWindowTitle('Evrakçı 0.1.5 • Sentetik görsel doğrulama')
+    pen.setWindowTitle('DeepFind 0.1.5 • Sentetik görsel doğrulama')
     pen.show();pen.nav.setCurrentRow(2);pen._scan_state('running')
     pen.tarama_bilgi.setText('Tarama sürüyor…')
     pen.scan_started=__import__('datetime').datetime.now();pen._scan_elapsed=time.monotonic()

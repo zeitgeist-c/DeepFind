@@ -35,3 +35,8 @@ packaging/ver.iss
 Evrakçı-*.exe
 Evrakçı-*.evrakci
 Evrakci-*.evrakci
+DeepFind-*.zip
+DeepFind-*.exe
+DeepFind-*.evrakci
+DeepFind-*.deepfind
+deepfind-*.tmp

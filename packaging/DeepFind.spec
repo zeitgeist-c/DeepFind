@@ -1,4 +1,4 @@
-# Sürüm tek kaynaktan; kullanıcıya teslim edilen ad Evrakçı-X.Y.Z.
+# Sürüm tek kaynaktan; kullanıcıya teslim edilen ad DeepFind-X.Y.Z.
 from pathlib import Path
 import os
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
@@ -7,8 +7,8 @@ from PyInstaller.utils.win32.versioninfo import (VSVersionInfo, FixedFileInfo, S
 
 root = Path(SPECPATH).parent
 version_values = {}
-exec((root / "src/evrakci/version.py").read_text(encoding="utf-8"), version_values)
-stem = "Evrakçı-" + version_values["__version__"]
+exec((root / "src/deepfind/version.py").read_text(encoding="utf-8"), version_values)
+stem = "DeepFind-" + version_values["__version__"]
 # RapidOCR motoru: ONNX DLL'leri + paket içi model/config verileri pakete girer.
 ocr_datas = [entry for entry in collect_data_files("rapidocr")
              if entry[0].endswith((".onnx", ".yaml"))]
@@ -17,13 +17,13 @@ binaries = (collect_dynamic_libs("pypdfium2") + collect_dynamic_libs("sqlcipher3
 numbers = tuple(int(x) for x in version_values["__version__"].split(".")) + (0,)
 metadata = VSVersionInfo(ffi=FixedFileInfo(filevers=numbers, prodvers=numbers, mask=0x3f,
                                          flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)),
-    kids=[StringFileInfo([StringTable("041f04b0", [StringStruct("ProductName", "Evrakçı"),
+    kids=[StringFileInfo([StringTable("041f04b0", [StringStruct("ProductName", "DeepFind"),
           StringStruct("FileVersion", version_values["__version__"]),
           StringStruct("ProductVersion", version_values["__version__"]),
           StringStruct("OriginalFilename", stem + ".exe")])]),
           VarFileInfo([VarStruct("Translation", [1055,1200])])])
-a = Analysis([str(root / "src/evrakci/__main__.py")], pathex=[str(root / "src")],
-             binaries=binaries, datas=[(str(root / "src/evrakci/assets"), "evrakci/assets"),
+a = Analysis([str(root / "src/deepfind/__main__.py")], pathex=[str(root / "src")],
+             binaries=binaries, datas=[(str(root / "src/deepfind/assets"), "deepfind/assets"),
                                        *ocr_datas,
                                        (str(root / 'build/embedding/embeddinggemma-2-Q8_0.gguf'), 'embedding'),
                                        (str(root / 'build/embedding/cpu'), 'embedding/cpu'),
@@ -76,5 +76,5 @@ a.datas = compact_native(a.datas)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=stem, console=False,
           debug=False, strip=False, upx=False, version=metadata,
-          icon=str(root / "build/evrakci.ico"))
+          icon=str(root / "build/deepfind.ico"))
 coll = COLLECT(exe, a.binaries, a.datas, name=stem, strip=False, upx=False)

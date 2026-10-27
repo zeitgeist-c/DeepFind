@@ -41,7 +41,7 @@ def _varsayilan_model_yolu():
 
 
 def shared_model_path():
-    return Path(os.environ.get('PROGRAMDATA', 'C:/ProgramData')) / 'Evrakçı' / 'models' / MODEL_DOSYA
+    return Path(os.environ.get('PROGRAMDATA', 'C:/ProgramData')) / 'DeepFind' / 'models' / MODEL_DOSYA
 
 
 def status():

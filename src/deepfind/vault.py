@@ -10,7 +10,7 @@ BUSY_TIMEOUT_MS = 5000
 # Sifresiz kasa ic anahtari: kullanici sifre belirlemezse kasa bununla acilir.
 # Kullaniciya gosterilmez/sorulmaz; koruma Windows hesabi ve disk sifrelemesine
 # dayanir. SQLCipher bos anahtar kabul etmedigi icin sabit bir ic anahtar gerekir.
-SIFRESIZ_ANAHTAR = "EVRAKCI-SIFRESIZ-KASA-v1"
+SIFRESIZ_ANAHTAR = "DEEPFIND-SIFRESIZ-KASA-v1"
 
 
 def _escape_key(password: str) -> str:

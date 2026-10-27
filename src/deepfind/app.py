@@ -1,4 +1,4 @@
-"""Evrakci masaustu: Varyant A (sol gezinme + sonuc + sag onizleme). Plan bolum 19-20.
+"""DeepFind masaustu: Varyant A (sol gezinme + sonuc + sag onizleme). Plan bolum 19-20.
 
 Kilitlenmeden calisir: tarama QThread'de, arama debounce'lu, onizleme tembel.
 Kilitte: baglantilar kapanir, model/onislem/gecmis temizlenir (SEC-03).
@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (QApplication, QAbstractItemView, QCheckBox, QComb
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
-from . import migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery, thumbs, sorgu
+from . import identity, migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery, thumbs, sorgu
 from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
@@ -288,28 +288,28 @@ class KokKaldirIsci(QObject):
             con.execute("DELETE FROM roots WHERE display_path=?", (self.kok,))
             remaining = [r[0] for r in con.execute(
                 "SELECT display_path FROM roots WHERE enabled=1").fetchall()]
-            con.execute("CREATE TEMP TABLE IF NOT EXISTS evrakci_remove_files(file_id INTEGER PRIMARY KEY)")
-            con.execute("DELETE FROM temp.evrakci_remove_files")
+            con.execute("CREATE TEMP TABLE IF NOT EXISTS deepfind_remove_files(file_id INTEGER PRIMARY KEY)")
+            con.execute("DELETE FROM temp.deepfind_remove_files")
             cursor = con.execute("SELECT file_id,path FROM files")
             while batch := cursor.fetchmany(1000):
                 remove_ids = [fid for fid, path in batch
                               if exclusions.is_excluded(path, [self.kok])
                               and not exclusions.is_excluded(path, remaining)]
-                con.executemany("INSERT INTO temp.evrakci_remove_files(file_id) VALUES (?)",
+                con.executemany("INSERT INTO temp.deepfind_remove_files(file_id) VALUES (?)",
                                 ((fid,) for fid in remove_ids))
-            sil = con.execute("SELECT count(*) FROM temp.evrakci_remove_files").fetchone()[0]
+            sil = con.execute("SELECT count(*) FROM temp.deepfind_remove_files").fetchone()[0]
             if sil:
                 tables = {row[0] for row in con.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name IN "
                     "('scan_selected','scan_manifest')")}
                 if "scan_selected" in tables:
                     con.execute("DELETE FROM scan_selected WHERE file_id IN "
-                                "(SELECT file_id FROM temp.evrakci_remove_files)")
+                                "(SELECT file_id FROM temp.deepfind_remove_files)")
                 if "scan_manifest" in tables:
                     con.execute("DELETE FROM scan_manifest WHERE file_id IN "
-                                "(SELECT file_id FROM temp.evrakci_remove_files)")
+                                "(SELECT file_id FROM temp.deepfind_remove_files)")
                 con.execute("DELETE FROM files WHERE file_id IN "
-                            "(SELECT file_id FROM temp.evrakci_remove_files)")
+                            "(SELECT file_id FROM temp.deepfind_remove_files)")
             con.commit()
             self.bitti.emit(sil)
         except Exception as e:  # noqa: BLE001
@@ -448,7 +448,7 @@ class AnaPencere(QMainWindow):
         self._job_pending={}
         self._job_generation=0
         self._search_offset=0
-        self.setWindowTitle(f"Evrakçı {__version__}")
+        self.setWindowTitle(f"DeepFind {__version__}")
         self.setWindowIcon(theme.app_icon())
         self.setMinimumSize(1000, 640)
         self._geometry_ready = False
@@ -517,7 +517,7 @@ class AnaPencere(QMainWindow):
         # olabilir; kayıt varsa çalışan yola tazele (kapalı kayıt açılmaz).
         if self._guncelleme_yapilabilir():
             try:
-                if sched.autostart_guncelle("Evrakci", sys.executable, self.kasa_yolu):
+                if sched.autostart_guncelle(identity.APP_IDENTITY, sys.executable, self.kasa_yolu):
                     diagnostics.record("autostart_refreshed")
             except Exception:
                 pass
@@ -526,8 +526,8 @@ class AnaPencere(QMainWindow):
         """Bekçi betiğin bıraktığı güncelleme sonucunu bir kez duyur."""
         sonuc = update_mod.son_sonuc()
         if sonuc == "ok":
-            self._toast_goster(f"Güncelleme tamamlandı: Evrakçı {__version__}.")
-            self.durum.showMessage(f"Evrakçı {__version__} güncellendi.", 8000)
+            self._toast_goster(f"Güncelleme tamamlandı: DeepFind {__version__}.")
+            self.durum.showMessage(f"DeepFind {__version__} güncellendi.", 8000)
         elif sonuc == "fallback":
             self._toast_goster("Güncelleme taşınamadı; geçici klasörden çalışıyorsunuz.")
         elif sonuc == "install_failed":
@@ -624,7 +624,7 @@ class AnaPencere(QMainWindow):
         self.update_iptal_btn.setVisible(True)
         if getattr(self, "tepsi", None) is not None:
             self.tepsi.showMessage(
-                "Evrakçı", f"Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.",
+                "DeepFind", f"Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.",
                 QSystemTrayIcon.MessageIcon.Information, 10000)
         self.durum.showMessage(
             f"Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.", 10000)
@@ -686,7 +686,7 @@ class AnaPencere(QMainWindow):
                 "Güncelleme kurulamadı; “İndir ve kur” ile yeniden deneyin.")
             return
         self.update_bar.setRange(0, 0)
-        self._guncelleme_durum_yaz(f"Sürüm {surum} hazır. Evrakçı yeniden başlatılıyor…")
+        self._guncelleme_durum_yaz(f"Sürüm {surum} hazır. DeepFind yeniden başlatılıyor…")
         diagnostics.record("update_installing", surum)
         QTimer.singleShot(250, self._cikis)
 
@@ -808,7 +808,7 @@ class AnaPencere(QMainWindow):
         self._toast = Toast(kok)
 
         self.preview_dialog = QDialog(self)
-        self.preview_dialog.setWindowTitle('Evrakçı • Belge ön izlemesi')
+        self.preview_dialog.setWindowTitle('DeepFind • Belge ön izlemesi')
         self.preview_dialog.resize(950, 740)
         preview_layout = QVBoxLayout(self.preview_dialog)
         preview_layout.setContentsMargins(16, 16, 16, 16)
@@ -947,7 +947,7 @@ class AnaPencere(QMainWindow):
             self._geometry_ready = True
             return
         area = screen.availableGeometry()
-        saved = QSettings("Evrakci", "Appearance").value("main_geometry")
+        saved = QSettings(identity.APP_IDENTITY, "Appearance").value("main_geometry")
         if isinstance(saved, QRect) and saved.isValid():
             target = QRect(saved)
         else:
@@ -968,7 +968,7 @@ class AnaPencere(QMainWindow):
 
     def _save_window_geometry(self):
         if self._geometry_ready and not self.isMaximized() and not self.isMinimized():
-            QSettings("Evrakci", "Appearance").setValue("main_geometry", self.geometry())
+            QSettings(identity.APP_IDENTITY, "Appearance").setValue("main_geometry", self.geometry())
 
     def _otomatik_kilitle(self):
         if not remember.enabled(self.kasa_yolu):
@@ -1064,7 +1064,7 @@ class AnaPencere(QMainWindow):
 
     def _coverage_report(self):
         if self.con is None: return
-        dialog=QDialog(self); dialog.setWindowTitle('Evrakçı • İndeks kapsamı'); dialog.resize(850,600)
+        dialog=QDialog(self); dialog.setWindowTitle('DeepFind • İndeks kapsamı'); dialog.resize(850,600)
         layout=QVBoxLayout(dialog); text=QPlainTextEdit(); text.setReadOnly(True); layout.addWidget(text)
         more=QPushButton('Sonraki hatalar'); layout.addWidget(more)
         state={'offset':0,'generation':self._job_generation}
@@ -2487,7 +2487,7 @@ class AnaPencere(QMainWindow):
         k.addLayout(islem)
 
         self.scan_dialog = QDialog(self)
-        self.scan_dialog.setWindowTitle("Evrakçı • Tarama ayrıntıları")
+        self.scan_dialog.setWindowTitle("DeepFind • Tarama ayrıntıları")
         self.scan_dialog.resize(760, 560)
         popup = QVBoxLayout(self.scan_dialog)
         popup.setContentsMargins(18, 18, 18, 18)
@@ -3170,7 +3170,7 @@ class AnaPencere(QMainWindow):
         if not anahtar:
             return
         dialog = QDialog(self)
-        dialog.setWindowTitle("Evrakçı • Kurtarma anahtarı")
+        dialog.setWindowTitle("DeepFind • Kurtarma anahtarı")
         dialog.setMinimumWidth(560)
         yerlesim = QVBoxLayout(dialog)
         yerlesim.setContentsMargins(20, 20, 20, 20)
@@ -3228,7 +3228,7 @@ class AnaPencere(QMainWindow):
             # Yazdırma iptal edildiyse dosyaya kaydetmeyi öner.
             var = QFileDialog.getSaveFileName(
                 self, "Kurtarma belgesini kaydet",
-                os.path.join(os.path.dirname(self.kasa_yolu), "evrakci-kurtarma-belgesi.txt"),
+                os.path.join(os.path.dirname(self.kasa_yolu), "deepfind-kurtarma-belgesi.txt"),
                 "Metin (*.txt)")[0]
             if var:
                 try:
@@ -3420,9 +3420,9 @@ class AnaPencere(QMainWindow):
         self.gecikme.setChecked(migrate.get_setting(self.con, "gecikme", "0") == "1")
         k.addWidget(ayar_satiri("Ağ yükünü azaltmak için taramayı geciktir", "Cihaz başına küçük rastgele gecikme ekler.", self.gecikme))
         self.otostart = QCheckBox()
-        startup_command = sched.autostart_get("Evrakci")
+        startup_command = sched.autostart_get(identity.APP_IDENTITY)
         self.otostart.setChecked(startup_command is not None)
-        k.addWidget(ayar_satiri("Windows açılışında başlat", "Oturum açıldığında Evrakçı kendiliğinden başlar.", self.otostart))
+        k.addWidget(ayar_satiri("Windows açılışında başlat", "Oturum açıldığında DeepFind kendiliğinden başlar.", self.otostart))
         self.canli_izleme = QCheckBox()
         self.canli_izleme.setChecked(migrate.get_setting(self.con, "canli_izleme", "1") == "1")
         k.addWidget(ayar_satiri("Değişen klasörleri canlı izle", "Değişiklik olunca kendiliğinden tarar.", self.canli_izleme))
@@ -3499,7 +3499,7 @@ class AnaPencere(QMainWindow):
         install(self, k)
         self._guncelleme_bolumu(k)
         alt = "Yerel ve şifreli çalışır" if not self.sifresiz else "Yerel çalışır; şifre eklenebilir"
-        self.surum_bilgi = QLabel(f"Evrakçı {__version__} · {alt}")
+        self.surum_bilgi = QLabel(f"DeepFind {__version__} · {alt}")
         self.surum_bilgi.setProperty("ikincil", True)
         k.addWidget(self.surum_bilgi)
         k.addStretch(1)
@@ -3572,10 +3572,10 @@ class AnaPencere(QMainWindow):
                 import sys
                 if not getattr(sys, "frozen", False):
                     raise RuntimeError("Otomatik başlatma paketlenmiş EXE üzerinden etkinleştirilmelidir.")
-                sched.autostart_set("Evrakci", sys.executable, self.kasa_yolu)
+                sched.autostart_set(identity.APP_IDENTITY, sys.executable, self.kasa_yolu)
                 self.startup_status.clear()
             else:
-                sched.autostart_clear("Evrakci")
+                sched.autostart_clear(identity.APP_IDENTITY)
                 self.startup_status.clear()
         except Exception as e:  # noqa: BLE001
             QMessageBox.warning(self, "Otomatik başlatma", f"Yazılamadı: {e}")
@@ -3651,7 +3651,7 @@ class AnaPencere(QMainWindow):
             diagnostics.record("recovery_setup_failed", type(error).__name__)
         self.sifre_btn.setText("Parolayı değiştir")
         self.forget_btn.setVisible(True)
-        self.surum_bilgi.setText(f"Evrakçı {__version__} · Yerel ve şifreli çalışır")
+        self.surum_bilgi.setText(f"DeepFind {__version__} · Yerel ve şifreli çalışır")
         self._kurtarma_tazele()
         QMessageBox.information(
             self, "Şifre",
@@ -3743,7 +3743,7 @@ class AnaPencere(QMainWindow):
         self._tray_timer.setInterval(150)
         self._tray_timer.timeout.connect(self._tray_tick)
         self.tepsi.setIcon(theme.app_icon())
-        self.tepsi.setToolTip("Evrakçı • Yerel belge arşivi")
+        self.tepsi.setToolTip("DeepFind • Yerel belge arşivi")
         m = QMenu(self)
         self._tray_menu = m
         for ad, fn in (("Aç", self._bring_forward), ("Şimdi tara", self._tara_baslat),
@@ -3806,7 +3806,7 @@ class AnaPencere(QMainWindow):
         if hasattr(self, "_tray_scan_action"):
             self._tray_scan_action.setText(text or "Şimdi tara")
         if getattr(self, "tepsi", None) is not None:
-            self.tepsi.setToolTip("Evrakçı • " + ("Kasa kilitli" if self._locked else text or "Yerel belge arşivi"))
+            self.tepsi.setToolTip("DeepFind • " + ("Kasa kilitli" if self._locked else text or "Yerel belge arşivi"))
             if state in ("running", "pausing", "cancelling"):
                 self._tray_timer.start()
             else:
@@ -4162,7 +4162,7 @@ class AnaPencere(QMainWindow):
 def _instance_name(vault_path):
     import hashlib
     normalized = os.path.normcase(os.path.abspath(vault_path)).encode("utf-8")
-    return "Evrakci-" + hashlib.sha256(normalized).hexdigest()[:24]
+    return "DeepFind-" + hashlib.sha256(normalized).hexdigest()[:24]
 
 
 def _wake_existing(name):
@@ -4203,7 +4203,7 @@ def _serve_activation(app, name):
 
 def main(kasa_yolu=None, sifre=None):
     import argparse
-    ap = argparse.ArgumentParser(prog="evrakci")
+    ap = argparse.ArgumentParser(prog="deepfind")
     ap.add_argument("--kasa", default=kasa_yolu)
     ap.add_argument("--tray", action="store_true")
     args, _bilinmeyen = ap.parse_known_args()
@@ -4214,10 +4214,12 @@ def main(kasa_yolu=None, sifre=None):
         diagnostics.record("update_restarted")
     app = QApplication.instance() or QApplication([])
     diagnostics.install()
-    app.setApplicationName("Evrakçı")
+    app.setApplicationName("DeepFind")
     app.setQuitOnLastWindowClosed(False)
     from PySide6.QtCore import QSettings
-    theme.apply(app, QSettings("Evrakci", "Appearance").value("theme", "sistem"))
+    for _note in identity.migrate_all():
+        print(_note, flush=True)
+    theme.apply(app, QSettings(identity.APP_IDENTITY, "Appearance").value("theme", "sistem"))
     if not args.kasa:
         from .cli import DEFAULT_VAULT
         args.kasa = DEFAULT_VAULT
@@ -4227,9 +4229,9 @@ def main(kasa_yolu=None, sifre=None):
     if not instance_lock.tryLock(0):
         if _wake_existing(_instance_name(args.kasa)):
             return 0
-        QMessageBox.warning(None, "Evrakçı yanıt vermiyor",
-                            "Evrakçı işlemi açık görünüyor ancak pencereyi gösterme isteğine yanıt vermedi. "
-                            "Görev Yöneticisi'nde işlemi kontrol edin; tanı kaydı Evrakci/Logs/lifecycle.log içindedir.")
+        QMessageBox.warning(None, "DeepFind yanıt vermiyor",
+                            "DeepFind işlemi açık görünüyor ancak pencereyi gösterme isteğine yanıt vermedi. "
+                            "Görev Yöneticisi'nde işlemi kontrol edin; tanı kaydı DeepFind/Logs/lifecycle.log içindedir.")
         return 1
     server = _serve_activation(app, _instance_name(args.kasa))
     app._activation_server = server
@@ -4291,14 +4293,14 @@ def main(kasa_yolu=None, sifre=None):
 
         progress = StartupDialog()
         app._startup_dialog = progress
-        progress.setWindowTitle("Evrakçı • Hazırlanıyor")
+        progress.setWindowTitle("DeepFind • Hazırlanıyor")
         progress.setWindowIcon(theme.app_icon())
         progress.setMinimumWidth(480)
         content = QVBoxLayout(progress)
         content.setContentsMargins(28, 28, 28, 28)
         status = label("Çalışma alanınız hazırlanıyor…", "subheading")
         content.addWidget(status)
-        content.addWidget(label("Şifreli kasa kuruluyor. Tamamlandığında Evrakçı kendiliğinden açılacak.", "ikincil"))
+        content.addWidget(label("Şifreli kasa kuruluyor. Tamamlandığında DeepFind kendiliğinden açılacak.", "ikincil"))
         bar = QProgressBar()
         bar.setRange(0, 0)
         content.addWidget(bar)

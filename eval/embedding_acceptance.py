@@ -9,7 +9,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
-from evrakci import engine
+from deepfind import engine
 
 
 def main():
@@ -36,12 +36,12 @@ def main():
         finally: session.close()
     d0,q0 = outputs['BF16']; d1,q1 = outputs['Q8_0']
     result['reference_cosine_min'] = float(np.min(np.sum(np.vstack([d0,q0])*np.vstack([d1,q1]), axis=1)))
-    old_path = Path.home() / 'AppData/Local/Evrakçı/models/eg2-text.onnx'
+    old_path = Path.home() / 'AppData/Local/DeepFind/models/eg2-text.onnx'
     snapshots = Path.home() / '.cache/huggingface/hub/models--google--embeddinggemma-2/snapshots'
     if old_path.is_file() and snapshots.is_dir():
-        source = subprocess.check_output(['git','show','9f51658:src/evrakci/embed.py'],cwd=ROOT,text=True,encoding='utf-8')
-        reference = types.ModuleType('evrakci.reference_embedding')
-        reference.__package__ = 'evrakci'
+        source = subprocess.check_output(['git','show','9f51658:src/deepfind/embed.py'],cwd=ROOT,text=True,encoding='utf-8')
+        reference = types.ModuleType('deepfind.reference_embedding')
+        reference.__package__ = 'deepfind'
         exec(compile(source,'reference_embedding','exec'),reference.__dict__)
         old = reference.Oturum(str(old_path),tokenizer_kaynagi=str(next(snapshots.iterdir())))
         old_d,old_q = old.encode(docs,gorev='belge'),old.encode(queries)

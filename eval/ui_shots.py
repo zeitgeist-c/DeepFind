@@ -8,10 +8,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from evrakci import coordinator, migrate, schema, theme, vault  # noqa: E402
-from evrakci.migrate import ensure_v7  # noqa: E402
-from evrakci.vocab import ensure_v5  # noqa: E402
-from evrakci.version import __version__
+from deepfind import coordinator, migrate, schema, theme, vault  # noqa: E402
+from deepfind.migrate import ensure_v7  # noqa: E402
+from deepfind.vocab import ensure_v5  # noqa: E402
+from deepfind.version import __version__
 
 PW = "gorsel-sifre-1234"
 
@@ -33,8 +33,8 @@ def pdf(kok, ad, metin):
 
 def main():
     import tempfile
-    base = tempfile.mkdtemp(prefix="evrakci-review-")
-    output = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build", f"review-ui-{__version__}" + os.environ.get("EVRAKCI_REVIEW_SUFFIX", "")))
+    base = tempfile.mkdtemp(prefix="deepfind-review-")
+    output = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "build", f"review-ui-{__version__}" + os.environ.get("DEEPFIND_REVIEW_SUFFIX", "")))
     os.makedirs(output, exist_ok=True)
     kok = os.path.join(base, "arsiv")
     os.makedirs(kok, exist_ok=True)
@@ -62,7 +62,7 @@ def main():
         except Exception:
             pass
     app.setFont(QFont("Segoe UI", 10))
-    from evrakci.app import AnaPencere
+    from deepfind.app import AnaPencere
     pen = AnaPencere(db, PW)
     pen.resize(1366, 768)
     pen.show()
@@ -162,7 +162,7 @@ def main():
             app.processEvents()
             time.sleep(0.01)
         app.processEvents()
-        from evrakci.auth import ParolaDialog
+        from deepfind.auth import ParolaDialog
         login = ParolaDialog()
         login.show()
         app.processEvents()

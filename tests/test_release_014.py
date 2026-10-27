@@ -6,8 +6,8 @@ from pathlib import Path
 import threading
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-from evrakci import coordinator, vault, schema, migrate, job_queue as queue, remember
-from evrakci.migrate import ensure_v5
+from deepfind import coordinator, vault, schema, migrate, job_queue as queue, remember
+from deepfind.migrate import ensure_v5
 
 PW = "sentetik-surum-test-1234"
 
@@ -97,7 +97,7 @@ def test_remember_encrypted_revocable(tmp_path, monkeypatch):
 
 
 def test_worker_pause_resume_and_cancel():
-    from evrakci.app import TaramaIsci
+    from deepfind.app import TaramaIsci
     worker = TaramaIsci('not-opened', PW, [])
     worker.paused.set()
     returned = threading.Event()

@@ -28,14 +28,14 @@ class _Installer(QObject):
 class OcrSetupDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Evrakçı • OCR hazırlanıyor")
+        self.setWindowTitle("DeepFind • OCR hazırlanıyor")
         self.setMinimumWidth(520)
         self.running = False
         self.completed = False
         self.failure_message = ""
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Gerekli bileşenler"))
-        self.status = QLabel("Türkçe OCR doğrulanıyor. Hazır olunca Evrakçı açılacak.")
+        self.status = QLabel("Türkçe OCR doğrulanıyor. Hazır olunca DeepFind açılacak.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.bar = QProgressBar()

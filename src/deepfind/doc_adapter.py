@@ -59,7 +59,7 @@ def extract_doc_guarded(path: str):
     """(metin, uyari) veya None (adaptor yok). Gecici cikti is sonu silinir."""
     from .extract import ExtractResult, Segment
     try:
-        with tempfile.TemporaryDirectory(prefix="evrakci-doc-") as wd:
+        with tempfile.TemporaryDirectory(prefix="deepfind-doc-") as wd:
             text = convert_doc(path, wd)
     except EngineUnavailable:
         return None

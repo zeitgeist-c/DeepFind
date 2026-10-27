@@ -1,4 +1,4 @@
-"""Evrakci giris: varsayilan arayuz; bilinen CLI komutunda CLI'ye devreder."""
+"""DeepFind giris: varsayilan arayuz; bilinen CLI komutunda CLI'ye devreder."""
 from __future__ import annotations
 
 import sys
@@ -34,16 +34,16 @@ def main(argv=None) -> int:
         report = Path(args[1])
         report.write_text(' {"ok": false, "stage": "entry"}', encoding="utf-8")
         try:
-            from evrakci.smoke import run
+            from deepfind.smoke import run
             return run(args[1])
         except Exception:
             report.write_text(traceback.format_exc(), encoding="utf-8")
             return 2
     ilk = _ilk_komut(args)
     if ilk in CLI_KOMUTLAR or "-h" in args or "--help" in args:
-        from evrakci.cli import main as cli_main
+        from deepfind.cli import main as cli_main
         return cli_main(args)
-    from evrakci.app import main as app_main
+    from deepfind.app import main as app_main
     return app_main()
 
 
