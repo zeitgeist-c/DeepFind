@@ -19,8 +19,8 @@
   - defusedxml-0.7.1.dist-info/LICENSE
 - RapidFuzz==3.14.6 — MIT
   - rapidfuzz-3.14.6.dist-info/licenses/LICENSE
-- pillow==12.3.0 — MIT-CMU
-  - pillow-12.3.0.dist-info/licenses/LICENSE
+- pillow==13.0.0 — MIT-CMU
+  - pillow-13.0.0.dist-info/licenses/LICENSE
 - PySide6_Essentials==6.11.2 — LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
   - pyside6_essentials-6.11.2.dist-info/licenses/LicenseRef-Qt-Commercial.txt
 - shiboken6==6.11.2 — LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
