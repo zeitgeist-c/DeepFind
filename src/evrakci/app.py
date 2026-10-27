@@ -1701,11 +1701,15 @@ class AnaPencere(QMainWindow):
         """`sonuclar` listesini gösterilecek alanlara göre modele yeniden yazar."""
         from PySide6.QtGui import QTextDocument
         self.sonuc_model.clear()
+        # Etiketler tek sorguda toplanır; satır başına sorgu (N+1) uzun
+        # sonuç listelerinde arayüz iş parçacığını blokluyordu.
+        try:
+            etiket_haritasi = rank.tags_many_map(
+                self.con, [s.get("file_id") for s in self.sonuclar])
+        except Exception:
+            etiket_haritasi = {}
         for sonuc in self.sonuclar:
-            try:
-                etiketler = rank.file_tags(self.con, sonuc["file_id"])
-            except Exception:
-                etiketler = []
+            etiketler = etiket_haritasi.get(sonuc.get("file_id"), [])
             belge = QTextDocument()
             belge.setHtml(sonuc.get("snippet", ""))
             ozet = belge.toPlainText()

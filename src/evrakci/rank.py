@@ -59,13 +59,29 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
 
     ordered=sorted(best.items(),key=lambda item:(-item[1][0],item[1][1][0],item[0]))
     selected=ordered[offset:offset+limit]
+    # Sayfa özeti ve yıllar seçilen kayıtlar için tek sorguda okunur; kayıt
+    # başına iki ayrı sorgu (N+1) limit=200'de 401 sorguya çıkıyordu.
+    seg_idler = [data[5] for _fid, (_sim, data) in selected]
+    dosya_idler = [fid for fid, _item in selected]
+    raw_haritasi = {}
+    if seg_idler:
+        yer = ",".join("?" * len(seg_idler))
+        raw_haritasi = {r[0]: r[1] for r in con.execute(
+            f"SELECT seg_id, raw_text FROM segments WHERE seg_id IN ({yer})", seg_idler)}
+    yil_haritasi = {}
+    if dosya_idler:
+        yer = ",".join("?" * len(dosya_idler))
+        for fid, yil in con.execute(
+                f"SELECT file_id, year FROM file_years WHERE file_id IN ({yer})", dosya_idler):
+            yil_haritasi.setdefault(fid, []).append(yil)
+    terimler = nz.tokens_folded(query)
     results=[]
     for fid,(similarity,data) in selected:
         path,name,fext,state,error,sid,label,page=data
-        raw=con.execute('SELECT raw_text FROM segments WHERE seg_id=?',(sid,)).fetchone()[0]
-        years=[r[0] for r in con.execute('SELECT year FROM file_years WHERE file_id=?',(fid,))]
+        raw=raw_haritasi.get(sid,"")
+        years=yil_haritasi.get(fid,[])
         results.append(dict(file_id=fid,path=path,name=name,ext=fext,label=label,page=page,
-            seg_id=sid,snippet=snip.highlight(raw or '',nz.tokens_folded(query)),
+            seg_id=sid,snippet=snip.highlight(raw or '',terimler),
             score=round(similarity*100,1),score_class='semantic',vec_skor=round(similarity,3),
             why=['anlamsal benzerlik'],years=years,index_status=state,error_code=error,
             content_available=True))
@@ -112,14 +128,17 @@ def results_csv(con, results) -> str:
     """Arama sonuçlarını CSV metni yapar (dosya yazımı çağıranda)."""
     import csv
     import io
+    satirlar = list(results)
+    # Etiketler tek sorguda: satır başına sorgu (N+1) dışa aktarımı yavaşlatıyordu.
+    etiketler = tags_many_map(con, [r.get("file_id") for r in satirlar])
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(["dosya", "yol", "tur", "sayfa", "yil", "etiketler", "neden"])
-    for r in results:
+    for r in satirlar:
         w.writerow([_csv_hucre(r.get("name", "")), _csv_hucre(r.get("path", "")),
                     _csv_hucre(r.get("ext", "")), _csv_hucre(r.get("page") or ""),
                     _csv_hucre(",".join(r.get("years", []))),
-                    _csv_hucre(", ".join(file_tags(con, r.get("file_id")))),
+                    _csv_hucre(", ".join(etiketler.get(r.get("file_id"), []))),
                     _csv_hucre(" + ".join(r.get("why", [])))])
     return buf.getvalue()
 
@@ -130,6 +149,28 @@ def file_tags(con, file_id) -> list:
             "SELECT tag FROM file_tags WHERE file_id=? ORDER BY tag", (file_id,)).fetchall()]
     except Exception:
         return []
+
+
+def tags_many_map(con, file_ids) -> dict:
+    """Toplu etiket okuma: {file_id: [tag, ...]} tek sorguda.
+
+    Sonuç listesi/CSV gibi N kayıt dolaşan yollar tek tek sorgu açmasın
+    (N+1); tablo yoksa boş sözlük döner.
+    """
+    idler = [fid for fid in dict.fromkeys(file_ids) if fid is not None]
+    if not idler:
+        return {}
+    yer = ",".join("?" * len(idler))
+    try:
+        satirlar = con.execute(
+            f"SELECT file_id, tag FROM file_tags WHERE file_id IN ({yer}) ORDER BY tag",
+            idler).fetchall()
+    except Exception:
+        return {}
+    out: dict = {}
+    for fid, tag in satirlar:
+        out.setdefault(fid, []).append(tag)
+    return out
 
 
 def set_tag(con, file_id, tag: str, auto: int = 0) -> None:
