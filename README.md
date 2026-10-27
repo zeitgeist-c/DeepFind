@@ -1,52 +1,206 @@
-# Evrakçı
+# Evrakçı — local encrypted document search for Windows
 
-Windows için yerel, şifreli belge arama uygulaması. PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV ve JPG/PNG/TIFF kaynaklarını okur. Kaynak evraklar kendi klasörlerinde kalır; indeks SQLCipher ile yerel kasada tutulur.
+> Türkçe: [README.tr.md](./README.tr.md)
 
-## Kurulum ve güncelleme
+**Describe the document you remember, not the filename you saved it under.**
 
-`Evrakçı-0.10.6.exe` tam kurulum paketidir. EmbeddingGemma 2 metin modeli, Vulkan/CPU motorları ve OCR bileşenleri kurulumla gelir. Arama için internet, API anahtarı, Ollama veya Python kurulumu gerekmez. GPU için uygun ekran kartı sürücüsü gerekir.
+Evrakçı indexes the documents already sitting in your folders — PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV and scanned JPG/PNG/TIFF — and finds them by meaning. The files never move. The index lives in a SQLCipher-encrypted vault on your machine, and nothing about your documents is sent anywhere.
 
-Ayarlar → Güncellemeler ile yeni sürüm denetlenir; açılıştan sonra günde bir kez de sessiz denetim yapılır. İndirme SHA-256 ile, kurulum EXE'si sürüm kaydıyla doğrulanır. Güncelleme sabit AppId üzerinden aynı kurulumu yükseltir; kısayollar ve kaldırıcı aynı uygulamayı gösterir. UAC onayı istenebilir. Başarısız kurulumda önceki programı yeniden açma yolu vardır; canlı kasa kurulum tarafından değiştirilmez.
+![Evrakçı · Search](./docs/screenshots/01-ara.png)
 
-Tam kurulum modeli programla birlikte `C:\Program Files\Evrakçı\_internal\embedding` altında yerleştirir (özel kurulum dizini seçildiğinde onun altında). Model pakete gömülüdür; ilk kurulumda ayrıca indirme gerekmez. Aynı model için `.evrakci` güncellemesi modeli yeniden taşımaz. 0.10.0 döneminden kalan doğrulanmış ProgramData modeli varsa kurulum dizinine alınır ve yalnız doğrulama sonrası eski kopya temizlenir. Model eksik/bozuksa güncelleyici tam kurulum paketini seçer; tam paket modeli onarır. `.evrakci` dosyasını elle açmanız gerekmez; güncelleyici yönetir. Model değişirse tam kurulum kullanılmalıdır.
+---
 
-Eski sürümlerle uyum için ZIP de üretilir. ZIP içindeki EXE'nin yanında `_internal` ve `licenses` korunmalıdır; tek başına EXE taşınamaz. ZIP'ten kurulu düzene geçişte güncelleyici tam installer seçer. 0.10.1 ve sonraki istemciler kurulum EXE’si olmadan ZIP ile güncellenmez. 0.9.0 ve daha eski ZIP güncelleyicilerden bu düzene geçiş için tam EXE’yi bir kez çalıştırın. Sonraki güncellemeler uygulamanın içinden aynı kurulum dizinine uygulanır. Eski yayın paketleri korunur. Başarılı kurulum, eski sürüm numarası ile EXE sürüm kaydı eşleşen EXE/BAT çiftlerini kaldırır; bilinmeyen dosyaları korur. Ayrıca yalnız SHA-256 özeti bilinen 0.9 ONNX modelini ve artık kullanılmayan uygulama bağımlılıklarını temizler; tanınmayan dosyalar korunur. Canlı kasa, kaynak evraklar ve yedekler bu temizliğe dahil değildir.
+## Contents
 
-Yayın kaynağı `zeitgeist-c/Evrakci-Releases` deposudur. Yerel derleme veya Git etiketi oluşturmak dış yayın yapıldığı anlamına gelmez.
+- [What it does](#what-it-does)
+- [Screens, one by one](#screens-one-by-one)
+  - [1. First setup](#1-first-setup)
+  - [2. Search](#2-search)
+  - [3. Sources](#3-sources)
+  - [4. Scan](#4-scan)
+  - [5. History](#5-history)
+  - [6. Scanned documents](#6-scanned-documents)
+  - [7. Settings](#7-settings)
+- [Install](#install)
+- [How semantic search works](#how-semantic-search-works)
+- [Vault and security](#vault-and-security)
+- [OCR and preview](#ocr-and-preview)
+- [Build from source](#build-from-source)
+- [Limits worth knowing](#limits-worth-knowing)
+- [License](#license)
 
-## Açılış
+---
 
-Güncel kasanın arama indeksi her açılışta yeniden kurulmaz. Eski şema yardımcıları sürüm numarasını düşüremez. Gerçek bir indeks dönüşümü gerekirse önce güvenli yedek alınır; işlenen/toplam bölüm sayısı, aşama yüzdesi ve o aşamanın ölçülen hızından yaklaşık kalan süre gösterilir. Yedekleme sayfa sayısını kullanır. Doğrulama/sütun kaldırma/disk kaydı gibi toplamı ölçülemeyen aşamalar açık durum ve geçen süreyle gösterilir; bunlara yapay yüzde atanmaz. Yeni/değişen dosyaların normal taraması devam eder.
+## What it does
 
-## Anlamsal arama ve GPU
+| Capability | Detail |
+|---|---|
+| **Semantic search** | EmbeddingGemma 2 Q8_0, 256-dimensional L2-normalised vectors — search by describing the content |
+| **Broad format support** | PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV, JPG/PNG/TIFF |
+| **OCR** | RapidOCR with bundled PP-OCR models and ONNX Runtime for scanned PDFs and images |
+| **Encrypted vault** | SQLCipher database plus a password and a recovery key |
+| **Local models** | text model, Vulkan/CPU engines and OCR ship with the installer — no internet, API key, Ollama or Python needed |
+| **Optional GPU** | CUDA component downloaded on demand (~663 MB, pinned version and SHA-256); Vulkan and CPU are in the main package |
+| **Source management** | add folders, exclude paths, live-watch for changes |
+| **Preview** | PDF preview and thumbnails inside the app |
+| **Filters** | folder, type, year and tags on top of semantic ranking |
+| **Self-update** | daily check, SHA-256 verified, same install upgraded in place |
 
-Tek arama yöntemi EmbeddingGemma 2 Q8_0 ile anlamsal aramadır (256 boyutlu, L2 normalize). Kötü adlandırılmış dosyaları içeriklerini tarif ederek bulun. Örneğin “ev kiralama anlaşması”, içerikte yalnız “kira sözleşmesi” yazan belgeyi bulabilir. Sonuçlar içerik benzerliğine göre sıralanır; her belge için en ilgili bölüm ve sayfa gösterilir. Klasör/tür/yıl/etiket filtreleri korunur. Tırnak, OR/VEYA veya eksi işareti artık kelime arama operatörü değildir; tarifin parçasıdır. Benzerlik kesin doğruluk garantisi değildir.
+---
 
-Ayarlar → Yerel anlamsal arama bölümünde kullanılan motor, aygıt, hatalar ve indeks kapsamı görünür. Otomatik seçim önce kurulu CUDA motorunu, ardından Vulkan'ı, sonra CPU'yu dener. Vulkan/CPU ana pakettedir. NVIDIA CUDA bileşeni isteğe bağlı indirilir (yaklaşık 663 MB sıkıştırılmış indirme); sürüm ve SHA-256 sabitlidir. Uygun NVIDIA donanımı/sürücüsü gerekir. Her kartın çalışacağı garanti edilmez; CPU geri dönüşü ve hatalar görünürdür.
+## Screens, one by one
 
-Model tek yerel alt süreçte paylaşılır. İletişim yalnız 127.0.0.1 üzerinde geçici erişim anahtarıyla yürür; belge içeriği harici servise gönderilmez. Uzun metinler token sınırına göre örtüşmeli bölünür. Kilit/çıkışta model süreci kapatılır; Windows süreç sahipliği uygulama çökmesinde de alt süreci kapatır.
+### 1. First setup
 
-Yeni modelin vektörleri önceki ONNX vektörleriyle karıştırılmaz. Eski kasadaki eksikler sonraki taramada tamamlanır. Model hazır değilse durum açıkça bildirilir; kelime aramasına dönüş yapılmaz. Güncelleme indeksi veya kaynak belgeleri silmez.
+![First setup](./docs/screenshots/00-ilk-kurulum.png)
 
-Gemini yardımcısı, API anahtarı/model ayarları, otomatik özet ve üretilmiş soru-cevap kaldırılmıştır. Embedding modeli yalnız arama temsili üretir.
+Five steps, and the last one shows exactly what will happen.
 
-## OCR ve önizleme
+1. **Welcome** — what the app does, in one screen.
+2. **Vault password** — choose the password that encrypts the index. It can be remembered for the Windows user through DPAPI.
+3. **Folders** — pick the folders to index, either from the tree or by typing a path. Nothing is moved or changed; the folder stays where it is.
+4. **Layout** — decide how the folder context is read for each root, previewed before anything is saved.
+5. **Final check** — a summary of the root count, the theme and whether a password was set, plus the note that documents are neither moved nor modified and that you can keep using the app while the first scan runs.
 
-RapidOCR, paket içindeki PP-OCR modelleri ve ONNX Runtime ile taranmış PDF/görsellerden metin çıkarır. Embedding modeli OCR'ın yerine geçmez. Metin katmanı yeterli PDF sayfaları tekrar OCR'a girmez. Word/Excel içine gömülü resimler OCR kapsamında değildir; eski DOC içeriği için LibreOffice gerekir. PDF önizlemesi ve küçük resimler korunur.
+`Kurulumu tamamla` starts the first scan. A large archive takes a while; the app stays usable throughout.
 
-## Kasa ve güvenlik
+### 2. Search
 
-Varsayılan kasa `%LOCALAPPDATA%\Evrakci\Data\evrakci.db`, yedekler `%LOCALAPPDATA%\Evrakci\Backups` altındadır. Kaynak belgeler yedeğe dahil değildir. Eski yedekler alındıkları şifreyi gerektirir. Kurtarma anahtarını ayrı ve güvenli bir yerde saklayın; şifre ve anahtar olmadan kasa açılacağı vaat edilmez. İki bilgisayarda aynı kasayı eşzamanlı kullanmayın.
+![Search](./docs/screenshots/01-ara.png)
 
-Önce küçük izinli veya sentetik klasörle deneyin. Gerçek NAS, temiz Windows, çok büyük arşiv ve farklı GPU/DPI ortamları ayrıca kabul gerektirir.
+One box and a description of what you are looking for.
 
-## Geliştirme
+- **Search field** — describe the content: "ev kiralama anlaşması" finds a document that only says "kira sözleşmesi" inside. Quotes, `OR`/`AND` and the minus sign are **not** word-search operators; they are part of your description.
+- **Filters on the left** — year, type, company or folder, tag. Applied on top of the semantic ranking, not instead of it.
+- **Saved searches** — store a filter combination and return to it.
+- **Tags** — tag the selected result, or remove a tag.
+- **Results** — list, table or grid view, with `CSV aktar` for export.
+- **Preview panel** — the selected document's preview and its path, with `Yol kopyala`.
 
-Belge taraması önce seçili kaynakların tamamını sayar, sonra içerik işlemlerine geçer. Tarama ayrıntıları toplam/tamamlanan/kalan belgeyi ve yüzdeyi gösterir. İçerik okuma, OCR ve vektör aşamalarında ayrı ilerleme ve aşamaya özgü yaklaşık kalan süre görünür. Sayım bitmeden yüzde üretilmez; erişilemeyen klasörler varsa envanterin eksik olduğu belirtilir.
+Every result shows the most relevant section and page, so you land on the paragraph that matched instead of scrolling a 300-page PDF.
 
-Düzeltme sürümleri `0.10.1 → 0.10.2 → 0.10.3` şeklinde ilerler.
+### 3. Sources
 
-Sürümün tek kaynağı `src/evrakci/version.py` dosyasıdır. Python bağımlılıkları `pyproject.toml` içindedir. `packaging/fetch_engine.py` resmî model/motor sürümlerini proje `build/embedding` alanına indirir ve özetlerini doğrular. BF16 yalnız geliştirici karşılaştırması içindir; dağıtıma Q8_0 girer.
+![Sources](./docs/screenshots/02-kaynaklar.png)
+
+The folders that get indexed.
+
+- `Klasör ekle` adds a root; each root has its own card.
+- Per root you see the name, the full path, whether search is enabled for it, and its exclusion list.
+- `Kaldır` removes a root from the index — **the documents are not deleted**, only the index entries.
+- Exclusions keep whole subtrees out of the index.
+
+Changing sources does not require a rebuild: the next scan picks up the difference.
+
+### 4. Scan
+
+![Scan](./docs/screenshots/03-tarama.png)
+
+What is being indexed and how far along it is.
+
+- **Scope** — how many source folders are in play, with a pointer back to Sources.
+- **Daily schedule** — the planned scan time (`12:30` in the capture).
+- **Status** — `Hazır`, `Taranıyor`, `Duraklatıldı` and the reason for a failure.
+- **Controls** — `Taramayı başlat`, `Duraklat`, `İptal`, `Tarama ayrıntılarını aç`.
+- **Recent scans** — per run: time, root, result, how many documents were processed, found, still pending and failed.
+
+Counting happens before percentage: the app walks the source completely, then reports progress against that total. If a folder is unreachable, the inventory is marked incomplete instead of pretending the scan covered everything. Stages that cannot be measured — verification, column removal, disk records — show elapsed time and a state, never a fabricated percentage.
+
+### 5. History
+
+![History](./docs/screenshots/04-gecmis.png)
+
+Previous searches, one click away. The tab shows the count and an explicit empty state when nothing has been searched yet.
+
+### 6. Scanned documents
+
+![Scanned documents](./docs/screenshots/05-taranmis-evraklar.png)
+
+Every indexed document with its path, state and source health.
+
+| Column | Meaning |
+|---|---|
+| **Document** | filename with thumbnail |
+| **Path** | full path as indexed |
+| **State** | `Tamamlandı` or `Kısmi` with the reason (for example `OCR_LOW_QUALITY`) |
+| **Source** | whether the source was reachable (`ok`) |
+
+Filters by state, page size, `Yenile`, `Kapsam`, and previous/next navigation. A document that only partially indexed says so instead of silently looking complete.
+
+### 7. Settings
+
+![Settings](./docs/screenshots/06-ayarlar.png)
+
+Four groups.
+
+**Work**
+- OCR components: Turkish text recognition state, with `Doğrula / onar`.
+- Daily scan time.
+- Reduce network load (throttle).
+- Start with Windows.
+- Live-watch changed folders.
+- Minimise to tray on close.
+
+**Consumption**
+- Incoming folder — documents dropped there are picked up and can be filed automatically.
+- Archive target — where processed documents are moved.
+- Tag rules — tag and keyword pairs applied during filing.
+
+**Vault security**
+- Auto-lock after inactivity (15 minutes in the capture).
+- `Parolayı değiştir`, `Hatırlanan girişi kaldır`.
+- Recovery key: `Anahtarı yenile`, `Anahtarı göster`, `Yazdır / kaydet`, `Kaldır`.
+
+**Backups**
+- `Yedek oluştur`, `Geri yükle`, and the list of existing backups.
+
+---
+
+## Install
+
+1. Download `Evrakçı-<version>.exe` from [Releases](https://github.com/zeitgeist-c/Evrakçı/releases/latest).
+2. Run it. The installer carries the text model, the Vulkan/CPU engines and the OCR components, so search works offline immediately.
+3. Choose a vault password and at least one folder on first launch.
+
+A ZIP is published for older clients. The `_internal` and `licenses` folders must stay next to the EXE — the EXE alone will not run. Updating from a ZIP installation switches to the full installer.
+
+Updates run from *Settings → Güncellemeler*: a daily silent check, SHA-256 verified download, install over the same directory through a fixed AppId, shortcuts and uninstaller preserved. A failed install offers a path back to the previous program; the live vault is never modified by the installer.
+
+## How semantic search works
+
+There is exactly one search path: semantic search. The text model produces a 256-dimensional L2-normalised vector for each section of each document; a query is embedded the same way and results are ranked by cosine similarity.
+
+- Badly named files are findable by describing their content.
+- Each result shows the best-matching section and page.
+- Folder, type, year and tag filters narrow the ranking without replacing it.
+- Similarity is not a guarantee of relevance — the top result can be wrong.
+
+The model runs in a single shared local subprocess. Communication is over `127.0.0.1` only, with a temporary access key; document content is never sent to an external service. Long texts are split with overlap at token boundaries. The model process is closed on lock or exit, and Windows process ownership closes it after a crash too.
+
+Old ONNX vectors are never mixed with the new model's vectors. Gaps from an older vault are filled during the next scan. If the model is not ready, the app says so plainly — there is no silent fallback to word search.
+
+## Vault and security
+
+| What | Where |
+|---|---|
+| Vault | `%LOCALAPPDATA%\Evrakci\Data\evrakci.db` |
+| Backups | `%LOCALAPPDATA%\Evrakci\Backups` |
+| Remembered login | `%LOCALAPPDATA%\Evrakci\Credentials` (DPAPI, per Windows user) |
+
+- The database is encrypted with SQLCipher; the password is not stored anywhere.
+- Backups do not include the source documents.
+- Old backups require the password they were taken with.
+- Keep the recovery key somewhere separate and safe. Without both the password and the key, the vault will not open — that is not a limitation to be worked around, it is the design.
+- Do not open the same vault on two computers at the same time.
+- Session lock or sleep closes connections and clears the model, preprocessing and history.
+
+## OCR and preview
+
+RapidOCR, bundled PP-OCR models and ONNX Runtime extract text from scanned PDFs and images. The embedding model does not replace OCR. PDF pages that already carry a good text layer are not OCR'd again. Images embedded inside Word or Excel files are outside OCR scope; legacy DOC content needs LibreOffice.
+
+## Build from source
+
+Requires Python 3.12+.
 
 ```powershell
 $env:PYTHONPATH = 'src'
@@ -56,8 +210,19 @@ $env:PYTHONPATH = 'src'
 .\.venv\Scripts\python.exe eval/package_check.py
 ```
 
-Eski kasalarda eksik embedding tablosu ve indeksi otomatik hazırlanır; belge metni ve mevcut vektörler korunur; eski FTS/sözlük kaldırılır. Eksik veya yanlış boyutlu vektörler normal taramada tamamlanır. Kalıcı başarısız işler varken tarama tamamlandı sayılmaz.
+`packaging/fetch_engine.py` downloads the official model and engine versions into the project's `build/embedding` area and verifies their digests. BF16 is for developer comparison only; Q8_0 ships.
 
-Gerçek kasa şifresini CLI argümanlarında kullanmayın. Güncel kabul ve sınırlamalar `TESLIM-0.10.6.md` dosyasında kaydedilir. Üçüncü taraf lisansları dağıtımda korunur.
+The version has a single source: `src/evrakci/version.py`. Patch releases go `0.10.1 → 0.10.2 → 0.10.3`.
 
-0.10.6 ile kelime indeksi, yazım önerisi sözlüğü ve tarama sonundaki sözlük bakımı kaldırılmıştır. Yeni kasalar yalnız metin, kaynak/sayfa bağlantıları ve vektörleri tutar. Eski kasadan geçişte önce doğrulanmış şifreli yedek alınır; FTS yeniden kurulmaz. Dosya içerikleri bir kez taranır, değişmeyen dosyalar yeniden OCR/vektör üretmez. Model yokken anlamsal indeks tamamlandı sayılmaz.
+Do not pass a real vault password on the command line.
+
+## Limits worth knowing
+
+- Real NAS, a clean Windows install, a very large archive and different GPU/DPI environments still need their own acceptance; try a small permitted or synthetic folder first.
+- DOC content requires LibreOffice; embedded images inside Office files are not OCR'd.
+- Semantic similarity is not exact matching — a query can return a plausible but wrong document.
+- `Kısmi` state on a document means the index is incomplete for it, usually low-quality OCR of a scan.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).

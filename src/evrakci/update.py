@@ -1,4 +1,4 @@
-"""Evrakçı kendi kendini güncelleme: herkese açık Evrakci-Releases deposundan.
+"""Evrakçı kendi kendini güncelleme: herkese açık Evrakci deposundan.
 
 Kaynak depo özel kalır; kurulum ve güncelleme paketleri herkese açık ayrı bir
 depoda yayınlanır. Böylece uygulama "en yeni sürüm hangisi?" sorusunu EXE
@@ -28,7 +28,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-RELEASE_REPO = "zeitgeist-c/Evrakci-Releases"
+RELEASE_REPO = "zeitgeist-c/Evrakci"
 API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 from .version import __version__
 from .installer import windows_file_version, spawn_installer
