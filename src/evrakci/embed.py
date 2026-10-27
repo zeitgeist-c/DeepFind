@@ -1,8 +1,14 @@
-"""Public embedding API; llama.cpp runtime, offline GGUF model."""
+"""Public embedding API; llama.cpp runtime, offline GGUF model.
+
+`embed.MODEL_VER`, `embed.close()`, `embed.isit_oturumu()` gibi adlar bu
+modülden kullanılıyor; engine'den yeniden dışa aktarım kasıtlıdır (ruff F401
+bu yüzden yanlış pozitif). Silinmez, `noqa` ile işaretlenir.
+"""
 import numpy as np
-from .engine import (MODEL_VER, DIM, SORGU_ONEKI, BELGE_ONEKI, VARSAYILAN_TOPLU,
-    VARSAYILAN_UZUNLUK, Oturum, hazir_oturum, isit_oturumu, status, set_backend, close,
-    _varsayilan_model_yolu)
+from .engine import (MODEL_VER, DIM, SORGU_ONEKI, BELGE_ONEKI,  # noqa: F401
+    VARSAYILAN_TOPLU, VARSAYILAN_UZUNLUK, Oturum,  # noqa: F401
+    hazir_oturum, isit_oturumu, status, set_backend, close,  # noqa: F401
+    _varsayilan_model_yolu)  # noqa: F401
 
 def isle(hiddens: np.ndarray, maske: np.ndarray, kirp: int = DIM) -> np.ndarray:
     """Maskeli mean-pool + ilk `kirp` boyut + L2. Cikti (n, kirp) float32."""

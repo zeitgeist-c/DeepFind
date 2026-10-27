@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import extract, index, scan, schema, search, vault  # noqa: E402
+from evrakci import extract, index, scan, schema, vault  # noqa: E402
 from evrakci.migrate import ensure_v6  # noqa: E402
 from evrakci.migrate import ensure_v5  # noqa: E402
 
@@ -76,7 +76,6 @@ def test_dikey_akis(tmp_path):
 
 def test_surum_esitligi():
     import tomllib
-    from evrakci.version import __version__
     with open(os.path.join(os.path.dirname(__file__), "..", "pyproject.toml"), "rb") as f:
         project = tomllib.load(f)
         assert project["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "evrakci.version.__version__"

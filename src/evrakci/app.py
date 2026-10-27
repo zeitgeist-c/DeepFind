@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import (QObject, QThread, QTimer, Signal, Slot, Qt, QAbstractNativeEventFilter,
-                            QTime, QEvent, QSettings, QRect, QSize, QItemSelection, QItemSelectionModel)
+                            QTime, QSettings, QRect, QSize, QItemSelection, QItemSelectionModel)
 from PySide6.QtCore import QUrl
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel, QColor, QPixmap
@@ -881,7 +881,6 @@ class AnaPencere(QMainWindow):
 
     def _tema_yenile(self):
         """Tema değişince kod içinde üretilen simgeleri tazeler."""
-        from PySide6.QtCore import QSize
         self._nav_ikonlari()
         self.rail_toggle.setIcon(theme.symbol_icon("right" if self._collapsed else "left"))
         for button, title in self.rail_actions:

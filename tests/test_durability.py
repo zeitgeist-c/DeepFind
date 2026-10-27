@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from evrakci import coordinator, exclusions, extract, job_queue as queue, scan, schema, search, vault  # noqa: E402
+from evrakci import coordinator, exclusions, extract, job_queue as queue, schema, vault  # noqa: E402
 from evrakci.migrate import ensure_v4, ensure_v6  # noqa: E402
 from evrakci.migrate import ensure_v5  # noqa: E402
 

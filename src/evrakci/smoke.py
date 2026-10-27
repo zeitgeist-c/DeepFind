@@ -17,7 +17,7 @@ def run(report_path):
     from PySide6.QtWidgets import QApplication, QDialog
     from openpyxl import Workbook
     from . import schema, vault, theme
-    from .migrate import ensure_v8, get_setting, set_setting
+    from .migrate import ensure_v8
     from .migrate import ensure_v5
     from .index import index_entry
     from .scan import Entry

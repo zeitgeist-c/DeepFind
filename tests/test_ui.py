@@ -751,7 +751,6 @@ def test_tarama_isci_eszamanli_kosar(tmp_path):
 def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     """Kök kaldırma işçisi sürücü kökünü boşaltır, diğer kökleri korur."""
     from evrakci.app import KokKaldirIsci
-    from evrakci import exclusions
     db = str(tmp_path / "k.db")
     con = vault.open_vault(db, PW)
     schema.ensure_schema(con)

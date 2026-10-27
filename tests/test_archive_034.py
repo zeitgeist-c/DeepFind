@@ -1,7 +1,7 @@
 """Archive completeness, retrieval correctness and bounded UI regressions."""
 import sqlite3,time,os
 import pytest
-from evrakci import schema,migrate,index,rank,coordinator,extract,vault
+from evrakci import schema,migrate,index,coordinator,extract,vault
 from evrakci.scan import Entry
 from evrakci.extract import Segment,ExtractResult
 from evrakci.migrate import ensure_v5

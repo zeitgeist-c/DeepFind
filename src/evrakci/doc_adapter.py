@@ -63,7 +63,7 @@ def extract_doc_guarded(path: str):
             text = convert_doc(path, wd)
     except EngineUnavailable:
         return None
-    except Exception as e:
+    except Exception:
         return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
     lines = [ln for ln in text.splitlines() if ln.strip()]
     segs = [Segment("para", None, f"Paragraf {i + 1}", ln) for i, ln in enumerate(lines)]

@@ -1,10 +1,9 @@
 """Behavioral regressions for independent semantic retrieval and local-only runtime."""
-from pathlib import Path
 import json
 import threading
 import numpy as np
 import pytest
-from evrakci import engine, embed, rank, migrate, model_indir, update
+from evrakci import engine, rank, migrate, model_indir, update
 from test_hibrit import _kasa, _duzen, _kodla_b, _dosya, _vektor
 
 

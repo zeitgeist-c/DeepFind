@@ -181,7 +181,7 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
     from . import normalize as nz
     if 'start_offset' not in {r[1] for r in con.execute('PRAGMA table_info(segments)')}:
         migrate.ensure_archive(con)
-    cur = con.execute("BEGIN IMMEDIATE")
+    con.execute("BEGIN IMMEDIATE")
     try:
         con.execute("UPDATE file_revisions SET active=0 WHERE file_id=?", (file_id,))
         con.execute(
@@ -349,7 +349,6 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
 
     session: guarded modda tarama turu boyunca yeniden kullanilan isci (motoru
     bir kez yukler); None ise taze surec acilir."""
-    from . import normalize as nz
     fid, sig = job["file_id"], job["signature"]
     if active_signature(con, fid) != sig:
         q.complete(con, job["job_id"])  # eski surum; yeni extract isi gecerli
@@ -412,7 +411,7 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
                     (results[0].error_code or "MODEL_MISSING", fid))
         con.commit()
         return "deferred"
-    cur = con.execute("BEGIN IMMEDIATE")
+    con.execute("BEGIN IMMEDIATE")
     try:
         for r in results:
             if r.method in ("deferred", "unavailable"):

@@ -1,6 +1,5 @@
 """Güncelleme akışı: sürüm karşılaştırma, yayın çözümleme, indirme güvenliği,
 paket açma doğrulaması ve bekçi betiği — ağ yok, Qt yok."""
-import hashlib
 import json
 import os
 import sys

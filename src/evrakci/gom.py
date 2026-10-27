@@ -5,7 +5,6 @@ her dosya tek transaction'da yazilir. Eski surum satirlar bastan yazilir.
 """
 from __future__ import annotations
 
-import numpy as np
 
 from . import embed as embed_mod
 from . import job_queue as q

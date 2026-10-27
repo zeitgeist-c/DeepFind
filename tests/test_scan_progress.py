@@ -1,6 +1,5 @@
 import os
 import time
-from pathlib import Path
 import numpy as np
 from evrakci import coordinator as C, job_queue as q, vault, migrate
 from evrakci.scan_progress import DocumentProgress

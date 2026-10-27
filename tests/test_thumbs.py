@@ -1,7 +1,6 @@
 """Küçük resim hattı testleri: önbellek anahtarı, üretim, budama, yükleyici."""
 import os
 import sys
-import time
 
 import pytest
 

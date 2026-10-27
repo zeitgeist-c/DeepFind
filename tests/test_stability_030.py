@@ -1,12 +1,10 @@
 """Recovery records and selectable model boundaries for the stability release."""
-import json
 import os
 import sys
 import time
 import uuid
 from pathlib import Path
 
-import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

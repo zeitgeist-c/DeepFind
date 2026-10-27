@@ -9,7 +9,7 @@ from .scan import Entry
 
 
 def index_entry(con, entry: Entry, res: ExtractResult, context: str = "") -> int:
-    cur = con.execute("BEGIN IMMEDIATE")
+    con.execute("BEGIN IMMEDIATE")
     try:
         con.execute(
             "INSERT INTO files(path, name, ext, size, mtime_ns, source_status, index_status, error_code)"

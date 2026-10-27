@@ -3,7 +3,7 @@ import os
 from PySide6.QtCore import Qt,QTimer
 from PySide6.QtGui import QStandardItem
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QScrollArea,QPushButton,QLineEdit,
-    QComboBox,QListView,QHBoxLayout,QBoxLayout,QLabel,QSplitter,QFrame)
+    QComboBox,QListView,QHBoxLayout,QSplitter,QFrame)
 from .ui import bolme, label, sayac, CardDelegate
 from .tasks import DatabaseTask,list_files
 from . import backup,history

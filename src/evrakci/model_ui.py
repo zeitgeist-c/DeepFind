@@ -1,5 +1,4 @@
 """Local model settings; work stays off the GUI thread."""
-import threading
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QComboBox, QPushButton
 from . import archive_ui, engine, migrate
