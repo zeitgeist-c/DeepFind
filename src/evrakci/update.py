@@ -32,6 +32,7 @@ RELEASE_REPO = "zeitgeist-c/Evrakci"
 API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 from .version import __version__
 from .installer import windows_file_version, spawn_installer
+from . import paths
 USER_AGENT = f"Evrakci/{__version__}"
 PROGRAM = "Evrakçı"
 log = logging.getLogger("evrakci.update")
@@ -130,7 +131,7 @@ def _sha256_of(path: Path) -> str:
 
 
 def updates_dir() -> Path:
-    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Evrakci" / "Updates"
+    base = paths.updates_dir()
     base.mkdir(parents=True, exist_ok=True)
     return base
 

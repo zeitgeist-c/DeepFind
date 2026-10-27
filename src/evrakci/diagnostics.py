@@ -5,12 +5,13 @@ import faulthandler
 import os
 import time
 from pathlib import Path
+from . import paths
 
 _stream = None
 
 
 def _log_path() -> Path:
-    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Evrakci" / "Logs"
+    base = paths.logs_dir()
     base.mkdir(parents=True, exist_ok=True)
     return base / "lifecycle.log"
 

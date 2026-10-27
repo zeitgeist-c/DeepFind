@@ -17,7 +17,7 @@ import threading
 
 from PySide6.QtCore import QThread, Signal
 
-from . import workers
+from . import paths, workers
 
 KUCUK = 300   # liste satırı küçük resmi (en uzun kenar, px)
 BUYUK = 900   # detay paneli önizlemesi
@@ -25,10 +25,7 @@ SINIR = 4000  # önbellekte tutulacak en fazla dosya
 
 
 def onbellek_dizini() -> str:
-    taban = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    yol = os.path.join(taban, "Evrakçı", "thumbs")
-    os.makedirs(yol, exist_ok=True)
-    return yol
+    return str(paths.thumbs_dir())
 
 
 _UZANTI: str | None = None

@@ -4,6 +4,7 @@ import hashlib
 import os
 from ctypes import wintypes
 from pathlib import Path
+from . import paths
 
 
 class _Blob(ctypes.Structure):
@@ -12,7 +13,7 @@ class _Blob(ctypes.Structure):
 
 def _path(vault):
     key = hashlib.sha256(os.path.normcase(os.path.abspath(vault)).encode()).hexdigest()
-    return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Evrakci" / "Credentials" / (key + ".bin")
+    return paths.credentials_dir() / (key + ".bin")
 
 
 def _crypt(data, decrypt=False):

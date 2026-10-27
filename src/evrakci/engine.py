@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.request
 import numpy as np
+from . import paths
 
 MODEL_VER = 'eg2-q8-256-v2'
 DIM = 256
@@ -48,7 +49,7 @@ def status():
 
 
 def cuda_root():
-    return Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'Evrakci' / 'Engines' / 'b11765-cuda12'
+    return paths.engines_dir('b11765-cuda12')
 
 
 def close():

@@ -1,4 +1,4 @@
-"""Evrakci A3 CLI: kasa kur, tara, ara. Arayuz A7'de; bu komut dikey akis kanitidir."""
+"""DeepFind CLI: kasa kur, tara, ara. Arayuz A7'de; bu komut dikey akis kanitidir."""
 from __future__ import annotations
 
 import argparse
@@ -6,8 +6,10 @@ import getpass
 import os
 import sys
 
-APPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-DEFAULT_VAULT = os.path.join(APPDATA, "Evrakci", "Data", "evrakci.db")
+from . import paths
+from .migration import migrate_vault_filename
+
+DEFAULT_VAULT = str(paths.vault_db())
 
 
 def _load():
@@ -223,7 +225,7 @@ def cmd_sikistir(args) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="evrakci")
+    ap = argparse.ArgumentParser(prog="deepfind")
     ap.add_argument("--kasa", default=DEFAULT_VAULT)
     ap.add_argument("--sifre")
     sub = ap.add_subparsers(dest="komut", required=True)
@@ -255,6 +257,7 @@ def main(argv=None) -> int:
     sub.add_parser("tani", help="Tani ciktisi: surumler, sayilar, OCR durumu")
     sub.add_parser("sikistir", help="Kasayi VACUUM ile fiziksel kucult (uygulama kapali iken)")
     args = ap.parse_args(argv)
+    migrate_vault_filename()
     if args.komut == "init":
         return cmd_init(args)
     if args.komut == "tara":
