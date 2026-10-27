@@ -69,6 +69,11 @@ def test_tuket_kararsiz_ve_desteksiz_bekler(tmp_path):
     schema.ensure_schema(con)
     ensure_v5(con)
     migrate.ensure_current(con)
+    # Kararlilik esigi mtime'a bakar; yavas/antiviruslu diskte dosya olusturma
+    # ile kontrol arasinda 2 sn gecebiliyor. Niyeti sabitlemek icin mtime'i
+    # "az once degisti" olarak acikca isaretle (esik degismiyor).
+    now = time.time()
+    os.utime(taze, (now, now))
     try:
         assert consume.tuket(con, str(taze), str(hedef)) == "unstable"
         assert taze.exists()

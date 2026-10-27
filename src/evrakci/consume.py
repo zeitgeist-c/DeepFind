@@ -39,11 +39,12 @@ def tuket(con, path: str, hedef_dir: str) -> str:
         if time.time_ns() - st.st_mtime_ns < STABLE_NS:
             return "unstable"
         varis = _hedef_yol(hedef_dir, os.path.basename(path))
-        os.replace(path, varis)
-        # Eski yolun indeks artığı kalmasın; hedef taramada sıfırdan yazılır.
+        # Önce indeks kaydını düşür, sonra taşı: DB kilitliyse dosya taşınmış
+        # ama indekste eski yoluyla kalmış (hayalet) kayıt oluşmasın.
         con.execute("DELETE FROM files WHERE path=?", (os.path.abspath(path),))
         con.execute("DELETE FROM files WHERE path=?", (path,))
         con.commit()
+        os.replace(path, varis)
         return "moved"
     except OSError:
         return "skipped"

@@ -25,6 +25,20 @@ def folded(s: str) -> str:
     return strict(s).translate(_FOLD)
 
 
+def folded_esit_uzunluk(s: str) -> str:
+    """Uzunluğu değiştirmeyen TR lower + diakritik katlama.
+
+    `folded` boşlukları daralttığı için konum kaydırır; snippet gibi ham
+    metin offset'i ile birebir eşleşmesi gereken yerlerde bu sürüm kullanılır.
+    Kural: her karakter tek karaktere eşlenir (İ→i, I→ı, ş→s, boşluk→boşluk).
+    """
+    parcalar = []
+    for karakter in s or "":
+        kucuk = karakter.replace("I", "ı").replace("İ", "i").lower()
+        parcalar.append(kucuk if len(kucuk) == 1 else karakter)
+    return "".join(parcalar).translate(_FOLD)
+
+
 def install(con) -> None:
     """fold() UDF'ini bağlantıya kaydet. Her bağlantıda çağrılmalı: FTS
     trigger'ları indekse katlanmış metni bu SQL içinden yazar (v9).
