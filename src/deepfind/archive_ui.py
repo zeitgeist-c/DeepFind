@@ -99,7 +99,7 @@ def install(w):
     w.file_debounce.timeout.connect(lambda:w._files_refresh(reset=True))
     w.file_filter.textChanged.connect(lambda:w.file_debounce.start()); w.file_status.currentIndexChanged.connect(lambda:w._files_refresh(reset=True))
     w.file_list.doubleClicked.connect(w._file_open)
-    w.nav.blockSignals(True); w.nav.clear(); w.nav.addItems(['Ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']); w.nav.setCurrentRow(0); w.nav.blockSignals(False)
+    w.nav.blockSignals(True); w.nav.clear(); w.nav.addItems([t("Ara"),t("Kaynaklar"),t("Tarama"),t("Geçmiş"),t("Taranmış Evraklar"),t("Ayarlar")]); w.nav.setCurrentRow(0); w.nav.blockSignals(False)
     w._nav_ikonlari()
     w.yigin.setCurrentIndex(0)
 
