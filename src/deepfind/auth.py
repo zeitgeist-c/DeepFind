@@ -2,6 +2,7 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                                QPushButton, QCheckBox, QFrame, QHBoxLayout)
 from .ui import brand as draw_brand, label
+from .theme import t
 
 # Dialog kapanış kodu: kullanıcı "şifremi unuttum" istedi.
 MOD_KURTARMA = 2
