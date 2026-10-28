@@ -87,7 +87,8 @@ def run(report_path):
             from . import theme as _th
             from PySide6.QtCore import QSettings as _QS
             from . import identity as _id
-            tani = {"lang": _th.language(), "qsettings": _QS(_id.APP_IDENTITY, "Appearance").value("language", "<yok>"), "ekranlar": EKRANLAR}
+            from .app import EKRANLAR as _EKR
+            tani = {"lang": _th.language(), "qsettings": _QS(_id.APP_IDENTITY, "Appearance").value("language", "<yok>"), "ekranlar": _EKR}
             assert gercek == beklenen, (gercek, beklenen, tani)
             assert pen.arama_islik.count()==3 and pen.gecmis_split.count()==2 and pen.dosya_split.count()==2
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
