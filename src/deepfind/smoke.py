@@ -82,7 +82,9 @@ def run(report_path):
             app.processEvents()
             from .archive_ui import layout_cards
             pen.resize(1500,1000); app.processEvents(); layout_cards(pen); app.processEvents()
-            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == [t("Ara"),t("Kaynaklar"),t("Tarama"),t("Geçmiş"),t("Taranmış Evraklar"),t("Ayarlar")]
+            gercek = [pen.nav.item(i).text() for i in range(pen.nav.count())]
+            beklenen = [t("Ara"),t("Kaynaklar"),t("Tarama"),t("Geçmiş"),t("Taranmış Evraklar"),t("Ayarlar")]
+            assert gercek == beklenen, (gercek, beklenen)
             assert pen.arama_islik.count()==3 and pen.gecmis_split.count()==2 and pen.dosya_split.count()==2
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
