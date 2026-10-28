@@ -5,6 +5,7 @@ import os
 from ctypes import wintypes
 from pathlib import Path
 from . import paths
+from .theme import t
 
 
 class _Blob(ctypes.Structure):
@@ -18,7 +19,7 @@ def _path(vault):
 
 def _crypt(data, decrypt=False):
     if os.name != "nt":
-        raise OSError("Giriş hatırlama yalnız Windows üzerinde kullanılabilir.")
+        raise OSError(t("Giriş hatırlama yalnız Windows üzerinde kullanılabilir."))
     buffer = (ctypes.c_ubyte * len(data)).from_buffer_copy(data)
     source, output = _Blob(len(data), buffer), _Blob()
     api = ctypes.windll.crypt32
@@ -27,7 +28,7 @@ def _crypt(data, decrypt=False):
                    ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(_Blob)]
     fn.restype = wintypes.BOOL
     if not fn(ctypes.byref(source), None, None, None, None, 1, ctypes.byref(output)):
-        raise OSError("Windows güvenli giriş kaydı açılamadı.")
+        raise OSError(t("Windows güvenli giriş kaydı açılamadı."))
     try:
         return ctypes.string_at(output.data, output.size)
     finally:

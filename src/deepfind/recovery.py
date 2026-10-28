@@ -18,6 +18,7 @@ import os
 import time
 import uuid
 from pathlib import Path
+from .theme import t
 
 # Karışan harfler yok: I, L, O, U ve rakam 0, 1 alfabede bulunmaz.
 ALFABE = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
@@ -123,7 +124,7 @@ def _dogrula_bicim(anahtar: str) -> str:
     n = normalize(anahtar)
     govde = n[len(PREFIX):].replace("-", "")
     if len(govde) != 32:
-        raise ValueError("Kurtarma anahtarı eksik veya bozuk görünüyor.")
+        raise ValueError(t("Kurtarma anahtarı eksik veya bozuk görünüyor."))
     return n
 
 
@@ -152,7 +153,7 @@ def write_container(vault_path: str, password: str, anahtar: str) -> str:
     kontrol = _con(gecici, anahtar)
     try:
         if kontrol.execute("SELECT v FROM recovery WHERE k='acilis'").fetchone() is None:
-            raise RuntimeError("kurtarma konteyneri doğrulanamadı")
+            raise RuntimeError(t("kurtarma konteyneri doğrulanamadı"))
     finally:
         kontrol.close()
     os.replace(gecici, yol)
@@ -170,12 +171,12 @@ def verify_container(yol: str, anahtar: str) -> dict:
     try:
         con = _con(yol, anahtar)
     except Exception:
-        return {"ok": False, "neden": "anahtar geçersiz"}
+        return {"ok": False, "neden": t("anahtar geçersiz")}
     try:
         satirlar = dict(con.execute("SELECT k,v FROM recovery").fetchall())
     except Exception:
         con.close()
-        return {"ok": False, "neden": "konteyner okunamadı"}
+        return {"ok": False, "neden": t("konteyner okunamadı")}
     con.close()
     kasa = satirlar.get("kasa", "")
     sonuc = {"ok": True, "kasa": kasa, "parmak_izi": satirlar.get("parmak_izi", ""),
@@ -233,28 +234,28 @@ def document_text(vault_path: str, anahtar: str, bicimli: bool = False) -> str:
     anahtar = _dogrula_bicim(anahtar)
     kasa = os.path.abspath(vault_path)
     if not bicimli:
-        return (f"EVRAKÇI KURTARMA ANAHTARI\n"
-                f"Anahtar : {anahtar}\n"
-                f"Kasa    : {kasa}\n")
+        return (t("EVRAKÇI KURTARMA ANAHTARI\n")
+                + f"Anahtar : {anahtar}\n"
+                + f"Kasa    : {kasa}\n")
     gruplu = " ".join(anahtar[i:i + 5] for i in range(0, len(anahtar), 5))
     return (
         "==================================================\n"
-        "        EVRAKÇI — KURTARMA ANAHTARI\n"
-        "==================================================\n\n"
-        "Bu anahtar, kasa şifrenizi unuttuğunuzda arşiv\n"
-        "indeksinizi kurtarır. Güvenli bir yerde saklayın.\n\n"
-        f"  {ETIKET}  {gruplu}\n\n"
-        f"  Kasa    :  {kasa}\n\n"
-        "Nasıl kullanılır:\n"
-        "  1) DeepFind'yı açın, şifre ekranında\n"
-        "     \"Şifremi unuttum\" seçeneğine basın.\n"
-        "  2) Yukarıdaki anahtarı yapıştırın (boşluk ve\n"
-        "     büyük/küçük harf farkı önemli değildir).\n"
-        "  3) Kasa açılır; yeni bir şifre belirlersiniz.\n\n"
-        "Anahtar yalnız bu belgede ve kasa klasöründeki\n"
-        "aynı adlı dosyada bulunur. Kaynak belgeleriniz\n"
-        "bu işlemden etkilenmez.\n"
-        "==================================================\n"
+        + t("        EVRAKÇI — KURTARMA ANAHTARI\n")
+        + "==================================================\n\n"
+        + t("Bu anahtar, kasa şifrenizi unuttuğunuzda arşiv\n")
+        + t("indeksinizi kurtarır. Güvenli bir yerde saklayın.\n\n")
+        + f"  {ETIKET}  {gruplu}\n\n"
+        + f"  Kasa    :  {kasa}\n\n"
+        + t("Nasıl kullanılır:\n")
+        + t("  1) DeepFind'yı açın, şifre ekranında\n")
+        + t("     \"Şifremi unuttum\" seçeneğine basın.\n")
+        + t("  2) Yukarıdaki anahtarı yapıştırın (boşluk ve\n")
+        + t("     büyük/küçük harf farkı önemli değildir).\n")
+        + t("  3) Kasa açılır; yeni bir şifre belirlersiniz.\n\n")
+        + t("Anahtar yalnız bu belgede ve kasa klasöründeki\n")
+        + t("aynı adlı dosyada bulunur. Kaynak belgeleriniz\n")
+        + t("bu işlemden etkilenmez.\n")
+        + "==================================================\n"
     )
 
 
@@ -268,18 +269,18 @@ def recover(vault_path: str, anahtar: str, yeni_sifre: str,
     """
     from . import backup, vault
     if len(yeni_sifre) < 12:
-        raise ValueError("Yeni şifre en az 12 karakter olmalı.")
+        raise ValueError(t("Yeni şifre en az 12 karakter olmalı."))
     yol = container_path(vault_path)
     if not os.path.isfile(yol):
-        raise FileNotFoundError("Kurtarma konteyneri bulunamadı.")
+        raise FileNotFoundError(t("Kurtarma konteyneri bulunamadı."))
     try:
         veri = read_container(yol, anahtar)
     except Exception as error:
-        raise ValueError("Kurtarma anahtarı geçersiz veya konteyner bozuk.") from error
+        raise ValueError(t("Kurtarma anahtarı geçersiz veya konteyner bozuk.")) from error
     eski_sifre = veri.get("acilis", "")
     hedef = veri.get("kasa") or os.path.abspath(vault_path)
     if not os.path.isfile(hedef):
-        raise FileNotFoundError("Kasa dosyası bulunamadı; kurtarma yapılamıyor.")
+        raise FileNotFoundError(t("Kasa dosyası bulunamadı; kurtarma yapılamıyor."))
     if os.path.abspath(hedef) != os.path.abspath(vault_path):
         # Kasa taşınmış: en azından doğru dosyayı açtığımızdan emin olalım.
         pass

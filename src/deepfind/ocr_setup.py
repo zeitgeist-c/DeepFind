@@ -7,6 +7,7 @@ alır. Ağ erişimi gerektirmez.
 from __future__ import annotations
 
 from . import rapid
+from .theme import t
 
 
 def ready() -> tuple[bool, list[str]]:
@@ -24,8 +25,8 @@ def ensure(progress=None) -> None:
         progress("motor", 1, 1, 0, 1)
     ok, missing = ready()
     if not ok:
-        raise RuntimeError("OCR bileşenleri eksik: " + ", ".join(missing) +
-                           " — uygulama paketini yeniden edinin.")
+        raise RuntimeError(t("OCR bileşenleri eksik: ") + ", ".join(missing) +
+                           t(" — uygulama paketini yeniden edinin."))
     rapid.get_engine()
     # Isindirma amacliydi: ornek UI sürecinde durmasın (ONNX belleği boşuna tutulur).
     rapid.reset()

@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar, QPushButton
 
 from . import ocr_setup
+from .theme import t
 
 
 class _Installer(QObject):
@@ -28,14 +29,14 @@ class _Installer(QObject):
 class OcrSetupDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("DeepFind • OCR hazırlanıyor")
+        self.setWindowTitle(t("DeepFind • OCR hazırlanıyor"))
         self.setMinimumWidth(520)
         self.running = False
         self.completed = False
         self.failure_message = ""
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Gerekli bileşenler"))
-        self.status = QLabel("Türkçe OCR doğrulanıyor. Hazır olunca DeepFind açılacak.")
+        layout.addWidget(QLabel(t("Gerekli bileşenler")))
+        self.status = QLabel(t("Türkçe OCR doğrulanıyor. Hazır olunca DeepFind açılacak."))
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.bar = QProgressBar()
@@ -45,7 +46,7 @@ class OcrSetupDialog(QDialog):
         self.retry.hide()
         self.retry.clicked.connect(self.start)
         layout.addWidget(self.retry)
-        self.exit_button = QPushButton("Çıkış")
+        self.exit_button = QPushButton(t("Çıkış"))
         self.exit_button.clicked.connect(self.reject)
         self.exit_button.hide()
         layout.addWidget(self.exit_button)
@@ -53,10 +54,10 @@ class OcrSetupDialog(QDialog):
     @Slot(str, int, int, int, int)
     def update_progress(self, name, index, total, done_bytes, expected_bytes):
         if name == "ready":
-            self.status.setText("OCR kullanıma hazır.")
+            self.status.setText(t("OCR kullanıma hazır."))
             self.bar.setValue(100)
             return
-        self.status.setText("OCR motoru yükleniyor…")
+        self.status.setText(t("OCR motoru yükleniyor…"))
         self.bar.setValue(int(index / max(1, total) * 90))
 
     @Slot(str)
@@ -73,7 +74,7 @@ class OcrSetupDialog(QDialog):
         if self.completed:
             self.accept()
         else:
-            self.status.setText("OCR hazır değil: " + self.failure_message)
+            self.status.setText(t("OCR hazır değil: ") + self.failure_message)
             self.retry.show()
             self.exit_button.show()
 

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+from .theme import t
 
 
 def run(report_path):
@@ -39,7 +40,7 @@ def run(report_path):
             wizard = Sihirbaz()
             wizard.show()
             app.processEvents()
-            assert wizard.buttonText(QWizard.NextButton) == "İleri"
+            assert wizard.buttonText(QWizard.NextButton) == t("İleri")
             assert not wizard.windowIcon().isNull()
             wizard.next()
             wizard.s1.setText("yalniz-sentetik-smoke-1234")
@@ -125,7 +126,7 @@ def run(report_path):
             preview.show()
             preview.goster(NoSegmentQuery(), {"path": str(pdf_path), "name": pdf_path.name,
                                               "ext": ".pdf", "label": "Sayfa 1", "page": 1,
-                                              "snippet": "Sentetik özet"})
+                                              "snippet": t("Sentetik özet")})
             assert preview.yukleme.isVisible()
             deadline = time.monotonic() + 30
             while preview.busy():
@@ -177,7 +178,7 @@ def run(report_path):
                 app.processEvents()
                 time.sleep(0.01)
                 assert time.monotonic() < deadline
-            assert pen.tara_btn.text() == "Şimdi tara"
+            assert pen.tara_btn.text() == t("Şimdi tara")
             assert not pen.scan_dialog.isModal()
             assert pen.scan_history.count() > 0
             snapshot = worker.snapshot()

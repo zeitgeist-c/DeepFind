@@ -26,14 +26,297 @@ TOKENS = {
 MODES = ("sistem", "acik", "koyu")
 
 
-def install_turkish(app):
+# Kod, kendi adıyla etiket, Qt çeviri dosyası, QLocale karşılığı.
+# English ilk ve varsayılan; bayraklar dil kimliği yerine kullanılmaz.
+LANGUAGES = [
+    ("en", "English", None, ("English", "UnitedStates")),
+    ("tr", "Türkçe", "qtbase_tr", ("Turkish", "Turkey")),
+    ("de", "Deutsch", "qtbase_de", ("German", "Germany")),
+    ("es", "Español", "qtbase_es", ("Spanish", "Spain")),
+    ("fr", "Français", "qtbase_fr", ("French", "France")),
+    ("it", "Italiano", "qtbase_it", ("Italian", "Italy")),
+    ("pt-BR", "Português (Brasil)", "qtbase_pt", ("Portuguese", "Brazil")),
+    ("ru", "Русский", "qtbase_ru", ("Russian", "Russia")),
+    ("pl", "Polski", "qtbase_pl", ("Polish", "Poland")),
+    ("nl", "Nederlands", "qtbase_nl", ("Dutch", "Netherlands")),
+    ("zh-CN", "简体中文", "qtbase_zh_CN", ("Chinese", "China")),
+    ("ja", "日本語", "qtbase_ja", ("Japanese", "Japan")),
+    ("ko", "한국어", "qtbase_ko", ("Korean", "SouthKorea")),
+]
+
+CODES = {code for code, _, _, _ in LANGUAGES}
+DEFAULT_LANGUAGE = "en"
+
+
+def resolve_language(code):
+    """Bilinen kod -> kendisi; kayıt yoksa/bozuksa İngilizce."""
+    return code if code in CODES else DEFAULT_LANGUAGE
+
+
+def install_language(app, code):
+    """Qt standart çevirisi + locale'i kullanıcı seçimine göre kur."""
     from PySide6.QtCore import QLocale, QLibraryInfo, QTranslator
-    QLocale.setDefault(QLocale(QLocale.Turkish, QLocale.Turkey))
-    if app is not None and not hasattr(app, "_deepfind_translation"):
-        translator = QTranslator(app)
-        if translator.load("qtbase_tr", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
-            app.installTranslator(translator)
-        app._deepfind_translation = translator
+    code = resolve_language(code)
+    entry = next(e for e in LANGUAGES if e[0] == code)
+    _qt_file, (lang, country) = entry[2], entry[3]
+    try:
+        QLocale.setDefault(QLocale(getattr(QLocale, lang), getattr(QLocale, country)))
+    except Exception:
+        pass
+    if app is not None:
+        old = getattr(app, "_deepfind_translation", None)
+        if old is not None:
+            try:
+                app.removeTranslator(old)
+            except Exception:
+                pass
+        if _qt_file:
+            translator = QTranslator(app)
+            try:
+                if translator.load(_qt_file, QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+                    app.installTranslator(translator)
+                    app._deepfind_translation = translator
+                    return
+            except Exception:
+                pass
+        app._deepfind_translation = None
+
+
+_LANG = DEFAULT_LANGUAGE
+try:
+    from .i18n_en1 import EN1 as _EN1
+except ImportError:
+    _EN1 = {}
+try:
+    from .i18n_en2 import EN2 as _EN2
+except ImportError:
+    _EN2 = {}
+try:
+    from .i18n_en3 import EN3 as _EN3
+except ImportError:
+    _EN3 = {}
+try:
+    from .i18n_en4 import EN4 as _EN4
+except ImportError:
+    _EN4 = {}
+
+
+def _merge(*parts):
+    m = {}
+    for p in parts:
+        m.update(p or {})
+    return m
+
+
+try:
+    from .i18n_de1 import DE1 as _DE1
+except ImportError:
+    _DE1 = {}
+try:
+    from .i18n_de2 import DE2 as _DE2
+except ImportError:
+    _DE2 = {}
+try:
+    from .i18n_de3 import DE3 as _DE3
+except ImportError:
+    _DE3 = {}
+try:
+    from .i18n_de4 import DE4 as _DE4
+except ImportError:
+    _DE4 = {}
+try:
+    from .i18n_es1 import ES1 as _ES1
+except ImportError:
+    _ES1 = {}
+try:
+    from .i18n_es2 import ES2 as _ES2
+except ImportError:
+    _ES2 = {}
+try:
+    from .i18n_es3 import ES3 as _ES3
+except ImportError:
+    _ES3 = {}
+try:
+    from .i18n_es4 import ES4 as _ES4
+except ImportError:
+    _ES4 = {}
+try:
+    from .i18n_fr1 import FR1 as _FR1
+except ImportError:
+    _FR1 = {}
+try:
+    from .i18n_fr2 import FR2 as _FR2
+except ImportError:
+    _FR2 = {}
+try:
+    from .i18n_fr3 import FR3 as _FR3
+except ImportError:
+    _FR3 = {}
+try:
+    from .i18n_fr4 import FR4 as _FR4
+except ImportError:
+    _FR4 = {}
+try:
+    from .i18n_it1 import IT1 as _IT1
+except ImportError:
+    _IT1 = {}
+try:
+    from .i18n_it2 import IT2 as _IT2
+except ImportError:
+    _IT2 = {}
+try:
+    from .i18n_it3 import IT3 as _IT3
+except ImportError:
+    _IT3 = {}
+try:
+    from .i18n_it4 import IT4 as _IT4
+except ImportError:
+    _IT4 = {}
+try:
+    from .i18n_pb1 import PB1 as _PB1
+except ImportError:
+    _PB1 = {}
+try:
+    from .i18n_pb2 import PB2 as _PB2
+except ImportError:
+    _PB2 = {}
+try:
+    from .i18n_pb3 import PB3 as _PB3
+except ImportError:
+    _PB3 = {}
+try:
+    from .i18n_pb4 import PB4 as _PB4
+except ImportError:
+    _PB4 = {}
+try:
+    from .i18n_ru1 import RU1 as _RU1
+except ImportError:
+    _RU1 = {}
+try:
+    from .i18n_ru2 import RU2 as _RU2
+except ImportError:
+    _RU2 = {}
+try:
+    from .i18n_ru3 import RU3 as _RU3
+except ImportError:
+    _RU3 = {}
+try:
+    from .i18n_ru4 import RU4 as _RU4
+except ImportError:
+    _RU4 = {}
+try:
+    from .i18n_pl1 import PL1 as _PL1
+except ImportError:
+    _PL1 = {}
+try:
+    from .i18n_pl2 import PL2 as _PL2
+except ImportError:
+    _PL2 = {}
+try:
+    from .i18n_pl3 import PL3 as _PL3
+except ImportError:
+    _PL3 = {}
+try:
+    from .i18n_pl4 import PL4 as _PL4
+except ImportError:
+    _PL4 = {}
+try:
+    from .i18n_nl1 import NL1 as _NL1
+except ImportError:
+    _NL1 = {}
+try:
+    from .i18n_nl2 import NL2 as _NL2
+except ImportError:
+    _NL2 = {}
+try:
+    from .i18n_nl3 import NL3 as _NL3
+except ImportError:
+    _NL3 = {}
+try:
+    from .i18n_nl4 import NL4 as _NL4
+except ImportError:
+    _NL4 = {}
+try:
+    from .i18n_zh1 import ZH1 as _ZH1
+except ImportError:
+    _ZH1 = {}
+try:
+    from .i18n_zh2 import ZH2 as _ZH2
+except ImportError:
+    _ZH2 = {}
+try:
+    from .i18n_zh3 import ZH3 as _ZH3
+except ImportError:
+    _ZH3 = {}
+try:
+    from .i18n_zh4 import ZH4 as _ZH4
+except ImportError:
+    _ZH4 = {}
+try:
+    from .i18n_ja1 import JA1 as _JA1
+except ImportError:
+    _JA1 = {}
+try:
+    from .i18n_ja2 import JA2 as _JA2
+except ImportError:
+    _JA2 = {}
+try:
+    from .i18n_ja3 import JA3 as _JA3
+except ImportError:
+    _JA3 = {}
+try:
+    from .i18n_ja4 import JA4 as _JA4
+except ImportError:
+    _JA4 = {}
+try:
+    from .i18n_ko1 import KO1 as _KO1
+except ImportError:
+    _KO1 = {}
+try:
+    from .i18n_ko2 import KO2 as _KO2
+except ImportError:
+    _KO2 = {}
+try:
+    from .i18n_ko3 import KO3 as _KO3
+except ImportError:
+    _KO3 = {}
+try:
+    from .i18n_ko4 import KO4 as _KO4
+except ImportError:
+    _KO4 = {}
+TABLES = {"en": _merge(_EN1, _EN2, _EN3, _EN4), "tr": {}, "de": _merge(_DE1, _DE2, _DE3, _DE4), "es": _merge(_ES1, _ES2, _ES3, _ES4), "fr": _merge(_FR1, _FR2, _FR3, _FR4), "it": _merge(_IT1, _IT2, _IT3, _IT4), "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4), "ru": _merge(_RU1, _RU2, _RU3, _RU4), "pl": _merge(_PL1, _PL2, _PL3, _PL4), "nl": _merge(_NL1, _NL2, _NL3, _NL4), "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4), "ja": _merge(_JA1, _JA2, _JA3, _JA4), "ko": _merge(_KO1, _KO2, _KO3, _KO4)}
+
+
+def set_language(code):
+    global _LANG
+    _LANG = resolve_language(code)
+
+
+def language():
+    return _LANG
+
+
+def t(text, **kwargs):
+    out = text if text else ''
+    if _LANG == 'en':
+        en = TABLES.get('en')
+        if en and text in en:
+            out = en[text]
+    else:
+        table = TABLES.get(_LANG)
+        if table and text in table:
+            out = table[text]
+    if kwargs:
+        try:
+            out = out.format(**kwargs)
+        except Exception:
+            pass
+    return out
+
+
+def install_turkish(app):
+    """Geriye uyumluluk: eski çağrılar İngilizce varsayılana düşer."""
+    install_language(app, DEFAULT_LANGUAGE)
 
 
 def app_icon():
@@ -301,9 +584,10 @@ QPlainTextEdit#log {{ font-family: 'Cascadia Mono', 'Consolas'; font-size: 12px;
 def apply(app, mode: str) -> str:
     """Temayı uygula, çözülmüş adı döndür (sistem->acik/koyu)."""
     from PySide6.QtGui import QStyleHints
-    install_turkish(app)
     from PySide6.QtCore import QSettings
     from . import identity
+    install_language(app, resolve_language(
+        QSettings(identity.APP_IDENTITY, "Appearance").value("language", DEFAULT_LANGUAGE)))
     QSettings(identity.APP_IDENTITY, "Appearance").setValue("theme", mode)
     app.setProperty("deepfind_theme_mode", mode)
     if not getattr(app, "_deepfind_scheme_connected", False):

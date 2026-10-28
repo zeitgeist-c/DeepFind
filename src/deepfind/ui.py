@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QFontMetrics, QPainterPath, Q
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
                                QStyledItemDelegate, QStyle, QSizePolicy)
 from . import theme
+from .theme import t
 
 
 def label(text, role=None):
@@ -152,7 +153,7 @@ class GorselKutusu(QLabel):
         super().__init__(parent)
         self.setObjectName("thumbBox")
         self.setAlignment(Qt.AlignCenter)
-        self.setAccessibleName("Seçili evrak önizlemesi")
+        self.setAccessibleName(t("Seçili evrak önizlemesi"))
         self.setMinimumSize(*minimum)
         self.setMaximumHeight(maximum_height)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -239,7 +240,7 @@ def brand(layout, *, size=34):
     title.addWidget(surum)
     title.addStretch()
     text.addLayout(title)
-    alt = QLabel("BELGE ARŞİVİNİZ")
+    alt = QLabel(t("BELGE ARŞİVİNİZ"))
     alt.setProperty("eyebrow", True)
     text.addWidget(alt)
     row.addLayout(text, 1)
@@ -405,8 +406,8 @@ class Cip(QFrame):
         self.kaldir.setObjectName("cipKaldir")
         self.kaldir.setFixedSize(17, 17)
         self.kaldir.setCursor(Qt.PointingHandCursor)
-        self.kaldir.setToolTip("Bu filtreyi kaldır")
-        self.kaldir.setAccessibleName(f"{metin} filtresini kaldır")
+        self.kaldir.setToolTip(t("Bu filtreyi kaldır"))
+        self.kaldir.setAccessibleName(t("{metin} filtresini kaldır", metin=metin))
         self.kaldir.clicked.connect(self.silindi.emit)
         row.addWidget(self.kaldir)
         self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)

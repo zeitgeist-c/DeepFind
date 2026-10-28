@@ -25,9 +25,10 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QHBoxLayout, QLabel
 from . import thumbs
 from .tasks import DatabaseTask, indexed_text
 from .ui import EmptyState, label
+from .theme import t
 
 # (etiket, veri) — veri "genislik"/"sayfa" ya da yüzde çarpanı (float)
-KADEMELER = (("Genişliğe sığdır", "genislik"), ("Sayfaya sığdır", "sayfa"),
+KADEMELER = ((t("Genişliğe sığdır"), "genislik"), (t("Sayfaya sığdır"), "sayfa"),
              ("%50", 0.5), ("%75", 0.75), ("%100", 1.0),
              ("%125", 1.25), ("%150", 1.5), ("%200", 2.0))
 RAY_ADIM = 12  # sayfa rayında her turda üretilen küçük resim sayısı
@@ -81,12 +82,12 @@ class Onizleme(QWidget):
         k = QVBoxLayout(self)
         k.setContentsMargins(18, 18, 18, 16)
         k.setSpacing(9)
-        k.addWidget(label("Belge ön izlemesi", "eyebrow"))
-        self.baslik = QLabel("Belge seçilmedi")
+        k.addWidget(label(t("Belge ön izlemesi"), "eyebrow"))
+        self.baslik = QLabel(t("Belge seçilmedi"))
         self.baslik.setProperty("subheading", True)
         self.baslik.setWordWrap(True)
         k.addWidget(self.baslik)
-        self.bilgi = QLabel("Sonuçlardan bir belge seçerek içeriğini burada inceleyin.")
+        self.bilgi = QLabel(t("Sonuçlardan bir belge seçerek içeriğini burada inceleyin."))
         self.bilgi.setProperty("ikincil", True)
         self.bilgi.setWordWrap(True)
         k.addWidget(self.bilgi)
@@ -100,12 +101,12 @@ class Onizleme(QWidget):
         yukleme_duzeni = QVBoxLayout(self.yukleme)
         yukleme_duzeni.setContentsMargins(0, 10, 0, 10)
         yukleme_duzeni.setSpacing(8)
-        self.yukleme_yazisi = QLabel("PDF açılıyor…")
-        self.yukleme_yazisi.setAccessibleName("Önizleme yükleme durumu")
+        self.yukleme_yazisi = QLabel(t("PDF açılıyor…"))
+        self.yukleme_yazisi.setAccessibleName(t("Önizleme yükleme durumu"))
         self.yukleme_cubugu = QProgressBar()
         self.yukleme_cubugu.setRange(0, 0)
         self.yukleme_cubugu.setTextVisible(False)
-        self.yukleme_cubugu.setAccessibleName("PDF önizlemesi hazırlanıyor")
+        self.yukleme_cubugu.setAccessibleName(t("PDF önizlemesi hazırlanıyor"))
         yukleme_duzeni.addWidget(self.yukleme_yazisi)
         yukleme_duzeni.addWidget(self.yukleme_cubugu)
         self.yukleme.hide()
@@ -115,32 +116,32 @@ class Onizleme(QWidget):
         nav.setContentsMargins(0, 0, 0, 0)
         nav.setSpacing(8)
         self.once = QPushButton("<")
-        self.once.setAccessibleName("Önceki sayfa")
-        self.once.setToolTip("Önceki sayfa (Sol ok)")
+        self.once.setAccessibleName(t("Önceki sayfa"))
+        self.once.setToolTip(t("Önceki sayfa (Sol ok)"))
         self.sonra = QPushButton(">")
         self.sonra.setAccessibleName("Sonraki sayfa")
-        self.sonra.setToolTip("Sonraki sayfa (Sağ ok)")
+        self.sonra.setToolTip(t("Sonraki sayfa (Sağ ok)"))
         self.sayfa_no = QSpinBox()
         self.sayfa_no.setFixedWidth(66)
-        self.sayfa_no.setAccessibleName("Sayfa numarası")
+        self.sayfa_no.setAccessibleName(t("Sayfa numarası"))
         self.sayfa_no.setMinimum(1)
         nav.addWidget(self.once)
         nav.addWidget(self.sayfa_no)
         nav.addWidget(self.sonra)
         nav.addStretch(1)
         self.kucult = QPushButton("−")
-        self.kucult.setToolTip("Uzaklaştır (−)")
-        self.kucult.setAccessibleName("Uzaklaştır")
+        self.kucult.setToolTip(t("Uzaklaştır (−)"))
+        self.kucult.setAccessibleName(t("Uzaklaştır"))
         self.zoom_sec = QComboBox()
-        self.zoom_sec.setAccessibleName("Yakınlaştırma")
-        self.zoom_sec.setToolTip("Yakınlaştırma kademesi")
+        self.zoom_sec.setAccessibleName(t("Yakınlaştırma"))
+        self.zoom_sec.setToolTip(t("Yakınlaştırma kademesi"))
         for etiket, veri in KADEMELER:
             self.zoom_sec.addItem(etiket, veri)
         self.zoom_sec.setCurrentIndex(self.zoom_sec.findData("genislik"))
         self.zoom_sec.currentIndexChanged.connect(lambda _i: self._zoom_uygula())
         self.buyut = QPushButton("+")
-        self.buyut.setToolTip("Yakınlaştır (+)")
-        self.buyut.setAccessibleName("Yakınlaştır")
+        self.buyut.setToolTip(t("Yakınlaştır (+)"))
+        self.buyut.setAccessibleName(t("Yakınlaştır"))
         nav.addWidget(self.kucult)
         nav.addWidget(self.zoom_sec)
         nav.addWidget(self.buyut)
@@ -174,8 +175,8 @@ class Onizleme(QWidget):
         self.ray.setIconSize(QSize(58, 74))
         self.ray.setSpacing(2)
         self.ray.setUniformItemSizes(True)
-        self.ray.setAccessibleName("Sayfa küçük resimleri")
-        self.ray.setToolTip("Sayfaya gitmek için küçük resme tıklayın")
+        self.ray.setAccessibleName(t("Sayfa küçük resimleri"))
+        self.ray.setToolTip(t("Sayfaya gitmek için küçük resme tıklayın"))
         self.ray.hide()
         self.ray.itemClicked.connect(self._ray_secildi)
         self.ray.verticalScrollBar().valueChanged.connect(self._ray_kaydirma)
@@ -193,11 +194,11 @@ class Onizleme(QWidget):
         k.addWidget(self.tablo, 1)
         self.metin = QTextBrowser()
         k.addWidget(self.metin, 1)
-        self.empty = EmptyState("İçeriğe yakından bakın", "Bir arama sonucunu seçtiğinizde\nbelgenin önizlemesi burada açılır.", "document")
+        self.empty = EmptyState(t("İçeriğe yakından bakın"), t("Bir arama sonucunu seçtiğinizde\nbelgenin önizlemesi burada açılır."), "document")
         k.addWidget(self.empty, 1)
         self.index_button = QPushButton('İndeks metnini göster')
         self.index_button.setProperty("kucuk", True)
-        self.index_button.setToolTip("Sayfa görüntüsü ile OCR/indeks metni arasında geçiş yapın")
+        self.index_button.setToolTip(t("Sayfa görüntüsü ile OCR/indeks metni arasında geçiş yapın"))
         self.index_button.clicked.connect(self._show_index)
         k.addWidget(self.index_button)
         self.more_button = QPushButton('Sonraki bölümleri yükle')
@@ -280,7 +281,7 @@ class Onizleme(QWidget):
         self.yukleme.hide()
         self.pdf_nav.hide()
         self._expected = None
-        self.baslik.setText("Önizleme")
+        self.baslik.setText(t("Önizleme"))
         self.bilgi.setText("")
         self.metin.clear()
         self.goruntu.hide()
@@ -365,11 +366,11 @@ class Onizleme(QWidget):
             row = con.execute("SELECT size, mtime_ns FROM files WHERE path=?",
                               (path,)).fetchone()
             if row and (row[0] != st.st_size or row[1] != st.st_mtime_ns):
-                self.uyari.setText("Kaynak değişti; yeniden indeksleme bekliyor. "
-                                   "Görünen alıntı eski sürüme ait olabilir.")
+                self.uyari.setText(t("Kaynak değişti; yeniden indeksleme bekliyor. ") +
+                                   t("Görünen alıntı eski sürüme ait olabilir."))
                 self.uyari.show()
         except OSError:
-            self.uyari.setText("Kaynak erişilemiyor; son indeks metni gösteriliyor.")
+            self.uyari.setText(t("Kaynak erişilemiyor; son indeks metni gösteriliyor."))
             self.uyari.show()
 
     def _pdf(self, path, sayfa):
@@ -444,11 +445,11 @@ class Onizleme(QWidget):
             self.canvas.hide()
             self.goruntu.hide()
             self.metin.hide()
-            self.yukleme_yazisi.setText("PDF sayfası açılıyor…")
+            self.yukleme_yazisi.setText(t("PDF sayfası açılıyor…"))
             self.yukleme.show()
         else:
             self.metin.show()
-            self.metin.setPlainText("Önizleme hazırlanıyor…")
+            self.metin.setPlainText(t("Önizleme hazırlanıyor…"))
         worker = PreviewWorker(kind, args, self._generation, self._expected, self)
         self._threads.append(worker)
         worker.ready.connect(self._ready)
@@ -468,16 +469,16 @@ class Onizleme(QWidget):
         if "error" in message:
             self.goruntu.hide()
             self.metin.show()
-            self.metin.setPlainText(self._fallback or "Önizleme metni bulunamadı.")
+            self.metin.setPlainText(self._fallback or t("Önizleme metni bulunamadı."))
             if message.get("kind") == "pdf":
-                durum = "arama özeti gösteriliyor" if self._fallback else "arama özeti de bulunamadı"
+                durum = t("arama özeti gösteriliyor") if self._fallback else t("arama özeti de bulunamadı")
             else:
-                durum = "son indeks metni gösteriliyor" if self._fallback else "indeks metni bulunamadı"
-            self.uyari.setText(f"Kaynak önizlemesi açılamadı; {durum}.")
+                durum = t("son indeks metni gösteriliyor") if self._fallback else t("indeks metni bulunamadı")
+            self.uyari.setText(t("Kaynak önizlemesi açılamadı; {durum}.", durum=durum))
             self.uyari.show()
             return
         if message.get("changed"):
-            self.uyari.setText("Kaynak değişti. Önizleme güncel dosyadır; indeks metni önceki sürüme ait olabilir.")
+            self.uyari.setText(t("Kaynak değişti. Önizleme güncel dosyadır; indeks metni önceki sürüme ait olabilir."))
             self.uyari.show()
         self.metin.hide()
         result = message["result"]

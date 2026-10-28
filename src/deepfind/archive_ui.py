@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QScrollArea,QPushButton,QLine
 from .ui import bolme, label, sayac, CardDelegate
 from .tasks import DatabaseTask,list_files
 from . import backup,history
+from .theme import t
 
 STATUS={'pending':'Bekliyor','ok':'Tamamlandı','partial':'Kısmi','encrypted':'Kilitli',
         'unsupported_content':'İçerik motoru yok','corrupt':'Hatalı','missing':'Erişilemiyor','excluded':'Hariç'}
@@ -162,7 +163,7 @@ def refresh_history(w):
                 v=dict(x.split("=",1) for x in f.split(";") if "=" in x)
             parca=[]
             if v.get("yil"): parca.append(f"yıl:{v['yil']}")
-            if v.get("tur") and v["tur"]!="tümü": parca.append(f"tür:{v['tur']}")
+            if v.get("tur") and v["tur"]!=t("tümü"): parca.append(f"tür:{v['tur']}")
             if v.get("klasor"): parca.append(f"klasör:{v['klasor']}")
             if v.get("etiket"): parca.append(f"etiket:{v['etiket']}")
             ozet="  •  ".join(parca) or "Filtresiz arama"

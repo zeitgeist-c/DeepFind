@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from .theme import t
 
 SIZE_LIMIT = 200 * 1024 * 1024  # plan bolum 8 adayi
 MAX_PDF_PAGES = 1000        # belge basina sayfa; ustu partial + PAGE_LIMIT
@@ -319,9 +320,9 @@ def _docx(path: str, bounded=True) -> ExtractResult:
             segs.append(Segment("table", None, f"Tablo {ti + 1}", "\n".join(cells)))
     seen_parts = set()
     for section in d.sections:
-        for part, label in ((section.header, "Üstbilgi"), (section.footer, "Altbilgi"),
-                            (section.first_page_header, "İlk sayfa üstbilgi"),
-                            (section.first_page_footer, "İlk sayfa altbilgi")):
+        for part, label in ((section.header, t("Üstbilgi")), (section.footer, "Altbilgi"),
+                            (section.first_page_header, t("İlk sayfa üstbilgi")),
+                            (section.first_page_footer, t("İlk sayfa altbilgi"))):
             key = str(part.part.partname)
             if key in seen_parts:
                 continue
@@ -455,7 +456,7 @@ def _epub(path: str, bounded: bool = True) -> ExtractResult:
                         parent.remove(child)
             text = " ".join("".join(xroot.itertext()).split())
             if text:
-                segs.append(Segment("chapter", None, f"Bölüm {i}", text))
+                segs.append(Segment("chapter", None, t("Bölüm {i}", i=i), text))
     finally:
         zf.close()
     return _bounded_result(segs, bounded)
@@ -470,7 +471,7 @@ def _eml(path: str, bounded: bool = True) -> ExtractResult:
     except Exception:
         return ExtractResult(status="corrupt", error_code="CORRUPT_DOCUMENT")
     segs = []
-    for label, val in (("Konu", msg["subject"]), ("Gönderen", msg["from"]),
+    for label, val in (("Konu", msg["subject"]), (t("Gönderen"), msg["from"]),
                        ("Tarih", msg["date"])):
         if val and str(val).strip():
             segs.append(Segment("mail", None, label, str(val).strip()))
@@ -496,7 +497,7 @@ def _eml(path: str, bounded: bool = True) -> ExtractResult:
         pass
     body = "\n".join(b.strip() for b in bodies if b and b.strip())
     if body:
-        segs.append(Segment("mail", None, "Gövde", body))
+        segs.append(Segment("mail", None, t("Gövde"), body))
     if atts:
         segs.append(Segment("mail", None, "Ekler", "\n".join(atts)))
     return _bounded_result(segs, bounded)

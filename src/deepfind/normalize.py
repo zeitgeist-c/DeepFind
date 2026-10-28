@@ -3,17 +3,18 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from .theme import t
 
 NORMALIZER_VERSION = "a5-1"
 
 _FOLD = str.maketrans({
-    "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c", "ı": "i",
+    t("ğ"): "g", t("ü"): "u", t("ş"): "s", t("ö"): "o", t("ç"): "c", t("ı"): "i",
 })
 
 
 def tr_lower(s: str) -> str:
     s = unicodedata.normalize("NFC", s)
-    s = s.replace("I", "ı").replace("İ", "i")
+    s = s.replace("I", t("ı")).replace(t("İ"), "i")
     return s.lower()
 
 
@@ -34,7 +35,7 @@ def folded_esit_uzunluk(s: str) -> str:
     """
     parcalar = []
     for karakter in s or "":
-        kucuk = karakter.replace("I", "ı").replace("İ", "i").lower()
+        kucuk = karakter.replace("I", t("ı")).replace(t("İ"), "i").lower()
         parcalar.append(kucuk if len(kucuk) == 1 else karakter)
     return "".join(parcalar).translate(_FOLD)
 

@@ -16,6 +16,7 @@ sözcükler serbest metin olarak aramaya girer; çözümleyici saf işlevdir.
 from __future__ import annotations
 
 from typing import NamedTuple
+from .theme import t
 
 ALANLAR = ("yil", "tur", "etiket", "klasor")
 
@@ -46,7 +47,7 @@ def cozumle(metin: str, turler=()) -> Cozum:
     """Sorgu metnini serbest metin + alan sözlüğüne çözer; hata varsa konum verir."""
     serbest: list[str] = []
     alanlar: dict[str, str] = {}
-    gecerli_turler = {katla("." + t.lstrip(".")) for t in turler if t and t != "tümü"}
+    gecerli_turler = {katla("." + t.lstrip(".")) for t in turler if t and t != t("tümü")}
     i, n = 0, len(metin)
     while i < n:
         if metin[i].isspace():
@@ -64,7 +65,7 @@ def cozumle(metin: str, turler=()) -> Cozum:
             if i < n and metin[i] == '"':
                 son = metin.find('"', i + 1)
                 if son < 0:
-                    return Cozum(" ".join(serbest), alanlar, "kapanmayan tırnak", i)
+                    return Cozum(" ".join(serbest), alanlar, t("kapanmayan tırnak"), i)
                 deger = metin[i + 1:son]
                 i = son + 1
             else:
@@ -74,13 +75,13 @@ def cozumle(metin: str, turler=()) -> Cozum:
                 deger = metin[i:k]
                 i = k
             if not deger:
-                return Cozum(" ".join(serbest), alanlar, f"'{alan}' alanı değer bekliyor", bas)
+                return Cozum(" ".join(serbest), alanlar, t("'{alan}' alanı değer bekliyor", alan=alan), bas)
             if alan == "yil" and not (len(deger) == 4 and deger.isdigit()):
-                return Cozum(" ".join(serbest), alanlar, "'yil' 4 haneli olmalı (ör. 2024)", bas)
+                return Cozum(" ".join(serbest), alanlar, t("'yil' 4 haneli olmalı (ör. 2024)"), bas)
             if alan == "tur":
                 deger = "." + deger.lstrip(".")
                 if gecerli_turler and katla(deger) not in gecerli_turler:
-                    return Cozum(" ".join(serbest), alanlar, f"bilinmeyen tür: '{deger}'", bas)
+                    return Cozum(" ".join(serbest), alanlar, t("bilinmeyen tür: '{deger}'", deger=deger), bas)
             alanlar[alan] = deger
         else:
             k = i

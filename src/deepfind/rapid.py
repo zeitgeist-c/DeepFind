@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import threading
+from .theme import t
 
 log = logging.getLogger("deepfind.rapid")
 
@@ -54,9 +55,9 @@ def get_engine():
     if _engine is not None:
         return _engine
     if _failed:
-        raise RuntimeError("RapidOCR motoru daha önce kurulamadı")
+        raise RuntimeError(t("RapidOCR motoru daha önce kurulamadı"))
     if not stack_present():
-        raise RuntimeError("RapidOCR zinciri kurulu değil")
+        raise RuntimeError(t("RapidOCR zinciri kurulu değil"))
     with _lock:
         if _engine is None:
             try:
@@ -69,8 +70,8 @@ def get_engine():
                 _engine = RapidOCR(params={"Global.log_level": "warning"})
             except Exception as exc:
                 _failed = True
-                log.warning("RapidOCR kurulamadı: %s", exc)
-                raise RuntimeError(f"RapidOCR motoru kurulamadı: {exc}") from exc
+                log.warning(t("RapidOCR kurulamadı: %s"), exc)
+                raise RuntimeError(t("RapidOCR motoru kurulamadı: {exc}", exc=exc)) from exc
     return _engine
 
 

@@ -58,7 +58,19 @@ SetupIconFile=..\build\deepfind.ico
 LicenseFile=..\LISANSLAR.md
 
 [Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
+Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "dutch"; MessagesFile: "compiler:Languages\Dutch.isl"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Masaüstü simgesi oluştur"; Flags: unchecked
@@ -212,8 +224,32 @@ begin
   end;
 end;
 
+procedure WriteInstallLanguage();
+var LangCode: String;
+begin
+  case ActiveLanguage of
+    'english': LangCode := 'en';
+    'turkish': LangCode := 'tr';
+    'german': LangCode := 'de';
+    'spanish': LangCode := 'es';
+    'french': LangCode := 'fr';
+    'italian': LangCode := 'it';
+    'brazilianportuguese': LangCode := 'pt-BR';
+    'russian': LangCode := 'ru';
+    'polish': LangCode := 'pl';
+    'dutch': LangCode := 'nl';
+    'chinesesimplified': LangCode := 'zh-CN';
+    'japanese': LangCode := 'ja';
+    'korean': LangCode := 'ko';
+  else
+    LangCode := 'en';
+  end;
+  SaveStringToFile(ExpandConstant('{app}') + '\install-language.txt', LangCode, False);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssPostInstall then WriteInstallLanguage;
   if (CurStep = ssDone) and (not ModelNeedsRepair) then begin
     CleanupOldLaunchers;
     if ValidModel(LegacyModelPath) then DeleteFile(LegacyModelPath);

@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import time
+from .theme import t
 
 AUTO_KEEP = 7
 AUTO_PREFIX = "deepfind-indeks-"
@@ -207,7 +208,7 @@ def restore_replace(vault_path: str, password: str, backup_path: str,
             finally:
                 keep_con.close()
         except Exception:
-            raise RuntimeError("mevcut hariç kuralları okunamadı; geri yükleme durduruldu")
+            raise RuntimeError(t("mevcut hariç kuralları okunamadı; geri yükleme durduruldu"))
     rollback = os.path.join(staging_dir, f"rollback-{_stamp()}.db")
     rollback_alindi = False
     if os.path.exists(vault_path):
@@ -245,7 +246,7 @@ def restore_replace(vault_path: str, password: str, backup_path: str,
         src.close()
     checked = verify_backup(tmp, password)
     if not checked["ok"]:
-        raise RuntimeError("staging doğrulanamadı; mevcut kasa korunuyor")
+        raise RuntimeError(t("staging doğrulanamadı; mevcut kasa korunuyor"))
     os.replace(tmp, vault_path)
     return {"kasa": vault_path, "rollback": rollback if rollback_alindi else None,
             "yedek_counts": v["counts"], "kasa_counts": checked["counts"],
@@ -258,7 +259,7 @@ def change_password(vault_path: str, old_pw: str, new_pw: str,
     if len(new_pw) < 12:
         raise ValueError("yeni sifre en az 12 karakter olmali")
     if old_pw == new_pw:
-        raise ValueError("yeni şifre mevcut şifreden farklı olmalı")
+        raise ValueError(t("yeni şifre mevcut şifreden farklı olmalı"))
     # Mevcut dosyaya rekey uygulamak yerine kopyayı hazırla, doğrula, atomik değiştir.
     con = vault.open_vault(vault_path, old_pw)
     import uuid
@@ -276,14 +277,14 @@ def change_password(vault_path: str, old_pw: str, new_pw: str,
         con.close()
     checked = verify_backup(tmp, new_pw)
     if not checked["ok"]:
-        raise RuntimeError("yeni şifreyle doğrulama başarısız; mevcut kasa korunuyor")
+        raise RuntimeError(t("yeni şifreyle doğrulama başarısız; mevcut kasa korunuyor"))
     try:
         bad = vault.open_vault(tmp, old_pw)
     except Exception:
         bad = None
     if bad is not None:
         bad.close()
-        raise RuntimeError("eski şifre staging kasasını açıyor; değişim yapılmadı")
+        raise RuntimeError(t("eski şifre staging kasasını açıyor; değişim yapılmadı"))
     os.replace(tmp, vault_path)
     # Şifre değişti: kurtarma anahtarı varsa yeni şifreye göre tazele.
     try:

@@ -14,11 +14,12 @@ from . import job_queue as q
 from . import scan as scan_mod
 from .migrate import EXTRACTOR_VERSION
 from . import migrate
+from .theme import t
 
 STABLE_NS = 2_000_000_000  # 2 sn icinde degismisse kararli degil
 DEFER_SEC = 60
 
-KESIF_ASAMALARI = {"Klasörler keşfediliyor", "Kopyalar doğrulanıyor"}
+KESIF_ASAMALARI = {t("Klasörler keşfediliyor"), t("Kopyalar doğrulanıyor")}
 
 
 def emit_progress(sink, payload=None, **kw):
@@ -210,7 +211,7 @@ def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
             to_write.append((file_id, rev_id, "context", None, "Konum", cx))
         name = con.execute("SELECT name FROM files WHERE file_id=?", (file_id,)).fetchone()[0]
         if res.segments:
-            to_write.append(_row("name_only", None, "Dosya adı", name))
+            to_write.append(_row("name_only", None, t("Dosya adı"), name))
         con.executemany(
             "INSERT INTO segments(file_id, rev_id, kind, page, label, raw_text)"
             " VALUES (?, ?, ?, ?, ?, ?)",
@@ -561,7 +562,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 if not job:
                     return
                 path = con.execute("SELECT path FROM files WHERE file_id=?", (job["file_id"],)).fetchone()[0]
-                report("İçerik okunuyor", path, force=True)
+                report(t("İçerik okunuyor"), path, force=True)
                 try:
                     r = _process_job(con, job, rules, os.path.dirname(vault_path), os.path.abspath(root), stop, guarded)
                 except InterruptedError:
@@ -582,10 +583,10 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 if r in ("retry", "dead"):
                     error = con.execute("SELECT error_code FROM jobs WHERE job_id=?", (job["job_id"],)).fetchone()
                     code = error[0] if error else ""
-                    message = {"PROCESS_TIMEOUT": "Dosya işlemi zaman aşımına uğradı", "CORRUPT_DOCUMENT": "Dosya okunamadı"}.get(code, "Dosya işlenemedi")
+                    message = {"PROCESS_TIMEOUT": t("Dosya işlemi zaman aşımına uğradı"), "CORRUPT_DOCUMENT": t("Dosya okunamadı")}.get(code, t("Dosya işlenemedi"))
                     report(message, path, r, force=True)
                 else:
-                    report("İçerik işleniyor", path, r)
+                    report(t("İçerik işleniyor"), path, r)
 
         if not prepared:
             # --- kesif (lazy, dizin bazinda kapsam) ---
@@ -605,7 +606,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                             continue
                     except OSError:
                         pass
-                report("Klasörler keşfediliyor", cur)
+                report(t("Klasörler keşfediliyor"), cur)
                 dir_ok = True
                 try:
                     with os.scandir(cur) as it:
@@ -615,7 +616,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                     dir_ok = False
                     stats["failed"] += 1
                     con.execute('INSERT OR REPLACE INTO scan_errors VALUES (?,?,?)',(run_id,cur,'ACCESS_DENIED'))
-                    report("Klasöre erişilemiyor", cur, "erişim hatası", force=True)
+                    report(t("Klasöre erişilemiyor"), cur, t("erişim hatası"), force=True)
                 con.execute("INSERT OR IGNORE INTO scan_scopes(run_id, dir, complete) VALUES (?,?,?)",
                             (run_id, cur, 0))
                 for e in entries:
@@ -650,7 +651,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                             stats["found"] += 1
                             if stats["found"] % 32 == 0:
                                 con.commit()
-                            report("Klasörler keşfediliyor", cur)
+                            report(t("Klasörler keşfediliyor"), cur)
                     except OSError:
                         dir_ok = False
                         stats['failed']+=1
@@ -722,7 +723,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 stats["ocr_failed"] += 1
             phase_finished(job['file_id'])
             documents.refresh(job['file_id'])
-            report("OCR işleniyor", path, r)
+            report(t("OCR işleniyor"), path, r)
         if ocr_session is not None:
             ocr_session.kill()
         if gom_mod.model_var_mi():
@@ -769,13 +770,13 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         try:
             from . import dup as dup_mod
             if not (stop and stop()):
-                report("Kopyalar doğrulanıyor", root, force=True)
+                report(t("Kopyalar doğrulanıyor"), root, force=True)
                 stats["hashed"] = dup_mod.verify_pending(con, scoped=True, stop=stop).get("verified", 0)
         except Exception as error:
             stats["failed"] += 1
             con.execute("UPDATE scan_runs SET error_code='HASH_ERROR' WHERE run_id=?", (run_id,))
             con.commit()
-            report("Kopya doğrulaması tamamlanamadı", root, type(error).__name__, force=True)
+            report(t("Kopya doğrulaması tamamlanamadı"), root, type(error).__name__, force=True)
         # --- kayip dosya: yalniz tam kapsamda ---
         if all_complete and not (stop and stop()):
             rows = con.execute("SELECT file_id, path FROM files").fetchall()
@@ -801,7 +802,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         stats["pending"] = con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
                                        "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
         checkpoint("Bitti", force=True)
-        report("Tarama tamamlandı" if stats["complete"] else "Tarama durdu", root, force=True)
+        report(t("Tarama tamamlandı") if stats["complete"] else t("Tarama durdu"), root, force=True)
         con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?",
                     (int(time.time()), stats["result"], run_id))
         con.commit()

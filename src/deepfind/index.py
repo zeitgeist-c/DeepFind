@@ -6,6 +6,7 @@ import unicodedata
 from . import normalize as nz
 from .extract import ExtractResult
 from .scan import Entry
+from .theme import t
 
 
 def index_entry(con, entry: Entry, res: ExtractResult, context: str = "") -> int:
@@ -27,7 +28,7 @@ def index_entry(con, entry: Entry, res: ExtractResult, context: str = "") -> int
                 raw = unicodedata.normalize("NFC", s.raw_text or "")
                 rows.append((file_id, None, s.kind, s.page, s.label, raw))
             raw_name = unicodedata.normalize("NFC", entry.name)
-            rows.append((file_id, None, "name_only", None, "Dosya adı", raw_name))
+            rows.append((file_id, None, "name_only", None, t("Dosya adı"), raw_name))
             if context.strip():
                 cx = unicodedata.normalize("NFC", context.strip())
                 rows.append((file_id, None, "context", None, "Konum", cx))

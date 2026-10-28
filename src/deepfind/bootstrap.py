@@ -2,6 +2,7 @@
 import os
 from PySide6.QtCore import QObject, Signal
 from . import vault, migrate
+from .theme import t
 
 
 class Bootstrap(QObject):
@@ -27,7 +28,7 @@ class Bootstrap(QObject):
                                 "1" if self.password == vault.SIFRESIZ_ANAHTAR else "0")
             self.done.emit()
         except Exception as error:
-            self.error.emit(f"Kurulum tamamlanamadı: {error}")
+            self.error.emit(t("Kurulum tamamlanamadı: {error}", error=error))
         finally:
             if con is not None:
                 con.close()

@@ -17,23 +17,23 @@ class ParolaDialog(QDialog):
     def __init__(self, parent=None, *, change=False, verify=None, allow_remember=True,
                  mode=None, kasa_yolu=None):
         super().__init__(parent)
-        from .theme import app_icon
+        from .theme import app_icon, t
         self.setWindowIcon(app_icon())
         self.verify = verify
         self.kasa_yolu = kasa_yolu
         self.mode = mode or ("degistir" if change else "giris")
         self.change = self.mode in ("degistir", "ekle")
         pencere, eyebrow, hero, aciklama = {
-            "giris": ("DeepFind • Kasa kilitli", "Güvenli giriş", "Arşivinize\ngüvenle dönün.",
-                      "Belgelerinize ulaşmak için yerel kasanızın kilidini açın."),
-            "degistir": ("DeepFind • Şifre değiştir", "Kasa güvenliği", "Yeni bir şifre belirleyin",
-                         "Mevcut şifrenizi doğrulayın ve yeni şifrenizi iki kez girin."),
-            "ekle": ("DeepFind • Şifre ekle", "Kasa güvenliği", "Uygulama şifresi ekleyin",
-                     "Sonraki açılışlarda kasa bu şifreyle açılır. Şifre en az 12 karakter olmalı "
+            "giris": ("DeepFind • Kasa kilitli", t("Güvenli giriş"), t("Arşivinize\ngüvenle dönün."),
+                      t("Belgelerinize ulaşmak için yerel kasanızın kilidini açın.")),
+            "degistir": (t("DeepFind • Şifre değiştir"), t("Kasa güvenliği"), t("Yeni bir şifre belirleyin"),
+                         t("Mevcut şifrenizi doğrulayın ve yeni şifrenizi iki kez girin.")),
+            "ekle": (t("DeepFind • Şifre ekle"), t("Kasa güvenliği"), t("Uygulama şifresi ekleyin"),
+                     t("Sonraki açılışlarda kasa bu şifreyle açılır. Şifre en az 12 karakter olmalı ") +
                      "ve iki kez girilmeli."),
-            "kurtarma": ("DeepFind • Kurtarma anahtarı", "Kurtarma", "Anahtarla kasayı açın",
-                         "Kasa şifrenizi unuttuysanız kurtarma anahtarınızı yapıştırın; "
-                         "ardından yeni bir şifre belirleyeceksiniz."),
+            "kurtarma": (t("DeepFind • Kurtarma anahtarı"), "Kurtarma", t("Anahtarla kasayı açın"),
+                         t("Kasa şifrenizi unuttuysanız kurtarma anahtarınızı yapıştırın; ") +
+                         t("ardından yeni bir şifre belirleyeceksiniz.")),
         }[self.mode]
         self.setWindowTitle(pencere)
         self.setMinimumWidth(760)
@@ -56,13 +56,13 @@ class ParolaDialog(QDialog):
                                     pal()["marka"]).pixmap(52, 52))
         side.addWidget(simge)
         if self.mode == "kurtarma":
-            side.addWidget(label("Kurtarma anahtarı\nyalnız sizde.", "baslik"))
-            side.addWidget(label("Anahtar kasayı açar;\nbelgeleriniz değişmez.", "ikincil"))
+            side.addWidget(label(t("Kurtarma anahtarı\nyalnız sizde."), "baslik"))
+            side.addWidget(label(t("Anahtar kasayı açar;\nbelgeleriniz değişmez."), "ikincil"))
         else:
-            side.addWidget(label("Belgeleriniz.\nSize özel.", "baslik"))
-            side.addWidget(label("Şifreli çalışma alanınız\nbu bilgisayarda saklanır.", "ikincil"))
+            side.addWidget(label(t("Belgeleriniz.\nSize özel."), "baslik"))
+            side.addWidget(label(t("Şifreli çalışma alanınız\nbu bilgisayarda saklanır."), "ikincil"))
         side.addStretch()
-        side.addWidget(label("Yerel ve şifreli", "eyebrow"))
+        side.addWidget(label(t("Yerel ve şifreli"), "eyebrow"))
         outer.addWidget(rail)
         form = QFrame()
         form.setObjectName("card")
@@ -90,8 +90,8 @@ class ParolaDialog(QDialog):
         self.recovery_btn = None
         self.giris_btn = None
         self._alanlari_kur(layout)
-        self.remember = QCheckBox("Beni hatırla")
-        self.remember.setToolTip("Bu Windows hesabında otomatik giriş yapar ve otomatik kilidi kapatır. Elle kilitleme şifre ister.")
+        self.remember = QCheckBox(t("Beni hatırla"))
+        self.remember.setToolTip(t("Bu Windows hesabında otomatik giriş yapar ve otomatik kilidi kapatır. Elle kilitleme şifre ister."))
         if self.mode == "giris" and allow_remember:
             layout.addWidget(self.remember)
         self.error = QLabel("")
@@ -100,21 +100,21 @@ class ParolaDialog(QDialog):
         layout.addWidget(self.error)
         layout.addWidget(self.submit)
         self._alt_dugme(layout)
-        cancel = QPushButton("Vazgeç" if self.change else "Çıkış")
+        cancel = QPushButton(t("Vazgeç") if self.change else t("Çıkış"))
         cancel.clicked.connect(self.reject)
         layout.addWidget(cancel)
         if self.mode == "kurtarma":
-            not_metni = ("Kurtarma anahtarınız yoksa kasa açılamaz; kaynak belgeleriniz korunur, "
-                         "varsa eski yedeklerinizden geri dönebilirsiniz.")
+            not_metni = (t("Kurtarma anahtarınız yoksa kasa açılamaz; kaynak belgeleriniz korunur, ") +
+                         t("varsa eski yedeklerinizden geri dönebilirsiniz."))
         elif self.mode == "degistir":
-            not_metni = ("Şifreniz unutulursa kurtarma anahtarınızla kasayı açabilirsiniz. "
-                         "Şifre değişince kurtarma anahtarı kendiliğinden yenilenir.")
+            not_metni = (t("Şifreniz unutulursa kurtarma anahtarınızla kasayı açabilirsiniz. ") +
+                         t("Şifre değişince kurtarma anahtarı kendiliğinden yenilenir."))
         elif self.mode == "ekle":
-            not_metni = ("Şifre eklendikten sonra sonraki açılışlarda bu şifre sorulur. "
-                         "Kurtarma anahtarı kendiliğinden oluşturulur; Ayarlar bölümünden "
-                         "görüntüleyebilirsiniz.")
+            not_metni = (t("Şifre eklendikten sonra sonraki açılışlarda bu şifre sorulur. ") +
+                         t("Kurtarma anahtarı kendiliğinden oluşturulur; Ayarlar bölümünden ") +
+                         t("görüntüleyebilirsiniz."))
         else:
-            not_metni = ("Şifrenizi unuttuysanız kurtarma anahtarınızla kasayı açabilirsiniz. "
+            not_metni = (t("Şifrenizi unuttuysanız kurtarma anahtarınızla kasayı açabilirsiniz. ") +
                          "Kaynak belgeleriniz her durumda korunur.")
         notu = QLabel(not_metni)
         notu.setProperty("ikincil", True)
@@ -124,56 +124,56 @@ class ParolaDialog(QDialog):
     def _alanlari_kur(self, layout):
         if self.mode == "kurtarma":
             self.old.setEchoMode(QLineEdit.Normal)
-            self.old.setPlaceholderText("EVKC-… kurtarma anahtarı")
-            self.old.setAccessibleName("Kurtarma anahtarı")
+            self.old.setPlaceholderText(t("EVKC-… kurtarma anahtarı"))
+            self.old.setAccessibleName(t("Kurtarma anahtarı"))
             layout.addWidget(self.old)
-            for field, caption in ((self.new, "Yeni şifre • en az 12 karakter"),
-                                   (self.confirm, "Yeni şifreyi tekrar girin")):
+            for field, caption in ((self.new, t("Yeni şifre • en az 12 karakter")),
+                                   (self.confirm, t("Yeni şifreyi tekrar girin"))):
                 field.setEchoMode(QLineEdit.Password)
                 field.setPlaceholderText(caption)
                 field.setAccessibleName(caption)
                 layout.addWidget(field)
-            self.submit.setText("Kurtarma anahtarıyla aç")
+            self.submit.setText(t("Kurtarma anahtarıyla aç"))
             return
         if self.mode == "ekle":
             # Şifresiz kasaya şifre ekleme: mevcut şifre alanı yok.
-            for field, caption in ((self.new, "Yeni şifre • en az 12 karakter"),
-                                   (self.confirm, "Yeni şifreyi tekrar girin")):
+            for field, caption in ((self.new, t("Yeni şifre • en az 12 karakter")),
+                                   (self.confirm, t("Yeni şifreyi tekrar girin"))):
                 field.setEchoMode(QLineEdit.Password)
                 field.setPlaceholderText(caption)
                 field.setAccessibleName(caption)
                 layout.addWidget(field)
-            self.submit.setText("Şifre ekle")
+            self.submit.setText(t("Şifre ekle"))
             return
-        self.old.setPlaceholderText("Mevcut şifre" if self.change else "Kasa şifresi")
+        self.old.setPlaceholderText(t("Mevcut şifre") if self.change else t("Kasa şifresi"))
         self.old.setAccessibleName(self.old.placeholderText())
         layout.addWidget(self.old)
         if self.change:
-            for field, caption in ((self.new, "Yeni şifre • en az 12 karakter"),
-                                   (self.confirm, "Yeni şifreyi tekrar girin")):
+            for field, caption in ((self.new, t("Yeni şifre • en az 12 karakter")),
+                                   (self.confirm, t("Yeni şifreyi tekrar girin"))):
                 field.setEchoMode(QLineEdit.Password)
                 field.setPlaceholderText(caption)
                 field.setAccessibleName(caption)
                 layout.addWidget(field)
         else:
-            show = QCheckBox("Şifreyi göster")
+            show = QCheckBox(t("Şifreyi göster"))
             show.toggled.connect(lambda on: self.old.setEchoMode(
                 QLineEdit.Normal if on else QLineEdit.Password))
             layout.addWidget(show)
-        self.submit.setText("Şifreyi değiştir" if self.change else "Kasayı aç")
+        self.submit.setText(t("Şifreyi değiştir") if self.change else t("Kasayı aç"))
 
     def _alt_dugme(self, layout):
         self.submit.setProperty("birincil", True)
         self.submit.setDefault(True)
         self.submit.clicked.connect(self._submit)
         if self.mode == "giris":
-            self.recovery_btn = QPushButton("Şifremi unuttum")
+            self.recovery_btn = QPushButton(t("Şifremi unuttum"))
             self.recovery_btn.setProperty("ghost", True)
-            self.recovery_btn.setToolTip("Kurtarma anahtarınız varsa kasayı açabilirsiniz")
+            self.recovery_btn.setToolTip(t("Kurtarma anahtarınız varsa kasayı açabilirsiniz"))
             self.recovery_btn.clicked.connect(lambda: self.done(MOD_KURTARMA))
             layout.addWidget(self.recovery_btn)
         elif self.mode == "kurtarma":
-            self.giris_btn = QPushButton("Şifremi biliyorum")
+            self.giris_btn = QPushButton(t("Şifremi biliyorum"))
             self.giris_btn.setProperty("ghost", True)
             self.giris_btn.clicked.connect(self.reject)
             layout.addWidget(self.giris_btn)
@@ -184,19 +184,19 @@ class ParolaDialog(QDialog):
     def _submit(self):
         if self.mode == "kurtarma":
             if not self.old.text().strip():
-                self.error.setText("Kurtarma anahtarını girin.")
+                self.error.setText(t("Kurtarma anahtarını girin."))
                 return
             if len(self.new.text()) < 12:
-                self.error.setText("Yeni şifre en az 12 karakter olmalı.")
+                self.error.setText(t("Yeni şifre en az 12 karakter olmalı."))
                 return
             if self.new.text() != self.confirm.text():
-                self.error.setText("Yeni şifreler eşleşmiyor.")
+                self.error.setText(t("Yeni şifreler eşleşmiyor."))
                 return
             if self.verify:
                 try:
                     self.verify(("kurtarma", self.old.text().strip(), self.new.text()))
                 except Exception as error:
-                    self.error.setText(str(error) or "Kurtarma tamamlanamadı.")
+                    self.error.setText(str(error) or t("Kurtarma tamamlanamadı."))
                     self.old.selectAll()
                     self.old.setFocus()
                     return
@@ -204,37 +204,37 @@ class ParolaDialog(QDialog):
             return
         if self.mode == "ekle":
             if len(self.new.text()) < 12:
-                self.error.setText("Yeni şifre en az 12 karakter olmalı.")
+                self.error.setText(t("Yeni şifre en az 12 karakter olmalı."))
                 return
             if self.new.text() != self.confirm.text():
-                self.error.setText("Yeni şifreler eşleşmiyor.")
+                self.error.setText(t("Yeni şifreler eşleşmiyor."))
                 return
             if self.verify:
                 try:
                     self.verify(self.new.text())
                 except Exception as error:
-                    self.error.setText(str(error) or "Şifre eklenemedi.")
+                    self.error.setText(str(error) or t("Şifre eklenemedi."))
                     return
             self.accept()
             return
         if not self.old.text():
-            self.error.setText("Şifrenizi girin.")
+            self.error.setText(t("Şifrenizi girin."))
             return
         if self.change:
             if len(self.new.text()) < 12:
-                self.error.setText("Yeni şifre en az 12 karakter olmalı.")
+                self.error.setText(t("Yeni şifre en az 12 karakter olmalı."))
                 return
             if self.new.text() != self.confirm.text():
-                self.error.setText("Yeni şifreler eşleşmiyor.")
+                self.error.setText(t("Yeni şifreler eşleşmiyor."))
                 return
             if self.new.text() == self.old.text():
-                self.error.setText("Yeni şifre mevcut şifreden farklı olmalı.")
+                self.error.setText(t("Yeni şifre mevcut şifreden farklı olmalı."))
                 return
         if self.verify:
             try:
                 self.verify(self.old.text())
             except Exception:
-                self.error.setText("Kasa açılamadı. Şifreyi ve kasa dosyasını kontrol edin.")
+                self.error.setText(t("Kasa açılamadı. Şifreyi ve kasa dosyasını kontrol edin."))
                 self.old.selectAll()
                 self.old.setFocus()
                 return

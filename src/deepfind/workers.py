@@ -1,6 +1,7 @@
 """Kaynak okumasını zaman sınırı olan, anahtarsız alt süreçte çalıştır."""
 import multiprocessing as mp
 import time
+from .theme import t
 
 
 
@@ -67,7 +68,7 @@ def _perform(kind, args):
                               for i in range(min(200, ws.nrows))], "sheet": ws.name}
         finally:
             wb.release_resources()
-    raise ValueError("bilinmeyen iş")
+    raise ValueError(t("bilinmeyen iş"))
 
 
 def _thumb(kaynak, hedef, olcu, sayfa=1):
@@ -135,11 +136,11 @@ def run_work(kind, args, timeout=60, stop=None):
     try:
         while not receiver.poll(0.05):
             if stop and stop():
-                raise InterruptedError("iş iptal edildi")
+                raise InterruptedError(t("iş iptal edildi"))
             if time.monotonic() >= deadline:
                 raise TimeoutError("PROCESS_TIMEOUT")
             if not process.is_alive():
-                raise RuntimeError("çalışan beklenmedik biçimde kapandı")
+                raise RuntimeError(t("çalışan beklenmedik biçimde kapandı"))
         ok, result = pickle.loads(receiver.recv_bytes(40 * 1024 * 1024))
         if not ok:
             raise RuntimeError(result)
@@ -215,19 +216,19 @@ class OcrSession:
 
     def call(self, kind, args, timeout=600, stop=None):
         if not self.alive():
-            raise RuntimeError("çalışan beklenmedik biçimde kapandı")
+            raise RuntimeError(t("çalışan beklenmedik biçimde kapandı"))
         self._req_w.send_bytes(self._pickle.dumps((kind, args)))
         deadline = time.monotonic() + timeout
         while not self._resp_r.poll(0.05):
             if stop and stop():
                 self.kill()
-                raise InterruptedError("iş iptal edildi")
+                raise InterruptedError(t("iş iptal edildi"))
             if time.monotonic() >= deadline:
                 self.kill()
                 raise TimeoutError("PROCESS_TIMEOUT")
             if not self.process.is_alive():
                 self.kill()
-                raise RuntimeError("çalışan beklenmedik biçimde kapandı")
+                raise RuntimeError(t("çalışan beklenmedik biçimde kapandı"))
         ok, result = self._pickle.loads(self._resp_r.recv_bytes(40 * 1024 * 1024))
         if not ok:
             raise RuntimeError(result)

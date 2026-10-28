@@ -33,6 +33,7 @@ API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 from .version import __version__
 from .installer import windows_file_version, spawn_installer
 from . import paths
+from .theme import t
 USER_AGENT = f"DeepFind/{__version__}"
 PROGRAM = "DeepFind"
 log = logging.getLogger("deepfind.update")
@@ -59,7 +60,7 @@ def parse_version(text: str) -> tuple:
     """'v0.7.10' / '0.7.10-beta' -> (0, 7, 10); sayısal olmayan kuyruk durur."""
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", str(text or ""))
     if not match:
-        raise UpdateError("Sürüm numarası çözümlenemedi.")
+        raise UpdateError(t("Sürüm numarası çözümlenemedi."))
     return tuple(int(part) for part in match.groups())
 
 
@@ -74,7 +75,7 @@ def parse_release(payload: dict) -> UpdateInfo:
     # Sürüm adı dosya yoluna giriyor (Updates/<ad>-<sürüm>.exe); yalnız
     # rakam+nokta kabul edilir, aksi halde "../" ile hedef dizin dışına yazılır.
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
-        raise UpdateError("Yayın sürüm etiketi beklenen biçimde değil.")
+        raise UpdateError(t("Yayın sürüm etiketi beklenen biçimde değil."))
     parse_version(version)  # karşılaştıramayacağımız etiketleri reddet
     # Modern clients always use the installer, including portable -> installed
     # migration. ZIP remains a release asset for pre-0.10 clients only.
@@ -100,7 +101,7 @@ def parse_release(payload: dict) -> UpdateInfo:
             size=int(asset.get("size") or 0),
             page_url=str(payload.get("html_url") or ""),
         )
-    raise UpdateError("En yeni yayında doğrulanabilir kurulum EXE'si bulunamadı.")
+    raise UpdateError(t("En yeni yayında doğrulanabilir kurulum EXE'si bulunamadı."))
 
 
 def fetch_latest() -> UpdateInfo:
@@ -110,10 +111,10 @@ def fetch_latest() -> UpdateInfo:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            raise UpdateError("Henüz yayınlanmış bir sürüm yok.") from exc
-        raise UpdateError("Güncelleme sunucusuna ulaşılamadı.") from exc
+            raise UpdateError(t("Henüz yayınlanmış bir sürüm yok.")) from exc
+        raise UpdateError(t("Güncelleme sunucusuna ulaşılamadı.")) from exc
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
-        raise UpdateError("Güncelleme sunucusuna ulaşılamadı.") from exc
+        raise UpdateError(t("Güncelleme sunucusuna ulaşılamadı.")) from exc
     return parse_release(payload)
 
 
@@ -169,18 +170,18 @@ def download(info: UpdateInfo, dest: Path, progress=None, cancel=None) -> Path:
                     pass
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         dest.unlink(missing_ok=True)
-        raise UpdateError("Güncelleme indirmesi kesintiye uğradı.") from exc
+        raise UpdateError(t("Güncelleme indirmesi kesintiye uğradı.")) from exc
     if cancel is not None and cancel.is_set():
         dest.unlink(missing_ok=True)
         raise UpdateError("cancelled")
     if info.size and written != info.size:
         dest.unlink(missing_ok=True)
-        raise UpdateError("İndirme, dosya tamamlanmadan bitti.")
+        raise UpdateError(t("İndirme, dosya tamamlanmadan bitti."))
     if info.sha256:
         actual = _sha256_of(dest)
         if actual.lower() != info.sha256.lower():
             dest.unlink(missing_ok=True)
-            raise UpdateError("İndirilen dosyanın özeti tutmuyor.")
+            raise UpdateError(t("İndirilen dosyanın özeti tutmuyor."))
     return dest
 
 
@@ -207,29 +208,29 @@ def extract_zip(zip_path: Path, hedef_ust: Path, beklenen_surum: str) -> Path:
     try:
         with zipfile.ZipFile(zip_path) as archive:
             if not _zip_guvenli_mi(archive):
-                raise UpdateError("Paket beklenmeyen dosya yolları içeriyor.")
+                raise UpdateError(t("Paket beklenmeyen dosya yolları içeriyor."))
             archive.extractall(hedef_ust)
         if not kok.is_dir():
-            raise UpdateError("Paket yapısı beklenenden farklı.")
+            raise UpdateError(t("Paket yapısı beklenenden farklı."))
         exe = kok / f"{kok.name}.exe"
         if not exe.is_file():
-            raise UpdateError("Paket içinde uygulama dosyası bulunamadı.")
+            raise UpdateError(t("Paket içinde uygulama dosyası bulunamadı."))
         if not (kok / "_internal").is_dir():
-            raise UpdateError("Paket eksik görünüyor.")
+            raise UpdateError(t("Paket eksik görünüyor."))
         manifest_yolu = kok / "manifest.json"
         try:
             manifest = json.loads(manifest_yolu.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise UpdateError("Paket sürüm bilgisi okunamadı.") from exc
+            raise UpdateError(t("Paket sürüm bilgisi okunamadı.")) from exc
         if manifest.get("program") != PROGRAM or manifest.get("version") != beklenen_surum:
-            raise UpdateError("Paket sürüm bilgisi beklenenden farklı.")
+            raise UpdateError(t("Paket sürüm bilgisi beklenenden farklı."))
         return kok
     except UpdateError:
         shutil.rmtree(kok, ignore_errors=True)
         raise
     except (zipfile.BadZipFile, OSError) as exc:
         shutil.rmtree(kok, ignore_errors=True)
-        raise UpdateError("Paket açılamadı.") from exc
+        raise UpdateError(t("Paket açılamadı.")) from exc
 
 
 def prepare(info: UpdateInfo, progress=None, cancel=None) -> Path:
