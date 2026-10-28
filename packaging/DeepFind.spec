@@ -34,6 +34,7 @@ a = Analysis([str(root / "src/deepfind/__main__.py")], pathex=[str(root / "src")
                                        (str(root / 'build/embedding/model-LICENSE.txt'), 'embedding')], hiddenimports=["PySide6.QtWidgets",
                                        *collect_submodules("rapidocr"),
                                        "onnxruntime.capi.onnxruntime_pybind11_state",
+                                       "openpyxl", "et_xmlfile", "xlrd",
                                        ],
              hookspath=[], hooksconfig={}, runtime_hooks=[],
              excludes=["rapidfuzz", "torch", "transformers", "tokenizers", "huggingface_hub", "hf_xet", "safetensors",
