@@ -47,7 +47,7 @@ def cozumle(metin: str, turler=()) -> Cozum:
     """Sorgu metnini serbest metin + alan sözlüğüne çözer; hata varsa konum verir."""
     serbest: list[str] = []
     alanlar: dict[str, str] = {}
-    gecerli_turler = {katla("." + t.lstrip(".")) for t in turler if t and t != t("tümü")}
+    gecerli_turler = {katla("." + tur.lstrip(".")) for tur in turler if tur and tur != t("tümü")}
     i, n = 0, len(metin)
     while i < n:
         if metin[i].isspace():

@@ -26,6 +26,7 @@ a = Analysis([str(root / "src/deepfind/__main__.py")], pathex=[str(root / "src")
              binaries=binaries, datas=[(str(root / "src/deepfind/assets"), "deepfind/assets"),
                                        *ocr_datas,
                                        (str(root / 'build/embedding/embeddinggemma-2-Q8_0.gguf'), 'embedding'),
+                                       (str(root / 'build/embedding/common'), 'embedding/common'),
                                        (str(root / 'build/embedding/cpu'), 'embedding/cpu'),
                                        (str(root / 'build/embedding/vulkan'), 'embedding/vulkan'),
                                        (str(root / 'build/embedding/manifest.json'), 'embedding'),
