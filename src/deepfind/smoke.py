@@ -84,7 +84,11 @@ def run(report_path):
             pen.resize(1500,1000); app.processEvents(); layout_cards(pen); app.processEvents()
             gercek = [pen.nav.item(i).text() for i in range(pen.nav.count())]
             beklenen = [t("Ara"),t("Kaynaklar"),t("Tarama"),t("Geçmiş"),t("Taranmış Evraklar"),t("Ayarlar")]
-            assert gercek == beklenen, (gercek, beklenen)
+            from . import theme as _th
+            from PySide6.QtCore import QSettings as _QS
+            from . import identity as _id
+            tani = {"lang": _th.language(), "qsettings": _QS(_id.APP_IDENTITY, "Appearance").value("language", "<yok>"), "ekranlar": EKRANLAR}
+            assert gercek == beklenen, (gercek, beklenen, tani)
             assert pen.arama_islik.count()==3 and pen.gecmis_split.count()==2 and pen.dosya_split.count()==2
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
