@@ -123,4 +123,11 @@ EN4 = {
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "        EVRAKCI — RECOVERY KEY\n",
 "‹ Önceki belge": "‹ Previous document",
 "Arayüz dili": "Interface language",
+"Ara": "Search",
+"Kaynaklar": "Sources",
+"Tarama": "Scan",
+"Ayarlar": "Settings",
+"Kaydedildi.": "Saved.",
+"EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — RECOVERY KEY\n",
+"EVRAKÇI KURTARMA ANAHTARI\n": "EVRAKCI RECOVERY KEY\n",
 }

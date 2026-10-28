@@ -122,4 +122,10 @@ IT4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Spunta “Non userò password”.",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — CHIAVE DI RIPRISTINO\\n",
 "‹ Önceki belge": "‹ Documento precedente",
+"Ara": "Cerca",
+"Kaynaklar": "Sorgenti",
+"Tarama": "Scansione",
+"Ayarlar": "Impostazioni",
+"Kaydedildi.": "Salvato.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "CHIAVE DI RIPRISTINO EVRAKCI\n",
 }

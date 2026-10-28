@@ -38,14 +38,14 @@ from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
 from . import archive_ui
 from .theme import t
 
-EKRANLAR = ["Ara", "Kaynaklar", "Tarama", t("Geçmiş"), t("Taranmış Evraklar"), "Ayarlar"]
+EKRANLAR = [t("Ara"), t("Kaynaklar"), t("Tarama"), t("Geçmiş"), t("Taranmış Evraklar"), t("Ayarlar")]
 SAYFA_ACIKLAMA = {
-    "Ara": t("Aradığınız belgenin içeriğini tarif edin; belgeler bu bilgisayarda kalır."),
-    "Kaynaklar": t("Taranacak klasörleri ve kapsam dışında kalan yolları yönetin."),
-    "Tarama": t("Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin."),
+    t("Ara"): t("Aradığınız belgenin içeriğini tarif edin; belgeler bu bilgisayarda kalır."),
+    t("Kaynaklar"): t("Taranacak klasörleri ve kapsam dışında kalan yolları yönetin."),
+    t("Tarama"): t("Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin."),
     t("Geçmiş"): t("Önceki aramalarınıza tek tıkla dönün."),
     t("Taranmış Evraklar"): t("Kayıtlı dosyaları, tam yollarını ve içerik durumlarını inceleyin."),
-    "Ayarlar": t("Çalışma tercihleri, kasa güvenliği ve yedekler."),
+    t("Ayarlar"): t("Çalışma tercihleri, kasa güvenliği ve yedekler."),
 }
 
 
@@ -858,7 +858,7 @@ class AnaPencere(QMainWindow):
 
     def _toolbar(self):
         """Başlık şeridi: sayfa başlığı + durum rozeti + ortak işlemler."""
-        self.head_bar = sayfa_basi("Ara", t("Dosya adı, içerik ve klasör bağlamıyla arayın."))
+        self.head_bar = sayfa_basi(t("Ara"), t("Dosya adı, içerik ve klasör bağlamıyla arayın."))
         self.workspace.insertWidget(0, self.head_bar)
         self.tarama_pill = label(t("Kasa açık"), "pill")
         self.head_bar.denetim.addWidget(self.tarama_pill)
@@ -1144,7 +1144,7 @@ class AnaPencere(QMainWindow):
         self.arama_kutu.setClearButtonEnabled(True)
         self.arama_kutu.returnPressed.connect(self._ara_simdi)
         ust.addWidget(self.arama_kutu, 1)
-        search = QPushButton("Ara")
+        search = QPushButton(t("Ara"))
         search.setProperty("birincil", True)
         search.clicked.connect(self._ara_simdi)
         ust.addWidget(search)
@@ -2655,10 +2655,10 @@ class AnaPencere(QMainWindow):
                 path = self.scope_path.text().strip().strip('"')
                 kokler = [os.path.abspath(path)] if path else []
                 if not kokler or not os.path.isdir(kokler[0]):
-                    QMessageBox.information(self, "Tarama", t("Ulaşılabilen bir klasör veya disk seçin."))
+                    QMessageBox.information(self, t("Tarama"), t("Ulaşılabilen bir klasör veya disk seçin."))
                     return
         if not kokler:
-            QMessageBox.information(self, "Tarama", t("Taranacak en az bir klasör seçin."))
+            QMessageBox.information(self, t("Tarama"), t("Taranacak en az bir klasör seçin."))
             return
         # Aynı kapsamın iç içe kökleri bir kez taranır.
         unique = []
@@ -2848,7 +2848,7 @@ class AnaPencere(QMainWindow):
             )
             self.con.commit()
             self._scan_history_refresh()
-        QMessageBox.warning(self, "Tarama", msg)
+        QMessageBox.warning(self, t("Tarama"), msg)
 
     def _scan_history_refresh(self):
         if not hasattr(self, "scan_history") or self.con is None:
@@ -3580,7 +3580,7 @@ class AnaPencere(QMainWindow):
                 self.startup_status.clear()
         except Exception as e:  # noqa: BLE001
             QMessageBox.warning(self, t("Otomatik başlatma"), t("Yazılamadı: {e}", e=e))
-        QMessageBox.information(self, "Ayarlar", "Kaydedildi.")
+        QMessageBox.information(self, t("Ayarlar"), t("Kaydedildi."))
 
     def _ocr_repair(self):
         if not self._exclusive_ready():

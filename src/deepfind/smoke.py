@@ -82,7 +82,7 @@ def run(report_path):
             app.processEvents()
             from .archive_ui import layout_cards
             pen.resize(1500,1000); app.processEvents(); layout_cards(pen); app.processEvents()
-            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == ['Ara','Kaynaklar','Tarama','Geçmiş','Taranmış Evraklar','Ayarlar']
+            assert [pen.nav.item(i).text() for i in range(pen.nav.count())] == [t("Ara"),t("Kaynaklar"),t("Tarama"),t("Geçmiş"),t("Taranmış Evraklar"),t("Ayarlar")]
             assert pen.arama_islik.count()==3 and pen.gecmis_split.count()==2 and pen.dosya_split.count()==2
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
@@ -191,7 +191,7 @@ def run(report_path):
             assert not pen.con.execute("SELECT 1 FROM sqlite_master WHERE name IN ('docs_fts','vocabulary')").fetchone()
             checkpoint('archive-file-list-image-ocr')
             from .app import EKRANLAR
-            pen.nav.setCurrentRow(EKRANLAR.index('Taranmış Evraklar'))
+            pen.nav.setCurrentRow(EKRANLAR.index(t("Taranmış Evraklar")))
             deadline=time.monotonic()+30
             while pen._jobs:
                 app.processEvents(); time.sleep(.01); assert time.monotonic()<deadline

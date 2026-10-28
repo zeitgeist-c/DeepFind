@@ -122,4 +122,10 @@ DE4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Markieren Sie die Option „Ich verwende kein Passwort“.",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — WIEDERHERSTELLUNGSSCHLÜSSEL\\n",
 "‹ Önceki belge": "‹ Voriges Dokument",
+"Ara": "Suche",
+"Kaynaklar": "Quellen",
+"Tarama": "Scan",
+"Ayarlar": "Einstellungen",
+"Kaydedildi.": "Gespeichert.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "EVRAKCI WIEDERHERSTELLUNGSSCHLÜSSEL\n",
 }

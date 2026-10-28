@@ -122,4 +122,10 @@ ES4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Marque “No usaré contraseña”.",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — CLAVE DE RECUPERACIÓN\\n",
 "‹ Önceki belge": "‹ Documento anterior",
+"Ara": "Buscar",
+"Kaynaklar": "Fuentes",
+"Tarama": "Escanear",
+"Ayarlar": "Ajustes",
+"Kaydedildi.": "Guardado.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "CLAVE DE RECUPERACIÓN EVRAKCI\n",
 }

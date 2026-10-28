@@ -122,4 +122,10 @@ FR4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Cochez « Je n'utiliserai pas de mot de passe ».",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — CLÉ DE RÉCUPÉRATION\\n",
 "‹ Önceki belge": "‹ Document précédent",
+"Ara": "Rechercher",
+"Kaynaklar": "Sources",
+"Tarama": "Analyse",
+"Ayarlar": "Paramètres",
+"Kaydedildi.": "Enregistré.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "CLÉ DE RÉCUPÉRATION EVRAKCI\n",
 }

@@ -122,4 +122,10 @@ PL4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Zaznacz „Nie będę używać hasła”.",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — KLUCZ ODZYSKIWANIA\\n",
 "‹ Önceki belge": "‹ Poprzedni dokument",
+"Ara": "Szukaj",
+"Kaynaklar": "Źródła",
+"Tarama": "Skanowanie",
+"Ayarlar": "Ustawienia",
+"Kaydedildi.": "Zapisano.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "KLUCZ ODZYSKIWANIA EVRAKCI\n",
 }

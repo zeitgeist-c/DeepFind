@@ -122,4 +122,10 @@ PB4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Marque “Não usarei senha”.",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — CHAVE DE RECUPERAÇÃO\\n",
 "‹ Önceki belge": "‹ Documento anterior",
+"Ara": "Buscar",
+"Kaynaklar": "Fontes",
+"Tarama": "Verificação",
+"Ayarlar": "Configurações",
+"Kaydedildi.": "Salvo.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "CHAVE DE RECUPERAÇÃO EVRAKCI\n",
 }

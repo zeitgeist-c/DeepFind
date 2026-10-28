@@ -122,4 +122,10 @@ KO4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "\"비밀번호를 사용하지 않음\"을 선택하세요.",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — 복구 키\\n",
 "‹ Önceki belge": "‹ 이전 문서",
+"Ara": "검색",
+"Kaynaklar": "소스",
+"Tarama": "검사",
+"Ayarlar": "설정",
+"Kaydedildi.": "저장됨.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "복구 키 EVRAKCI\n",
 }

@@ -122,4 +122,10 @@ ZH4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "请勾选“我不使用密码”选项。",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — 恢复密钥\\n",
 "‹ Önceki belge": "‹ 上一篇文档",
+"Ara": "搜索",
+"Kaynaklar": "来源",
+"Tarama": "扫描",
+"Ayarlar": "设置",
+"Kaydedildi.": "已保存。",
+"EVRAKÇI KURTARMA ANAHTARI\n": "恢复密钥 EVRAKCI\n",
 }

@@ -122,4 +122,10 @@ JA4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "「パスワードを使わない」にチェック。",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — 回復キー\\n",
 "‹ Önceki belge": "‹ 前の文書",
+"Ara": "検索",
+"Kaynaklar": "ソース",
+"Tarama": "スキャン",
+"Ayarlar": "設定",
+"Kaydedildi.": "保存しました。",
+"EVRAKÇI KURTARMA ANAHTARI\n": "回復キー EVRAKCI\n",
 }

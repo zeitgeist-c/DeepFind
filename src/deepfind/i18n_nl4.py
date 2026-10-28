@@ -122,4 +122,10 @@ NL4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Vink “Ik gebruik geen wachtwoord” aan.",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — HERSTELSLEUTEL\\n",
 "‹ Önceki belge": "‹ Vorig document",
+"Ara": "Zoeken",
+"Kaynaklar": "Bronnen",
+"Tarama": "Scan",
+"Ayarlar": "Instellingen",
+"Kaydedildi.": "Opgeslagen.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "HERSTELSLEUTEL EVRAKCI\n",
 }

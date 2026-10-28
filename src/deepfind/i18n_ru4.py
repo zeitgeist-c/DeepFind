@@ -122,4 +122,10 @@ RU4 = {
 "“Şifre kullanmayacağım” seçeneğini işaretleyin.": "Отметьте «Не буду использовать пароль».",
 "        EVRAKÇI — KURTARMA ANAHTARI\\n": "        EVRAKCI — КЛЮЧ ВОССТАНОВЛЕНИЯ\\n",
 "‹ Önceki belge": "‹ Предыдущий документ",
+"Ara": "Поиск",
+"Kaynaklar": "Источники",
+"Tarama": "Сканирование",
+"Ayarlar": "Настройки",
+"Kaydedildi.": "Сохранено.",
+"EVRAKÇI KURTARMA ANAHTARI\n": "КЛЮЧ ВОССТАНОВЛЕНИЯ EVRAKCI\n",
 }
