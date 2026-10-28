@@ -35,6 +35,7 @@ a = Analysis([str(root / "src/deepfind/__main__.py")], pathex=[str(root / "src")
                                        *collect_submodules("rapidocr"),
                                        "onnxruntime.capi.onnxruntime_pybind11_state",
                                        "openpyxl", "et_xmlfile", "xlrd",
+                                       *collect_submodules("openpyxl"),
                                        ],
              hookspath=[], hooksconfig={}, runtime_hooks=[],
              excludes=["rapidfuzz", "torch", "transformers", "tokenizers", "huggingface_hub", "hf_xet", "safetensors",
