@@ -197,6 +197,8 @@ def run(report_path):
             deadline=time.monotonic()+30
             while pen._jobs:
                 app.processEvents(); time.sleep(.01); assert time.monotonic()<deadline
+            pen._files_refresh(reset=True)
+            app.processEvents(); time.sleep(0.6); app.processEvents()
             assert any(row[1]==ocr_image for row in pen.file_rows)
             from .rank import search_semantic
             assert any(row['path']==ocr_image for row in search_semantic(pen.con,'Ankara belge')['results'])
