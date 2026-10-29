@@ -49,7 +49,7 @@ def run(directory):
                 nseg = pen.con.execute('SELECT count(*) FROM segments').fetchone()[0]
                 assert nseg > 0, f"segments={nseg}"
                 from .theme import t as _t
-                assert _t('tamamlandı') in pen.tarama_bilgi.text(), pen.tarama_bilgi.text()[:80]
+                assert _t('Tarama tamamlandı') in pen.tarama_bilgi.text(), pen.tarama_bilgi.text()[:80]
                 state['ok'] = True
                 timer.stop()
                 pen._cikis()
