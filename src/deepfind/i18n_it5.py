@@ -23,4 +23,11 @@ IT5 = {
 "İçerik okunamadı": "Contenuto illeggibile",
 "Şifreli kasa açılıyor…": "Apro vault cifrato…",
 "Altbilgi": "Piè di pagina",
+"CSV indir": "Scarica CSV",
+"Yol kopyala": "Copia percorso",
+"Duraklat": "Sospendi",
+"Devam et": "Riprendi",
+"Yedekler": "Backup",
+"Kurulumu tamamla": "Completa configurazione",
+"Yenile": "Aggiorna",
 }

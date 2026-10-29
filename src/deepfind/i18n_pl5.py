@@ -23,4 +23,11 @@ PL5 = {
 "İçerik okunamadı": "Treść nieczytelna",
 "Şifreli kasa açılıyor…": "Otwieranie szyfrowanego sejfu…",
 "Altbilgi": "Stopka",
+"CSV indir": "Pobierz CSV",
+"Yol kopyala": "Kopiuj ścieżkę",
+"Duraklat": "Wstrzymaj",
+"Devam et": "Wznów",
+"Yedekler": "Kopie zapasowe",
+"Kurulumu tamamla": "Zakończ konfigurację",
+"Yenile": "Odśwież",
 }

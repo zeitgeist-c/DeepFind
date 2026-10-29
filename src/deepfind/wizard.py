@@ -50,7 +50,7 @@ class Sihirbaz(QWizard):
                               QWizard.NextButton, QWizard.FinishButton])
         self.setButtonText(QWizard.BackButton, "Geri")
         self.setButtonText(QWizard.NextButton, t("İleri"))
-        self.setButtonText(QWizard.FinishButton, "Kurulumu tamamla")
+        self.setButtonText(QWizard.FinishButton, t("Kurulumu tamamla"))
         self.setButtonText(QWizard.CancelButton, t("Vazgeç"))
         self.setButtonText(QWizard.HelpButton, t("Yardım"))
         self.secim = {"kokler": [], "tema": "sistem", "sirket_kurali": "belirlenemiyor"}
@@ -169,7 +169,7 @@ class Sihirbaz(QWizard):
         actions = QHBoxLayout()
         browse = QPushButton(t("Klasör seç…"))
         browse.clicked.connect(self._gozat)
-        self.yenile = QPushButton("Yenile")
+        self.yenile = QPushButton(t("Yenile"))
         self.yenile.clicked.connect(self._yenile)
         actions.addWidget(browse)
         actions.addWidget(self.yenile)

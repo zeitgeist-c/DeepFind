@@ -23,4 +23,11 @@ KO5 = {
 "İçerik okunamadı": "내용을 읽을 수 없음",
 "Şifreli kasa açılıyor…": "암호화된 금고 여는 중…",
 "Altbilgi": "바닥글",
+"CSV indir": "CSV 다운로드",
+"Yol kopyala": "경로 복사",
+"Duraklat": "일시중지",
+"Devam et": "계속",
+"Yedekler": "백업",
+"Kurulumu tamamla": "설치 완료",
+"Yenile": "새로고침",
 }

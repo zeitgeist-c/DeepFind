@@ -23,4 +23,11 @@ FR5 = {
 "İçerik okunamadı": "Contenu illisible",
 "Şifreli kasa açılıyor…": "Ouverture du coffre chiffré…",
 "Altbilgi": "Pied de page",
+"CSV indir": "Télécharger le CSV",
+"Yol kopyala": "Copier le chemin",
+"Duraklat": "Pause",
+"Devam et": "Reprendre",
+"Yedekler": "Sauvegardes",
+"Kurulumu tamamla": "Terminer l'installation",
+"Yenile": "Actualiser",
 }

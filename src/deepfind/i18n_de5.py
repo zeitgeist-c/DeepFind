@@ -23,4 +23,11 @@ DE5 = {
 "İçerik okunamadı": "Inhalt nicht lesbar",
 "Şifreli kasa açılıyor…": "Verschlüsselter Tresor wird geöffnet…",
 "Altbilgi": "Fußzeile",
+"CSV indir": "CSV herunterladen",
+"Yol kopyala": "Pfad kopieren",
+"Duraklat": "Pausieren",
+"Devam et": "Fortsetzen",
+"Yedekler": "Sicherungen",
+"Kurulumu tamamla": "Setup abschließen",
+"Yenile": "Aktualisieren",
 }

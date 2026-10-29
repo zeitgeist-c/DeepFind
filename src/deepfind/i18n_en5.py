@@ -23,4 +23,11 @@ EN5 = {
 "İçerik okunamadı": "Content unreadable",
 "Şifreli kasa açılıyor…": "Opening encrypted vault…",
 "Altbilgi": "Footer",
+"CSV indir": "Download CSV",
+"Yol kopyala": "Copy path",
+"Duraklat": "Pause",
+"Devam et": "Resume",
+"Yedekler": "Backups",
+"Kurulumu tamamla": "Finish setup",
+"Yenile": "Refresh",
 }

@@ -23,4 +23,11 @@ ES5 = {
 "İçerik okunamadı": "Contenido ilegible",
 "Şifreli kasa açılıyor…": "Abriendo la caja cifrada…",
 "Altbilgi": "Pie de página",
+"CSV indir": "Descargar CSV",
+"Yol kopyala": "Copiar ruta",
+"Duraklat": "Pausar",
+"Devam et": "Reanudar",
+"Yedekler": "Copias",
+"Kurulumu tamamla": "Terminar instalación",
+"Yenile": "Actualizar",
 }

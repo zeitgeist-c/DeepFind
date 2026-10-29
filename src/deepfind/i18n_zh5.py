@@ -23,4 +23,11 @@ ZH5 = {
 "İçerik okunamadı": "内容无法读取",
 "Şifreli kasa açılıyor…": "正在打开加密保险库…",
 "Altbilgi": "页脚",
+"CSV indir": "下载 CSV",
+"Yol kopyala": "复制路径",
+"Duraklat": "暂停",
+"Devam et": "继续",
+"Yedekler": "备份",
+"Kurulumu tamamla": "完成安装",
+"Yenile": "刷新",
 }

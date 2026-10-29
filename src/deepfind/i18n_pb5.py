@@ -23,4 +23,11 @@ PB5 = {
 "İçerik okunamadı": "Conteúdo ilegível",
 "Şifreli kasa açılıyor…": "Abrindo cofre cifrado…",
 "Altbilgi": "Rodapé",
+"CSV indir": "Baixar CSV",
+"Yol kopyala": "Copiar caminho",
+"Duraklat": "Pausar",
+"Devam et": "Continuar",
+"Yedekler": "Backups",
+"Kurulumu tamamla": "Concluir instalação",
+"Yenile": "Atualizar",
 }

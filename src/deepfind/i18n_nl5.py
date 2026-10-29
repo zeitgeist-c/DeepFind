@@ -23,4 +23,11 @@ NL5 = {
 "İçerik okunamadı": "Inhoud onleesbaar",
 "Şifreli kasa açılıyor…": "Versleutelde kluis openen…",
 "Altbilgi": "Voettekst",
+"CSV indir": "CSV downloaden",
+"Yol kopyala": "Pad kopiëren",
+"Duraklat": "Pauzeren",
+"Devam et": "Hervatten",
+"Yedekler": "Backups",
+"Kurulumu tamamla": "Setup voltooien",
+"Yenile": "Vernieuwen",
 }

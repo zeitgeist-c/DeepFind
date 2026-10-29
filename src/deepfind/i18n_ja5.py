@@ -23,4 +23,11 @@ JA5 = {
 "İçerik okunamadı": "内容を読み取れません",
 "Şifreli kasa açılıyor…": "暗号化金庫を開いています…",
 "Altbilgi": "フッター",
+"CSV indir": "CSVをダウンロード",
+"Yol kopyala": "パスをコピー",
+"Duraklat": "一時停止",
+"Devam et": "再開",
+"Yedekler": "バックアップ",
+"Kurulumu tamamla": "セットアップ完了",
+"Yenile": "更新",
 }

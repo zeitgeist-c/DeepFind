@@ -78,7 +78,7 @@ def install(w):
     y2l.addWidget(split)
     layout.addWidget(yuzey2,1)
     controls=QHBoxLayout(); controls.setSpacing(8)
-    refresh=QPushButton('Yenile'); refresh.setProperty('kucuk',True); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
+    refresh=QPushButton(t('Yenile')); refresh.setProperty('kucuk',True); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
     errors=QPushButton(t('Kapsam')); errors.setProperty('kucuk',True); errors.setToolTip(t('Kapsam hatalarını göster')); errors.clicked.connect(w._coverage_report)
     prev=QPushButton(t('Önceki')); prev.setProperty('kucuk',True); prev.clicked.connect(lambda:w._files_page(-1))
     w.file_next=QPushButton('Sonraki'); w.file_next.setProperty('kucuk',True); w.file_next.clicked.connect(lambda:w._files_page(1))
