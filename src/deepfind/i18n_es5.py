@@ -1,4 +1,26 @@
-# DeepFind es sozluk - bolum 5.
+# DeepFind İspanyolca sözlük — bölüm 5 (ham widget sarma).
 ES5 = {
+"Büyük arşiv hazırlanırken lütfen bekleyin.": "Espere mientras se prepara el archivo grande.",
+"CUDA hazır": "CUDA listo",
+"CUDA indiriliyor ve doğrulanıyor…": "Descargando y verificando CUDA…",
+"CUDA indirmesi tamamlanamadı; yeniden dene": "No se pudo completar la descarga de CUDA; reintentar",
+"DeepFind • Açılıyor": "DeepFind • Iniciando",
+"DeepFind • Belge ön izlemesi": "DeepFind • Vista previa del documento",
+"DeepFind • İndeks kapsamı": "DeepFind • Cobertura del índice",
+"Dosya listesi oluşturuluyor…": "Generando la lista de archivos…",
+"Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.": "Esperando la parada segura… Si ya empezó un cambio de esquema, antes terminará.",
+"Kapsam": "Cobertura",
+"Kapsam hatalarını göster": "Mostrar errores de cobertura",
+"Kayıtlar yükleniyor…": "Cargando registros…",
+"Motoru yeniden başlat": "Reiniciar el motor",
+"NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)": "Descargar el componente NVIDIA CUDA (aprox. 663 MB)",
+"Sayfa görüntüsüne dön": "Volver a la vista de página",
+"Sonraki bölümleri yükle": "Cargar las secciones siguientes",
+"Önceki": "Anterior",
+"Önceki indeks korunuyor": "Se conserva el índice anterior",
+"İndeks metni yüklenemedi: ": "No se pudo cargar el texto del índice: ",
+"İndeks metnini göster": "Mostrar el texto del índice",
+"İçerik okunamadı": "Contenido ilegible",
+"Şifreli kasa açılıyor…": "Abriendo la caja cifrada…",
 "Altbilgi": "Pie de página",
 }

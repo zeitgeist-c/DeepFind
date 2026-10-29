@@ -1,4 +1,26 @@
-# DeepFind zh sozluk - bolum 5.
+# DeepFind Basitleştirilmiş Çince sözlük — bölüm 5 (ham widget sarma).
 ZH5 = {
+"Büyük arşiv hazırlanırken lütfen bekleyin.": "正在准备大型档案，请稍候。",
+"CUDA hazır": "CUDA 就绪",
+"CUDA indiriliyor ve doğrulanıyor…": "正在下载并验证 CUDA…",
+"CUDA indirmesi tamamlanamadı; yeniden dene": "CUDA 下载未完成；请重试",
+"DeepFind • Açılıyor": "DeepFind • 正在启动",
+"DeepFind • Belge ön izlemesi": "DeepFind • 文档预览",
+"DeepFind • İndeks kapsamı": "DeepFind • 索引覆盖范围",
+"Dosya listesi oluşturuluyor…": "正在生成文件列表…",
+"Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.": "正在等待安全停止… 如果架构变更已开始，将先完成。",
+"Kapsam": "覆盖范围",
+"Kapsam hatalarını göster": "显示覆盖错误",
+"Kayıtlar yükleniyor…": "正在加载记录…",
+"Motoru yeniden başlat": "重启引擎",
+"NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)": "下载 NVIDIA CUDA 组件（约 663 MB）",
+"Sayfa görüntüsüne dön": "返回页面视图",
+"Sonraki bölümleri yükle": "加载后续章节",
+"Önceki": "上一页",
+"Önceki indeks korunuyor": "保留之前的索引",
+"İndeks metni yüklenemedi: ": "索引文本加载失败： ",
+"İndeks metnini göster": "显示索引文本",
+"İçerik okunamadı": "内容无法读取",
+"Şifreli kasa açılıyor…": "正在打开加密保险库…",
 "Altbilgi": "页脚",
 }

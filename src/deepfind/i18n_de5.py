@@ -1,4 +1,26 @@
-# DeepFind de sozluk - bolum 5.
+# DeepFind Almanca sözlük — bölüm 5 (ham widget sarma).
 DE5 = {
+"Büyük arşiv hazırlanırken lütfen bekleyin.": "Bitte warten, während das große Archiv vorbereitet wird.",
+"CUDA hazır": "CUDA bereit",
+"CUDA indiriliyor ve doğrulanıyor…": "CUDA wird heruntergeladen und überprüft…",
+"CUDA indirmesi tamamlanamadı; yeniden dene": "CUDA-Download nicht abgeschlossen; erneut versuchen",
+"DeepFind • Açılıyor": "DeepFind • Startet",
+"DeepFind • Belge ön izlemesi": "DeepFind • Dokumentvorschau",
+"DeepFind • İndeks kapsamı": "DeepFind • Indexabdeckung",
+"Dosya listesi oluşturuluyor…": "Dateiliste wird erstellt…",
+"Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.": "Warten auf sicheres Anhalten… Läuft bereits eine Schemaänderung, wird sie zuerst abgeschlossen.",
+"Kapsam": "Abdeckung",
+"Kapsam hatalarını göster": "Abdeckungsfehler anzeigen",
+"Kayıtlar yükleniyor…": "Datensätze werden geladen…",
+"Motoru yeniden başlat": "Engine neu starten",
+"NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)": "NVIDIA-CUDA-Komponente herunterladen (ca. 663 MB)",
+"Sayfa görüntüsüne dön": "Zurück zur Seitenansicht",
+"Sonraki bölümleri yükle": "Weitere Abschnitte laden",
+"Önceki": "Zurück",
+"Önceki indeks korunuyor": "Vorheriger Index bleibt erhalten",
+"İndeks metni yüklenemedi: ": "Indextext konnte nicht geladen werden: ",
+"İndeks metnini göster": "Indextext anzeigen",
+"İçerik okunamadı": "Inhalt nicht lesbar",
+"Şifreli kasa açılıyor…": "Verschlüsselter Tresor wird geöffnet…",
 "Altbilgi": "Fußzeile",
 }

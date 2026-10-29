@@ -1,4 +1,26 @@
-# DeepFind pb sozluk - bolum 5.
+# DeepFind Portekizce (Brezilya) sözlük — bölüm 5 (ham widget sarma).
 PB5 = {
+"Büyük arşiv hazırlanırken lütfen bekleyin.": "Aguarde enquanto o arquivo grande é preparado.",
+"CUDA hazır": "CUDA pronto",
+"CUDA indiriliyor ve doğrulanıyor…": "Baixando e verificando o CUDA…",
+"CUDA indirmesi tamamlanamadı; yeniden dene": "Download do CUDA falhou; tentar de novo",
+"DeepFind • Açılıyor": "DeepFind • Abrindo",
+"DeepFind • Belge ön izlemesi": "DeepFind • Prévia do documento",
+"DeepFind • İndeks kapsamı": "DeepFind • Cobertura do índice",
+"Dosya listesi oluşturuluyor…": "Montando lista de arquivos…",
+"Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.": "Aguardando parada segura… Se um esquema começou, ele termina antes.",
+"Kapsam": "Cobertura",
+"Kapsam hatalarını göster": "Mostrar erros de cobertura",
+"Kayıtlar yükleniyor…": "Carregando registros…",
+"Motoru yeniden başlat": "Reiniciar motor",
+"NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)": "Baixar componente NVIDIA CUDA (~663 MB)",
+"Sayfa görüntüsüne dön": "Voltar à imagem da página",
+"Sonraki bölümleri yükle": "Carregar próximas seções",
+"Önceki": "Anterior",
+"Önceki indeks korunuyor": "Mantendo índice anterior",
+"İndeks metni yüklenemedi: ": "Não carregou o texto do índice: ",
+"İndeks metnini göster": "Mostrar texto do índice",
+"İçerik okunamadı": "Conteúdo ilegível",
+"Şifreli kasa açılıyor…": "Abrindo cofre cifrado…",
 "Altbilgi": "Rodapé",
 }

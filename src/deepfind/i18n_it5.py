@@ -1,4 +1,26 @@
-# DeepFind it sozluk - bolum 5.
+# DeepFind İtalyanca sözlük — bölüm 5 (ham widget sarma).
 IT5 = {
+"Büyük arşiv hazırlanırken lütfen bekleyin.": "Attendi mentre preparo il grande archivio.",
+"CUDA hazır": "CUDA pronto",
+"CUDA indiriliyor ve doğrulanıyor…": "Scarico e verifico CUDA…",
+"CUDA indirmesi tamamlanamadı; yeniden dene": "Download CUDA non riuscito; riprova",
+"DeepFind • Açılıyor": "DeepFind • Avvio",
+"DeepFind • Belge ön izlemesi": "DeepFind • Anteprima documento",
+"DeepFind • İndeks kapsamı": "DeepFind • Copertura indice",
+"Dosya listesi oluşturuluyor…": "Creo elenco file…",
+"Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.": "Attendo arresto sicuro… Se è iniziato un cambio schema, finisce prima.",
+"Kapsam": "Copertura",
+"Kapsam hatalarını göster": "Mostra errori di copertura",
+"Kayıtlar yükleniyor…": "Carico record…",
+"Motoru yeniden başlat": "Riavvia motore",
+"NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)": "Scarica componente NVIDIA CUDA (circa 663 MB)",
+"Sayfa görüntüsüne dön": "Torna alla vista pagina",
+"Sonraki bölümleri yükle": "Carica sezioni successive",
+"Önceki": "Precedente",
+"Önceki indeks korunuyor": "Conservo l'indice precedente",
+"İndeks metni yüklenemedi: ": "Testo indice non caricabile: ",
+"İndeks metnini göster": "Mostra testo indice",
+"İçerik okunamadı": "Contenuto illeggibile",
+"Şifreli kasa açılıyor…": "Apro vault cifrato…",
 "Altbilgi": "Piè di pagina",
 }

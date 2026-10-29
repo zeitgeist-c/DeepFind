@@ -1,4 +1,26 @@
-# DeepFind nl sozluk - bolum 5.
+# DeepFind Felemenkçe sözlük — bölüm 5 (ham widget sarma).
 NL5 = {
+"Büyük arşiv hazırlanırken lütfen bekleyin.": "Even geduld, het grote archief wordt voorbereid.",
+"CUDA hazır": "CUDA gereed",
+"CUDA indiriliyor ve doğrulanıyor…": "CUDA downloaden en verifiëren…",
+"CUDA indirmesi tamamlanamadı; yeniden dene": "CUDA-download mislukt; opnieuw",
+"DeepFind • Açılıyor": "DeepFind • Starten",
+"DeepFind • Belge ön izlemesi": "DeepFind • Documentvoorbeeld",
+"DeepFind • İndeks kapsamı": "DeepFind • Indexdekking",
+"Dosya listesi oluşturuluyor…": "Bestandenlijst opbouwen…",
+"Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.": "Wachten op veilige stop… Als een schemawijziging begon, rondt die eerst af.",
+"Kapsam": "Dekking",
+"Kapsam hatalarını göster": "Dekkingsfouten tonen",
+"Kayıtlar yükleniyor…": "Records laden…",
+"Motoru yeniden başlat": "Engine herstarten",
+"NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)": "NVIDIA CUDA-component downloaden (ca. 663 MB)",
+"Sayfa görüntüsüne dön": "Terug naar paginaweergave",
+"Sonraki bölümleri yükle": "Volgende secties laden",
+"Önceki": "Vorige",
+"Önceki indeks korunuyor": "Vorige index blijft behouden",
+"İndeks metni yüklenemedi: ": "Indextekst niet geladen: ",
+"İndeks metnini göster": "Indextekst tonen",
+"İçerik okunamadı": "Inhoud onleesbaar",
+"Şifreli kasa açılıyor…": "Versleutelde kluis openen…",
 "Altbilgi": "Voettekst",
 }
