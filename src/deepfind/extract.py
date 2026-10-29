@@ -286,8 +286,8 @@ def _xls(path: str) -> ExtractResult:
             break
     texts = [s.raw_text for s in segs]
     cut, status, code = _budget_text(texts)
-    for s, t in zip(segs, cut):
-        s.raw_text = t
+    for _s, _t in zip(segs, cut):
+        _s.raw_text = _t
     segs = segs[:len(cut)]
     if capped:
         status, code = "partial", "CELL_LIMIT"
@@ -310,9 +310,9 @@ def _docx(path: str, bounded=True) -> ExtractResult:
     for i, p in enumerate(d.paragraphs):
         if p.text.strip():
             segs.append(Segment("para", None, f"Paragraf {i + 1}", p.text))
-    for ti, t in enumerate(d.tables):
+    for ti, tab in enumerate(d.tables):
         cells = []
-        for r, row in enumerate(t.rows):
+        for r, row in enumerate(tab.rows):
             vals = [c.text.strip() for c in row.cells if c.text.strip()]
             if vals:
                 cells.append(f"R{r + 1}: {' | '.join(vals)}")
@@ -320,7 +320,7 @@ def _docx(path: str, bounded=True) -> ExtractResult:
             segs.append(Segment("table", None, f"Tablo {ti + 1}", "\n".join(cells)))
     seen_parts = set()
     for section in d.sections:
-        for part, label in ((section.header, t("Üstbilgi")), (section.footer, "Altbilgi"),
+        for part, label in ((section.header, t("Üstbilgi")), (section.footer, t("Altbilgi")),
                             (section.first_page_header, t("İlk sayfa üstbilgi")),
                             (section.first_page_footer, t("İlk sayfa altbilgi"))):
             key = str(part.part.partname)
@@ -334,8 +334,8 @@ def _docx(path: str, bounded=True) -> ExtractResult:
         return ExtractResult(segs)
     texts = [s.raw_text for s in segs]
     cut, status, code = _budget_text(texts)
-    for s, t in zip(segs, cut):
-        s.raw_text = t
+    for _s, _t in zip(segs, cut):
+        _s.raw_text = _t
     segs = segs[:len(cut)]
     return ExtractResult(segs, status, code)
 
@@ -351,8 +351,8 @@ def _bounded_result(segs: list, bounded: bool) -> ExtractResult:
         return ExtractResult(segs)
     texts = [s.raw_text for s in segs]
     cut, status, code = _budget_text(texts)
-    for s, t in zip(segs, cut):
-        s.raw_text = t
+    for _s, _t in zip(segs, cut):
+        _s.raw_text = _t
     return ExtractResult(segs[:len(cut)], status, code)
 
 

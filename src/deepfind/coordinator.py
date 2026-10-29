@@ -19,7 +19,16 @@ from .theme import t
 STABLE_NS = 2_000_000_000  # 2 sn icinde degismisse kararli degil
 DEFER_SEC = 60
 
-KESIF_ASAMALARI = {t("Klasörler keşfediliyor"), t("Kopyalar doğrulanıyor")}
+try:
+    from .theme import TABLES as _TABLES
+    KESIF_ASAMALARI = {"Klasörler keşfediliyor", "Kopyalar doğrulanıyor"}
+    for _tab in _TABLES.values():
+        for _anahtar in ("Klasörler keşfediliyor", "Kopyalar doğrulanıyor"):
+            _deger = _tab.get(_anahtar)
+            if _deger:
+                KESIF_ASAMALARI.add(_deger)
+except Exception:
+    KESIF_ASAMALARI = {"Klasörler keşfediliyor", "Kopyalar doğrulanıyor"}
 
 
 def emit_progress(sink, payload=None, **kw):

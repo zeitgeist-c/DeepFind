@@ -618,17 +618,17 @@ class AnaPencere(QMainWindow):
         self._guncelleme_info = info
         boyut = max(1, round(info.size / (1024 * 1024)))
         self._guncelleme_durum_yaz(
-            t("Yeni sürüm {info.version} hazır ({boyut} MB). ", info=info.version, boyut=boyut)
+            t("Yeni sürüm {info.version} hazır ({boyut} MB). ", info=info, boyut=boyut)
             + t("İndirmek için “İndir ve kur” düğmesini kullanın."))
         self.update_denetle_btn.setVisible(False)
         self.update_indir_btn.setVisible(True)
         self.update_iptal_btn.setVisible(True)
         if getattr(self, "tepsi", None) is not None:
             self.tepsi.showMessage(
-                "DeepFind", t("Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.", info=info.version),
+                "DeepFind", t("Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.", info=info),
                 QSystemTrayIcon.MessageIcon.Information, 10000)
         self.durum.showMessage(
-            t("Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.", info=info.version), 10000)
+            t("Yeni sürüm {info.version} hazır: Ayarlar → Güncellemeler.", info=info), 10000)
 
     def _guncelleme_denetleme_hatasi(self, mesaj):
         self.update_denetle_btn.setEnabled(True)

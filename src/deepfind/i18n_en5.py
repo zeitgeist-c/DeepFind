@@ -22,4 +22,5 @@ EN5 = {
 "İndeks metnini göster": "Show index text",
 "İçerik okunamadı": "Content unreadable",
 "Şifreli kasa açılıyor…": "Opening encrypted vault…",
+"Altbilgi": "Footer",
 }
