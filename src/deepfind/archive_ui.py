@@ -71,7 +71,7 @@ def install(w):
     w.dosya_bilgi=label('','ikincil'); w.dosya_bilgi.setWordWrap(True); dl.addWidget(w.dosya_bilgi)
     dl.addWidget(bolme())
     dl.addStretch(1)
-    w.dosya_onizle=QPushButton('Ön izle'); w.dosya_onizle.setProperty('birincil',True)
+    w.dosya_onizle=QPushButton(t('Ön izle')); w.dosya_onizle.setProperty('birincil',True)
     w.dosya_onizle.clicked.connect(w._file_open); w.dosya_onizle.setEnabled(False); dl.addWidget(w.dosya_onizle)
     split.addWidget(dosya); split.setStretchFactor(0,1); split.setStretchFactor(1,0); split.setSizes([560,300])
     w.dosya_split=split
@@ -79,8 +79,8 @@ def install(w):
     layout.addWidget(yuzey2,1)
     controls=QHBoxLayout(); controls.setSpacing(8)
     refresh=QPushButton('Yenile'); refresh.setProperty('kucuk',True); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
-    errors=QPushButton('Kapsam'); errors.setProperty('kucuk',True); errors.setToolTip('Kapsam hatalarını göster'); errors.clicked.connect(w._coverage_report)
-    prev=QPushButton('Önceki'); prev.setProperty('kucuk',True); prev.clicked.connect(lambda:w._files_page(-1))
+    errors=QPushButton(t('Kapsam')); errors.setProperty('kucuk',True); errors.setToolTip(t('Kapsam hatalarını göster')); errors.clicked.connect(w._coverage_report)
+    prev=QPushButton(t('Önceki')); prev.setProperty('kucuk',True); prev.clicked.connect(lambda:w._files_page(-1))
     w.file_next=QPushButton('Sonraki'); w.file_next.setProperty('kucuk',True); w.file_next.clicked.connect(lambda:w._files_page(1))
     for button in (refresh,errors,prev,w.file_next): controls.addWidget(button)
     controls.addStretch(1)
@@ -111,7 +111,7 @@ def layout_cards(w):
 def files_refresh(w,reset=False):
     if reset: w.file_offset=0
     text=w.file_filter.text(); status=w.file_status.currentData(); offset=w.file_offset
-    w.file_notice.setText('Kayıtlar yükleniyor…'); w.file_notice.show()
+    w.file_notice.setText(t('Kayıtlar yükleniyor…')); w.file_notice.show()
     def ready(rows):
         cache=(text,status,offset,rows)
         if w._list_cache.get('files')==cache:

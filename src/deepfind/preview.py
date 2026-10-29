@@ -196,12 +196,12 @@ class Onizleme(QWidget):
         k.addWidget(self.metin, 1)
         self.empty = EmptyState(t("İçeriğe yakından bakın"), t("Bir arama sonucunu seçtiğinizde\nbelgenin önizlemesi burada açılır."), "document")
         k.addWidget(self.empty, 1)
-        self.index_button = QPushButton('İndeks metnini göster')
+        self.index_button = QPushButton(t('İndeks metnini göster'))
         self.index_button.setProperty("kucuk", True)
         self.index_button.setToolTip(t("Sayfa görüntüsü ile OCR/indeks metni arasında geçiş yapın"))
         self.index_button.clicked.connect(self._show_index)
         k.addWidget(self.index_button)
-        self.more_button = QPushButton('Sonraki bölümleri yükle')
+        self.more_button = QPushButton(t('Sonraki bölümleri yükle'))
         self.more_button.setProperty("kucuk", True)
         self.more_button.clicked.connect(self._load_more)
         k.addWidget(self.more_button)
@@ -608,7 +608,7 @@ class Onizleme(QWidget):
             return
         self._index_view = True
         self.canvas.hide(); self.tablo.hide(); self.goruntu.hide(); self.metin.show()
-        self.index_button.setText('Sayfa görüntüsüne dön')
+        self.index_button.setText(t('Sayfa görüntüsüne dön'))
         self.metin.setPlainText(self._fallback or 'İndeks metni bulunamadı.')
 
     def _load_more(self):
@@ -630,7 +630,7 @@ class Onizleme(QWidget):
 
     def _index_error(self,generation,error):
         if generation==self._generation:
-            self.uyari.setText('İndeks metni yüklenemedi: '+error); self.uyari.show()
+            self.uyari.setText(t('İndeks metni yüklenemedi: ')+error); self.uyari.show()
 
     def _index_ready(self,generation,offset,value):
         if generation!=self._generation or not self._path: return

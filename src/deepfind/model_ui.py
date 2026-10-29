@@ -2,6 +2,7 @@
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QComboBox, QPushButton
 from . import archive_ui, engine, migrate
+from .theme import t
 from .ui import bolum, label
 
 
@@ -20,9 +21,9 @@ def install(window, layout):
     window.model_backend.setCurrentIndex(max(0,window.model_backend.findData(saved)))
     engine.set_backend(window.model_backend.currentData())
     layout.addWidget(window.model_backend)
-    window.model_retry = QPushButton('Motoru yeniden başlat')
+    window.model_retry = QPushButton(t('Motoru yeniden başlat'))
     layout.addWidget(window.model_retry)
-    window.cuda_install = QPushButton('NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)')
+    window.cuda_install = QPushButton(t('NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)'))
     layout.addWidget(window.cuda_install)
     detail = label('Model kurulumla gelir. İnternet veya API anahtarı olmadan arar. '
                    'CUDA isteğe bağlıdır; Vulkan ve CPU kurulumun içindedir.', 'ikincil')
@@ -39,18 +40,18 @@ def install(window, layout):
         archive_ui.job(window, 'model_start', work, lambda _: refresh())
     def download():
         window.cuda_install.setEnabled(False)
-        window.cuda_install.setText('CUDA indiriliyor ve doğrulanıyor…')
+        window.cuda_install.setText(t('CUDA indiriliyor ve doğrulanıyor…'))
         def work(_):
             from .model_indir import install_cuda
             stop = window._job_keys['cuda_install'].stop
             install_cuda(cancel=stop.is_set)
             return True
         def done(_):
-            window.cuda_install.setText('CUDA hazır')
+            window.cuda_install.setText(t('CUDA hazır'))
             window.cuda_install.setEnabled(True)
             restart()
         def failed(error):
-            window.cuda_install.setText('CUDA indirmesi tamamlanamadı; yeniden dene')
+            window.cuda_install.setText(t('CUDA indirmesi tamamlanamadı; yeniden dene'))
             window.cuda_install.setEnabled(True)
             window.model_status.setText(error)
         archive_ui.job(window, 'cuda_install', work, done, failed=failed)

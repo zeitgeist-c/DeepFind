@@ -307,7 +307,7 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
         if not previous:
             write_revision(con,fid,cur_sig,res,_context_for(path,root))
         con.execute('UPDATE files SET index_status=?,error_code=?,coverage=? WHERE file_id=?',
-                    ('partial' if previous else res.status,res.error_code,'Önceki indeks korunuyor' if previous else 'İçerik okunamadı',fid))
+                    ('partial' if previous else res.status,res.error_code,t('Önceki indeks korunuyor') if previous else t('İçerik okunamadı'),fid))
         con.commit()
         return q.fail(con,job['job_id'],res.error_code or 'EXTRACT_FAILED')
     if cursor==0:

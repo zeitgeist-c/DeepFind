@@ -809,7 +809,7 @@ class AnaPencere(QMainWindow):
         self._toast = Toast(kok)
 
         self.preview_dialog = QDialog(self)
-        self.preview_dialog.setWindowTitle('DeepFind • Belge ön izlemesi')
+        self.preview_dialog.setWindowTitle(t('DeepFind • Belge ön izlemesi'))
         self.preview_dialog.resize(950, 740)
         preview_layout = QVBoxLayout(self.preview_dialog)
         preview_layout.setContentsMargins(16, 16, 16, 16)
@@ -1065,7 +1065,7 @@ class AnaPencere(QMainWindow):
 
     def _coverage_report(self):
         if self.con is None: return
-        dialog=QDialog(self); dialog.setWindowTitle('DeepFind • İndeks kapsamı'); dialog.resize(850,600)
+        dialog=QDialog(self); dialog.setWindowTitle(t('DeepFind • İndeks kapsamı')); dialog.resize(850,600)
         layout=QVBoxLayout(dialog); text=QPlainTextEdit(); text.setReadOnly(True); layout.addWidget(text)
         more=QPushButton('Sonraki hatalar'); layout.addWidget(more)
         state={'offset':0,'generation':self._job_generation}
@@ -2697,7 +2697,7 @@ class AnaPencere(QMainWindow):
         diagnostics.record("scan_started", "automatic" if automatic else "manual")
         self.tarama_bar.show()
         self.tarama_bar.setRange(0,0)
-        self.scan_progress_detail.setText('Dosya listesi oluşturuluyor…')
+        self.scan_progress_detail.setText(t('Dosya listesi oluşturuluyor…'))
         self.scan_phase_bar.hide()
         self.duraklat_btn.setText("Duraklat")
         self.duraklat_btn.setEnabled(True)

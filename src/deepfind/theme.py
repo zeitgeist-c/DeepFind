@@ -99,6 +99,10 @@ try:
     from .i18n_en4 import EN4 as _EN4
 except ImportError:
     _EN4 = {}
+try:
+    from .i18n_en5 import EN5 as _EN5
+except ImportError:
+    _EN5 = {}
 
 
 def _merge(*parts):
@@ -125,6 +129,10 @@ try:
 except ImportError:
     _DE4 = {}
 try:
+    from .i18n_de5 import DE5 as _DE5
+except ImportError:
+    _DE5 = {}
+try:
     from .i18n_es1 import ES1 as _ES1
 except ImportError:
     _ES1 = {}
@@ -140,6 +148,10 @@ try:
     from .i18n_es4 import ES4 as _ES4
 except ImportError:
     _ES4 = {}
+try:
+    from .i18n_es5 import ES5 as _ES5
+except ImportError:
+    _ES5 = {}
 try:
     from .i18n_fr1 import FR1 as _FR1
 except ImportError:
@@ -157,6 +169,10 @@ try:
 except ImportError:
     _FR4 = {}
 try:
+    from .i18n_fr5 import FR5 as _FR5
+except ImportError:
+    _FR5 = {}
+try:
     from .i18n_it1 import IT1 as _IT1
 except ImportError:
     _IT1 = {}
@@ -172,6 +188,10 @@ try:
     from .i18n_it4 import IT4 as _IT4
 except ImportError:
     _IT4 = {}
+try:
+    from .i18n_it5 import IT5 as _IT5
+except ImportError:
+    _IT5 = {}
 try:
     from .i18n_pb1 import PB1 as _PB1
 except ImportError:
@@ -189,6 +209,10 @@ try:
 except ImportError:
     _PB4 = {}
 try:
+    from .i18n_pb5 import PB5 as _PB5
+except ImportError:
+    _PB5 = {}
+try:
     from .i18n_ru1 import RU1 as _RU1
 except ImportError:
     _RU1 = {}
@@ -204,6 +228,10 @@ try:
     from .i18n_ru4 import RU4 as _RU4
 except ImportError:
     _RU4 = {}
+try:
+    from .i18n_ru5 import RU5 as _RU5
+except ImportError:
+    _RU5 = {}
 try:
     from .i18n_pl1 import PL1 as _PL1
 except ImportError:
@@ -221,6 +249,10 @@ try:
 except ImportError:
     _PL4 = {}
 try:
+    from .i18n_pl5 import PL5 as _PL5
+except ImportError:
+    _PL5 = {}
+try:
     from .i18n_nl1 import NL1 as _NL1
 except ImportError:
     _NL1 = {}
@@ -236,6 +268,10 @@ try:
     from .i18n_nl4 import NL4 as _NL4
 except ImportError:
     _NL4 = {}
+try:
+    from .i18n_nl5 import NL5 as _NL5
+except ImportError:
+    _NL5 = {}
 try:
     from .i18n_zh1 import ZH1 as _ZH1
 except ImportError:
@@ -253,6 +289,10 @@ try:
 except ImportError:
     _ZH4 = {}
 try:
+    from .i18n_zh5 import ZH5 as _ZH5
+except ImportError:
+    _ZH5 = {}
+try:
     from .i18n_ja1 import JA1 as _JA1
 except ImportError:
     _JA1 = {}
@@ -269,6 +309,10 @@ try:
 except ImportError:
     _JA4 = {}
 try:
+    from .i18n_ja5 import JA5 as _JA5
+except ImportError:
+    _JA5 = {}
+try:
     from .i18n_ko1 import KO1 as _KO1
 except ImportError:
     _KO1 = {}
@@ -284,7 +328,11 @@ try:
     from .i18n_ko4 import KO4 as _KO4
 except ImportError:
     _KO4 = {}
-TABLES = {"en": _merge(_EN1, _EN2, _EN3, _EN4), "tr": {}, "de": _merge(_DE1, _DE2, _DE3, _DE4), "es": _merge(_ES1, _ES2, _ES3, _ES4), "fr": _merge(_FR1, _FR2, _FR3, _FR4), "it": _merge(_IT1, _IT2, _IT3, _IT4), "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4), "ru": _merge(_RU1, _RU2, _RU3, _RU4), "pl": _merge(_PL1, _PL2, _PL3, _PL4), "nl": _merge(_NL1, _NL2, _NL3, _NL4), "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4), "ja": _merge(_JA1, _JA2, _JA3, _JA4), "ko": _merge(_KO1, _KO2, _KO3, _KO4)}
+try:
+    from .i18n_ko5 import KO5 as _KO5
+except ImportError:
+    _KO5 = {}
+TABLES = {"en": _merge(_EN1, _EN2, _EN3, _EN4, _EN5), "tr": {}, "de": _merge(_DE1, _DE2, _DE3, _DE4, _DE5), "es": _merge(_ES1, _ES2, _ES3, _ES4, _ES5), "fr": _merge(_FR1, _FR2, _FR3, _FR4, _FR5), "it": _merge(_IT1, _IT2, _IT3, _IT4, _IT5), "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4, _PB5), "ru": _merge(_RU1, _RU2, _RU3, _RU4, _RU5), "pl": _merge(_PL1, _PL2, _PL3, _PL4, _PL5), "nl": _merge(_NL1, _NL2, _NL3, _NL4, _NL5), "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4, _ZH5), "ja": _merge(_JA1, _JA2, _JA3, _JA4, _JA5), "ko": _merge(_KO1, _KO2, _KO3, _KO4, _KO5)}
 
 
 def set_language(code):

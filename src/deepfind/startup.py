@@ -7,6 +7,7 @@ from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QVBoxLayout
 
 from . import backup, diagnostics, migrate, vault
+from .theme import t
 
 
 def prepare_connection(path, password, backup_dir, progress=None):
@@ -81,13 +82,13 @@ class PreparationWorker(QThread):
 class OpeningDialog(QDialog):
     def __init__(self, path, password, backup_dir, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('DeepFind • Açılıyor')
+        self.setWindowTitle(t('DeepFind • Açılıyor'))
         self.setMinimumWidth(480)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         layout = QVBoxLayout(self)
-        self.status = QLabel('Şifreli kasa açılıyor…')
+        self.status = QLabel(t('Şifreli kasa açılıyor…'))
         self.status.setWordWrap(True)
-        self.detail = QLabel('Büyük arşiv hazırlanırken lütfen bekleyin.')
+        self.detail = QLabel(t('Büyük arşiv hazırlanırken lütfen bekleyin.'))
         self.detail.setWordWrap(True)
         self.bar = QProgressBar()
         self.bar.setStyleSheet('QProgressBar { min-height: 24px; max-height: 24px; text-align: center; }')
@@ -163,7 +164,7 @@ class OpeningDialog(QDialog):
     def reject(self):
         if self.worker.isRunning():
             self.worker.stop.set()
-            self.detail.setText('Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.')
+            self.detail.setText(t('Güvenli duruş bekleniyor… Şema değişimi başladıysa önce tamamlanacak.'))
         else:
             super().reject()
 
