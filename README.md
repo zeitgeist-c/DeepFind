@@ -1,6 +1,6 @@
 # DeepFind — local encrypted document search for Windows
 
-> Türkçe: [README.tr.md](./README.tr.md)
+> Turkish: [README.tr.md](./README.tr.md)
 
 **Describe the document you remember, not the filename you saved it under.**
 
@@ -62,7 +62,7 @@ Five steps, and the last one shows exactly what will happen.
 4. **Layout** — decide how the folder context is read for each root, previewed before anything is saved.
 5. **Final check** — a summary of the root count, the theme and whether a password was set, plus the note that documents are neither moved nor modified and that you can keep using the app while the first scan runs.
 
-`Kurulumu tamamla` starts the first scan. A large archive takes a while; the app stays usable throughout.
+`Finish setup` starts the first scan. A large archive takes a while; the app stays usable throughout.
 
 ### 2. Search
 
@@ -70,12 +70,12 @@ Five steps, and the last one shows exactly what will happen.
 
 One box and a description of what you are looking for.
 
-- **Search field** — describe the content: "ev kiralama anlaşması" finds a document that only says "kira sözleşmesi" inside. Quotes, `OR`/`AND` and the minus sign are **not** word-search operators; they are part of your description.
+- **Search field** — describe the content: "house rental agreement" finds a document that only says "rental contract" inside. Quotes, `OR`/`AND` and the minus sign are **not** word-search operators; they are part of your description.
 - **Filters on the left** — year, type, company or folder, tag. Applied on top of the semantic ranking, not instead of it.
 - **Saved searches** — store a filter combination and return to it.
 - **Tags** — tag the selected result, or remove a tag.
-- **Results** — list, table or grid view, with `CSV aktar` for export.
-- **Preview panel** — the selected document's preview and its path, with `Yol kopyala`.
+- **Results** — list, table or grid view, with `Export CSV` for export.
+- **Preview panel** — the selected document's preview and its path, with `Copy path`.
 
 Every result shows the most relevant section and page, so you land on the paragraph that matched instead of scrolling a 300-page PDF.
 
@@ -85,9 +85,9 @@ Every result shows the most relevant section and page, so you land on the paragr
 
 The folders that get indexed.
 
-- `Klasör ekle` adds a root; each root has its own card.
+- `Add folder` adds a root; each root has its own card.
 - Per root you see the name, the full path, whether search is enabled for it, and its exclusion list.
-- `Kaldır` removes a root from the index — **the documents are not deleted**, only the index entries.
+- `Remove` removes a root from the index — **the documents are not deleted**, only the index entries.
 - Exclusions keep whole subtrees out of the index.
 
 Changing sources does not require a rebuild: the next scan picks up the difference.
@@ -100,8 +100,8 @@ What is being indexed and how far along it is.
 
 - **Scope** — how many source folders are in play, with a pointer back to Sources.
 - **Daily schedule** — the planned scan time (`12:30` in the capture).
-- **Status** — `Hazır`, `Taranıyor`, `Duraklatıldı` and the reason for a failure.
-- **Controls** — `Taramayı başlat`, `Duraklat`, `İptal`, `Tarama ayrıntılarını aç`.
+- **Status** — `Ready`, `Scanning`, `Paused` and the reason for a failure.
+- **Controls** — `Start scan`, `Pause`, `Cancel`, `Open scan details`.
 - **Recent scans** — per run: time, root, result, how many documents were processed, found, still pending and failed.
 
 Counting happens before percentage: the app walks the source completely, then reports progress against that total. If a folder is unreachable, the inventory is marked incomplete instead of pretending the scan covered everything. Stages that cannot be measured — verification, column removal, disk records — show elapsed time and a state, never a fabricated percentage.
@@ -122,10 +122,10 @@ Every indexed document with its path, state and source health.
 |---|---|
 | **Document** | filename with thumbnail |
 | **Path** | full path as indexed |
-| **State** | `Tamamlandı` or `Kısmi` with the reason (for example `OCR_LOW_QUALITY`) |
+| **State** | `Done` or `Partial` with the reason (for example `OCR_LOW_QUALITY`) |
 | **Source** | whether the source was reachable (`ok`) |
 
-Filters by state, page size, `Yenile`, `Kapsam`, and previous/next navigation. A document that only partially indexed says so instead of silently looking complete.
+Filters by state, page size, `Refresh`, `Coverage`, and previous/next navigation. A document that only partially indexed says so instead of silently looking complete.
 
 ### 7. Settings
 
@@ -134,7 +134,7 @@ Filters by state, page size, `Yenile`, `Kapsam`, and previous/next navigation. A
 Four groups.
 
 **Work**
-- OCR components: Turkish text recognition state, with `Doğrula / onar`.
+- OCR components: Turkish text recognition state, with `Verify / repair`.
 - Daily scan time.
 - Reduce network load (throttle).
 - Start with Windows.
@@ -148,11 +148,11 @@ Four groups.
 
 **Vault security**
 - Auto-lock after inactivity (15 minutes in the capture).
-- `Parolayı değiştir`, `Hatırlanan girişi kaldır`.
-- Recovery key: `Anahtarı yenile`, `Anahtarı göster`, `Yazdır / kaydet`, `Kaldır`.
+- `Change password`, `Remove remembered sign-in`.
+- Recovery key: `Refresh key`, `Show key`, `Print / save`, `Remove`.
 
 **Backups**
-- `Yedek oluştur`, `Geri yükle`, and the list of existing backups.
+- `Create backup`, `Restore`, and the list of existing backups.
 
 ---
 
@@ -164,7 +164,7 @@ Four groups.
 
 A ZIP is published for older clients. The `_internal` and `licenses` folders must stay next to the EXE — the EXE alone will not run. Updating from a ZIP installation switches to the full installer.
 
-Updates run from *Settings → Güncellemeler*: a daily silent check, SHA-256 verified download, install over the same directory through a fixed AppId, shortcuts and uninstaller preserved. A failed install offers a path back to the previous program; the live vault is never modified by the installer.
+Updates run from *Settings → Updates*: a daily silent check, SHA-256 verified download, install over the same directory through a fixed AppId, shortcuts and uninstaller preserved. A failed install offers a path back to the previous program; the live vault is never modified by the installer.
 
 ## How semantic search works
 
@@ -221,7 +221,7 @@ Do not pass a real vault password on the command line.
 - Real NAS, a clean Windows install, a very large archive and different GPU/DPI environments still need their own acceptance; try a small permitted or synthetic folder first.
 - DOC content requires LibreOffice; embedded images inside Office files are not OCR'd.
 - Semantic similarity is not exact matching — a query can return a plausible but wrong document.
-- `Kısmi` state on a document means the index is incomplete for it, usually low-quality OCR of a scan.
+- `Partial` state on a document means the index is incomplete for it, usually low-quality OCR of a scan.
 
 ## License
 
