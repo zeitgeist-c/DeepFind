@@ -48,7 +48,8 @@ def run(directory):
             if state['scan_started'] and pen.isci_thread is None:
                 nseg = pen.con.execute('SELECT count(*) FROM segments').fetchone()[0]
                 assert nseg > 0, f"segments={nseg}"
-                assert 'tamamlandı' in pen.tarama_bilgi.text(), pen.tarama_bilgi.text()[:80]
+                from .theme import t as _t
+                assert _t('tamamlandı') in pen.tarama_bilgi.text(), pen.tarama_bilgi.text()[:80]
                 state['ok'] = True
                 timer.stop()
                 pen._cikis()
