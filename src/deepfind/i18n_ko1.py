@@ -143,4 +143,7 @@ KO1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — 복구 키\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — 복구 키\n",
 "Arayüz dili": "인터페이스 어어\n",
+    'Filtreler': '필터',
+    'Kaydet': '저장',
+    'Etiket': '태그',
 }

@@ -143,4 +143,7 @@ DE1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — WIEDERHERSTELLUNGSSCHLÜSSEL\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — WIEDERHERSTELLUNGSSCHLÜSSEL\n",
 "Arayüz dili": "Oberflächensprache\n",
+    'Filtreler': 'Filter',
+    'Kaydet': 'Speichern',
+    'Etiket': 'Etikett',
 }

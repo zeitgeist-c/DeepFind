@@ -143,4 +143,7 @@ ES1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — CLAVE DE RECUPERACIÓN\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — CLAVE DE RECUPERACIÓN\n",
 "Arayüz dili": "Idioma de la interfaz\n",
+    'Filtreler': 'Filtros',
+    'Kaydet': 'Guardar',
+    'Etiket': 'Etiqueta',
 }

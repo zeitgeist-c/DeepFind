@@ -143,4 +143,7 @@ PL1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — KLUCZ ODZYSKIWANIA\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — KLUCZ ODZYSKIWANIA\n",
 "Arayüz dili": "Język interfejsu\n",
+    'Filtreler': 'Filtry',
+    'Kaydet': 'Zapisz',
+    'Etiket': 'Etykieta',
 }

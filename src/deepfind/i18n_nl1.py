@@ -143,4 +143,7 @@ NL1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — HERSTELSLEUTEL\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — HERSTELSLEUTEL\n",
 "Arayüz dili": "Interfacetaal\n",
+    'Filtreler': 'Filters',
+    'Kaydet': 'Opslaan',
+    'Etiket': 'Label',
 }

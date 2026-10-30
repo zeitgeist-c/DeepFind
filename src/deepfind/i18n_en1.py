@@ -140,4 +140,7 @@ EN1 = {
 "Gerekli bileşenler": "Required components",
 "Geri yükle": "Restore",
 "Geçmiş": "History",
+    'Filtreler': 'Filters',
+    'Kaydet': 'Save',
+    'Etiket': 'Tag',
 }

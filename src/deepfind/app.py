@@ -1195,7 +1195,7 @@ class AnaPencere(QMainWindow):
         form.setSpacing(10)
         fl.addWidget(kaydir, 1)
         kaydir.setWidget(ic)
-        form.addWidget(bolum("Filtreler"))
+        form.addWidget(bolum(t("Filtreler")))
         self.filtre_sayi = sayac("")
         self.filtre_sayi.hide()
         form.addWidget(self.filtre_sayi)
@@ -1236,7 +1236,7 @@ class AnaPencere(QMainWindow):
         form.addWidget(self.kayitli_liste)
         kayit_satir = QHBoxLayout()
         kayit_satir.setSpacing(8)
-        self.kaydet_btn = QPushButton("Kaydet")
+        self.kaydet_btn = QPushButton(t("Kaydet"))
         self.kaydet_btn.setProperty("kucuk", True)
         self.kaydet_btn.clicked.connect(self._arama_kaydet)
         kayit_satir.addWidget(self.kaydet_btn)
@@ -1996,7 +1996,7 @@ class AnaPencere(QMainWindow):
         try:
             rank.set_tag(self.con, r["file_id"], tag)
         except ValueError as e:
-            QMessageBox.warning(self, "Etiket", str(e))
+            QMessageBox.warning(self, t("Etiket"), str(e))
             return
         self.etiket_yaz.clear()
         self._ara_simdi()

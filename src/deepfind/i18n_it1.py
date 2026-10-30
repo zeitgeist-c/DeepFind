@@ -143,4 +143,7 @@ IT1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — CHIAVE DI RIPRISTINO\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — CHIAVE DI RIPRISTINO\n",
 "Arayüz dili": "Lingua dell'interfaccia\n",
+    'Filtreler': 'Filtri',
+    'Kaydet': 'Salva',
+    'Etiket': 'Etichetta',
 }

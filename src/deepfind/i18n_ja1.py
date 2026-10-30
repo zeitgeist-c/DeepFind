@@ -143,4 +143,7 @@ JA1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — 回復キー\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — 回復キー\n",
 "Arayüz dili": "インターフェース語言\n",
+    'Filtreler': 'フィルター',
+    'Kaydet': '保存',
+    'Etiket': 'タグ',
 }

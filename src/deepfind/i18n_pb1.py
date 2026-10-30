@@ -143,4 +143,7 @@ PB1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — CHAVE DE RECUPERAÇÃO\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — CHAVE DE RECUPERAÇÃO\n",
 "Arayüz dili": "Idioma da interface\n",
+    'Filtreler': 'Filtros',
+    'Kaydet': 'Salvar',
+    'Etiket': 'Etiqueta',
 }

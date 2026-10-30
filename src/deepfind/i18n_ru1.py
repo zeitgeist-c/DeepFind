@@ -143,4 +143,7 @@ RU1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — КЛЮЧ ВОССТАНОВЛЕНИЯ\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — КЛЮЧ ВОССТАНОВЛЕНИЯ\n",
 "Arayüz dili": "Язык интерфейса\n",
+    'Filtreler': 'Фильтры',
+    'Kaydet': 'Сохранить',
+    'Etiket': 'Метка',
 }

@@ -143,4 +143,7 @@ ZH1 = {
 "EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKÇI — 恢复密钥\n",
 "        EVRAKÇI — KURTARMA ANAHTARI\n": "EVRAKCI — 恢复密钥\n",
 "Arayüz dili": "界面语言\n",
+    'Filtreler': '筛选',
+    'Kaydet': '保存',
+    'Etiket': '标签',
 }
