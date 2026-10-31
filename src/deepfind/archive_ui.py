@@ -9,8 +9,8 @@ from .tasks import DatabaseTask,list_files
 from . import backup,history
 from .theme import t
 
-STATUS={'pending':'Bekliyor','ok':'Tamamlandı','partial':'Kısmi','encrypted':'Kilitli',
-        'unsupported_content':'İçerik motoru yok','corrupt':'Hatalı','missing':'Erişilemiyor','excluded':'Hariç'}
+STATUS={'pending':t('Bekliyor'),'ok':t('Tamamlandı'),'partial':t('Kısmi'),'encrypted':t('Kilitli'),
+        'unsupported_content':t('İçerik motoru yok'),'corrupt':t('Hatalı'),'missing':t('Erişilemiyor'),'excluded':t('Hariç')}
 
 def job(window,key,operation,callback,writable=False,failed=None):
     if (window.con is None and key!='restore') or window._locked: return
@@ -48,8 +48,8 @@ def install(w):
     w._list_cache={}
     files=QWidget(); layout=QVBoxLayout(files); layout.setContentsMargins(22,18,22,20); layout.setSpacing(14)
     filters=QHBoxLayout(); filters.setSpacing(9)
-    w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText('Dosya adı veya tam yol')
-    w.file_status=QComboBox(); w.file_status.addItem('Tüm durumlar','')
+    w.file_filter=QLineEdit(); w.file_filter.setPlaceholderText(t('Dosya adı veya tam yol'))
+    w.file_status=QComboBox(); w.file_status.addItem(t('Tüm durumlar'),'')
     for value,caption in STATUS.items(): w.file_status.addItem(caption,value)
     filters.addWidget(w.file_filter,1); filters.addWidget(w.file_status)
     w.file_notice=sayac(''); w.file_notice.hide(); filters.addWidget(w.file_notice); layout.addLayout(filters)
@@ -63,8 +63,8 @@ def install(w):
     w.file_list.clicked.connect(w._dosya_ayrinti)
     split.addWidget(w.file_list)
     dosya=QWidget(); dl=QVBoxLayout(dosya); dl.setContentsMargins(16,14,16,16); dl.setSpacing(10)
-    dl.addWidget(label('Seçili kayıt','eyebrow'))
-    w.dosya_ad=label('Bir kayıt seçin','subheading'); w.dosya_ad.setWordWrap(True); dl.addWidget(w.dosya_ad)
+    dl.addWidget(label(t('Seçili kayıt'),'eyebrow'))
+    w.dosya_ad=label(t('Bir kayıt seçin'),'subheading'); w.dosya_ad.setWordWrap(True); dl.addWidget(w.dosya_ad)
     w.dosya_yol=label('','ikincil'); w.dosya_yol.setTextFormat(Qt.PlainText)
     w.dosya_yol.setTextInteractionFlags(Qt.TextSelectableByMouse); w.dosya_yol.setWordWrap(True)
     w.dosya_yol.setMaximumHeight(60); dl.addWidget(w.dosya_yol)
@@ -81,7 +81,7 @@ def install(w):
     refresh=QPushButton(t('Yenile')); refresh.setProperty('kucuk',True); refresh.clicked.connect(lambda:w._files_refresh(reset=True))
     errors=QPushButton(t('Kapsam')); errors.setProperty('kucuk',True); errors.setToolTip(t('Kapsam hatalarını göster')); errors.clicked.connect(w._coverage_report)
     prev=QPushButton(t('Önceki')); prev.setProperty('kucuk',True); prev.clicked.connect(lambda:w._files_page(-1))
-    w.file_next=QPushButton('Sonraki'); w.file_next.setProperty('kucuk',True); w.file_next.clicked.connect(lambda:w._files_page(1))
+    w.file_next=QPushButton(t('Sonraki')); w.file_next.setProperty('kucuk',True); w.file_next.clicked.connect(lambda:w._files_page(1))
     for button in (refresh,errors,prev,w.file_next): controls.addWidget(button)
     controls.addStretch(1)
     layout.addLayout(controls)

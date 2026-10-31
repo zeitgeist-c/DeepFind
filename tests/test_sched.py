@@ -62,15 +62,15 @@ def test_otomatik_baslatma_guncelle_yalniz_kayit_varsa():
     """Güncelleme yeni klasöre taşıyınca kayıt tazelenir; kapalı kayıt açılmaz."""
     ad = "DeepFind-Test-0001"
     sched.autostart_clear(ad)
-    # Kayıt yokken: dokunulmaz, kayıt oluşturulmaz (kapalı kalır).
+    # Without a record: untouched, no record created (stays closed).
     assert sched.autostart_guncelle(ad, "C:\\yeni\\deepfind.exe") is False
     assert sched.autostart_get(ad) is None
-    # Kayıt varken eski yolu gösteriyorsa tazelenir.
+    # Refreshes when a record points at the old path.
     sched.autostart_set(ad, "C:\\eski\\deepfind.exe")
     try:
         assert sched.autostart_guncelle(ad, "C:\\yeni\\deepfind.exe") is True
         assert "yeni" in (sched.autostart_get(ad) or "")
-        # Zaten güncelken ikinci kez yazılmaz.
+        # Never written twice while already current.
         assert sched.autostart_guncelle(ad, "C:\\yeni\\deepfind.exe") is False
     finally:
         sched.autostart_clear(ad)

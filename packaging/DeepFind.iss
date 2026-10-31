@@ -1,5 +1,5 @@
-; DeepFind kurulum betiği (Inno Setup 6). Surum build.py tarafindan ver.iss ile verilir.
-; AppId SABİTTİR: asla değiştirme (yükseltme/kaldırma aynı uygulamayı bulmalı).
+; DeepFind setup script (Inno Setup 6). The version comes from build.py via ver.iss.
+; AppId is FIXED: never change it (upgrade/uninstall must find the same app).
 #define AppName "DeepFind"
 #include "ver.iss"
 #ifdef TestPrevious
@@ -55,7 +55,7 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 UninstallDisplayName={#AppName} {#AppVersion}
 SetupIconFile=..\build\deepfind.ico
-LicenseFile=..\LISANSLAR.md
+LicenseFile=..\LICENSE
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -73,7 +73,7 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Masaüstü simgesi oluştur"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a desktop icon"; Flags: unchecked
 
 [Files]
 Source: "..\dist\{#AppName}-{#AppVersion}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs

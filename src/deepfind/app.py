@@ -835,7 +835,7 @@ class AnaPencere(QMainWindow):
         self.preview_once.clicked.connect(lambda: self._onizleme_komsu(-1))
         self.preview_konum = label("", "ikincil")
         self.preview_konum.setAlignment(Qt.AlignCenter)
-        self.preview_sonra = QPushButton("Sonraki belge ›")
+        self.preview_sonra = QPushButton(t("Sonraki belge ›"))
         self.preview_sonra.setProperty("kucuk", True)
         self.preview_sonra.setToolTip(t("Arama sonuçlarındaki sonraki belge"))
         self.preview_sonra.clicked.connect(lambda: self._onizleme_komsu(1))
@@ -1065,7 +1065,7 @@ so it walks every page on the stack."""
         if self.con is None: return
         dialog=QDialog(self); dialog.setWindowTitle(t('DeepFind • İndeks kapsamı')); dialog.resize(850,600)
         layout=QVBoxLayout(dialog); text=QPlainTextEdit(); text.setReadOnly(True); layout.addWidget(text)
-        more=QPushButton('Sonraki hatalar'); layout.addWidget(more)
+        more=QPushButton(t('Sonraki hatalar')); layout.addWidget(more)
         state={'offset':0,'generation':self._job_generation}
         def load():
             offset=state['offset']; text.appendPlainText('Kapsam raporu yükleniyor…')
@@ -1215,9 +1215,9 @@ so it walks every page on the stack."""
         self.sirket_filtre = QLineEdit()
         self.sirket_filtre.setPlaceholderText(t("Şirket veya klasör"))
         self.etiket_filtre = QLineEdit()
-        self.etiket_filtre.setPlaceholderText("Etiket")
+        self.etiket_filtre.setPlaceholderText(t("Etiket"))
         for baslik, x in ((t("Yıl"), self.yil_filtre), (t("Tür"), self.tur_filtre),
-                          (t("Şirket veya klasör"), self.sirket_filtre), ("Etiket", self.etiket_filtre)):
+                          (t("Şirket veya klasör"), self.sirket_filtre), (t("Etiket"), self.etiket_filtre)):
             alan = QVBoxLayout()
             alan.setSpacing(4)
             alan.addWidget(label(baslik, "ikincil"))
@@ -1238,19 +1238,19 @@ so it walks every page on the stack."""
         self.kaydet_btn.setProperty("kucuk", True)
         self.kaydet_btn.clicked.connect(self._arama_kaydet)
         kayit_satir.addWidget(self.kaydet_btn)
-        self.kayit_sil_btn = QPushButton("Sil")
+        self.kayit_sil_btn = QPushButton(t("Sil"))
         self.kayit_sil_btn.setProperty("kucuk", True)
         self.kayit_sil_btn.clicked.connect(self._kayitli_sil)
         kayit_satir.addWidget(self.kayit_sil_btn)
         kayit_satir.addStretch(1)
         form.addLayout(kayit_satir)
-        form.addWidget(bolum("Etiket"))
+        form.addWidget(bolum(t("Etiket")))
         self.etiket_yaz = QLineEdit()
         self.etiket_yaz.setPlaceholderText(t("Seçili sonuca etiket"))
         form.addWidget(self.etiket_yaz)
         etiket_satir = QHBoxLayout()
         etiket_satir.setSpacing(8)
-        self.etiket_ekle_btn = QPushButton("Etiketle")
+        self.etiket_ekle_btn = QPushButton(t("Etiketle"))
         self.etiket_ekle_btn.setProperty("kucuk", True)
         self.etiket_ekle_btn.clicked.connect(self._etiket_ekle)
         etiket_satir.addWidget(self.etiket_ekle_btn)
@@ -1322,7 +1322,7 @@ so it walks every page on the stack."""
         self.secim_sayac = sayac("")
         toplu.addWidget(self.secim_sayac)
         toplu.addStretch(1)
-        self.toplu_etiket_btn = QPushButton("Etiketle")
+        self.toplu_etiket_btn = QPushButton(t("Etiketle"))
         self.toplu_etiket_btn.setProperty("kucuk", True)
         self.toplu_etiket_btn.setToolTip(t("Seçili belgelere tek işlemde etiket ekle"))
         self.toplu_etiket_btn.clicked.connect(lambda: self._toplu_etiket())
@@ -1509,7 +1509,7 @@ so it walks every page on the stack."""
             self._ara_simdi()
 
         def hata(mesaj):
-            QMessageBox.warning(self, "Etiket", t("Toplu işlem geri alındı: {mesaj}", mesaj=mesaj))
+            QMessageBox.warning(self, t("Etiket"), t("Toplu işlem geri alındı: {mesaj}", mesaj=mesaj))
 
         archive_ui.job(self, "toplu_etiket", islem, bitti, writable=True, failed=hata)
 
@@ -1957,14 +1957,14 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self.oneri.setText(t("Sonuç yok.") + (f" Yakın: {', '.join(out['suggestions'])}"
                                                if out["suggestions"] else ""))
         else:
-            self.oneri.setText(f"{len(res)} sonuç" +
+            self.oneri.setText(t("{count} sonuç", count=len(res)) +
                                (f" • {', '.join(out['suggestions'][:3])}" if out["suggestions"] else ""))
         if out.get('semantic_error'):
-            self.oneri.setText(self.oneri.text() + ' • Anlamsal arama kullanılamadı: ' + out['semantic_error'])
+            self.oneri.setText(self.oneri.text() + t(" • Anlamsal arama kullanılamadı: ") + out['semantic_error'])
         elif out.get('index_message'):
             self.oneri.setText(out['index_message'])
         elif out.get('semantic'):
-            self.oneri.setText(self.oneri.text() + ' • Anlamsal arama')
+            self.oneri.setText(self.oneri.text() + t(" • Anlamsal arama"))
         self._filtre_cipleri()
         try:
             import json
@@ -2450,9 +2450,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.tarama_bilgi.setWordWrap(True)
         self.tarama_root_count = label("", "ikincil")
         strip = stat_seridi([
-            ("Kapsam", f"{len(self._kokler())}", t("kaynak klasör • Kaynaklar bölümünden değişir")),
+            (t("Kapsam"), f"{len(self._kokler())}", t("kaynak klasör • Kaynaklar bölümünden değişir")),
             (t("Günlük düzen"), scheduled_time, t("Planlı tarama saati • Ayarlar’dan değişir")),
-            ("Durum", t("Hazır"), t("Henüz tarama yapılmadı")),
+            (t("Durum"), t("Hazır"), t("Henüz tarama yapılmadı")),
         ])
         self.tarama_time = QLabel(scheduled_time)
         self._stat_durum = strip
@@ -2574,13 +2574,13 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.scope_browse = QPushButton(t("Taranacak klasörü seç…"))
         self.scope_browse.clicked.connect(self._scope_browse)
         self.scope_browse.hide()
-        k.addWidget(ayar_satiri("Kapsam", t("Bu taramada hangi klasörlerin taranacağı."), self.scope_mode))
+        k.addWidget(ayar_satiri(t("Kapsam"), t("Bu taramada hangi klasörlerin taranacağı."), self.scope_mode))
         k.addWidget(self.scope_sources)
         k.addWidget(self.scope_path)
         k.addWidget(self.scope_browse)
         self.scope_mode.currentIndexChanged.connect(self._scope_changed)
 
-        k.addWidget(bolum("Son taramalar"))
+        k.addWidget(bolum(t("Son taramalar")))
         self.scan_history = QListWidget()
         self.scan_history.setObjectName("cardList")
         self.scan_history.setAccessibleName(t("Son tarama kayıtları"))
@@ -2859,9 +2859,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         for stamp, root, result, found, done, pending, failed, ocr_done, ocr_failed in rows:
             when = dt.datetime.fromtimestamp(stamp).strftime("%d.%m.%Y %H:%M")
             item = QListWidgetItem(
-                f"{when}\n{os.path.basename(root) or root}  •  {names.get(result, 'Sürüyor')}"
+                f"{when}\n{os.path.basename(root) or root}  •  {names.get(result, t('Sürüyor'))}"
                 + t("  •  {done} işlendi / {found} bulundu  •  {pending} bekliyor", done=done, found=found, pending=pending)
-                + f"  •  {failed + ocr_failed} hata"
+                + t("  •  {count} hata", count=failed + ocr_failed)
             )
             item.setData(Qt.UserRole, result)
             self.scan_history.addItem(item)
@@ -3328,9 +3328,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
     def _yedek_al(self):
         if self.con is None: return
         path=self.kasa_yolu; password=self._sifre; directory=self._yedek_dizin(); roots=self._kokler()
-        self.durum.showMessage('Yedek oluşturuluyor…')
+        self.durum.showMessage(t('Yedek oluşturuluyor…'))
         def ready(path):
-            self.durum.showMessage('Yedek oluşturuldu ve doğrulandı: '+path)
+            self.durum.showMessage(t('Yedek oluşturuldu ve doğrulandı: {path}', path=path))
             self._yedek_tazele()
         archive_ui.job(self,'backup_create',lambda con:backup_mod.create_backup(con,path,password,directory,manual=True,forbid_under=roots),ready,writable=True)
 
@@ -3376,9 +3376,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self._kasa_ac(); self._yedek_tazele(); self._durum_yaz()
             self.durum.showMessage(message)
         self.con.close(); self.con=None
-        archive_ui.job(self,'restore',restore,lambda result:reopen(f"Geri yükleme tamamlandı: {result['kasa_counts'].get('files','?')} dosya"),writable=True,failed=lambda error:reopen('Geri yükleme başarısız; mevcut kasa korunuyor: '+error))
+        archive_ui.job(self,'restore',restore,lambda result:reopen(t("Geri yükleme tamamlandı: {files} dosya", files=result['kasa_counts'].get('files','?'))),writable=True,failed=lambda error:reopen(t('Geri yükleme başarısız; mevcut kasa korunuyor: {error}', error=error)))
         self.centralWidget().setEnabled(False)
-        self.durum.showMessage('Yedek doğrulanıyor ve geri yükleniyor…')
+        self.durum.showMessage(t('Yedek doğrulanıyor ve geri yükleniyor…'))
 
     # -- ayarlar: bolum basliklari + kil payi ayiricili satirlar --
     def _ekran_ayarlar(self):
@@ -3462,10 +3462,10 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.kural_kelimeler.setPlaceholderText("kelime1, kelime2")
         self.kural_kip = QComboBox()
         self.kural_kip.addItems(["any", "all"])
-        self.kural_ekle_btn = QPushButton("Ekle")
+        self.kural_ekle_btn = QPushButton(t("Ekle"))
         self.kural_ekle_btn.setProperty("kucuk", True)
         self.kural_ekle_btn.clicked.connect(self._kural_ekle)
-        self.kural_sil_btn = QPushButton("Sil")
+        self.kural_sil_btn = QPushButton(t("Sil"))
         self.kural_sil_btn.setProperty("kucuk", True)
         self.kural_sil_btn.clicked.connect(self._kural_sil)
         kural_satir = QWidget()

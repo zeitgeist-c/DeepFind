@@ -91,7 +91,7 @@ def build(root: str, seed: int = 7) -> list:
 
 
 def queries() -> list:
-    """(sorgu, beklenen_dosya_adi | None, grup). Holdout ayracı kosucuda."""
+    """(query, expected_file_name | None, group). Holdout split lives in the runner."""
     q = []
     q.append(("Ankara Ayşe 2024 vergi levhası", "Ayşe vergi levhası 2024.pdf", "tam"))
     q.append(("İstanbul Mehmet 2023 fatura", "Mehmet fatura 2023.xlsx", "kisi-sirket"))

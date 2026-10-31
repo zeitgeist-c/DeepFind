@@ -55,7 +55,7 @@ class SurumTestleri(unittest.TestCase):
 
 class YayinCozumleme(unittest.TestCase):
     def test_ascii_varlik_adiyla_bulunur(self):
-        # GitHub varlık adlarını latinleştirir (DeepFind -> Evrakci).
+        # GitHub asset names are matched literally (DeepFind-...).
         info = update.parse_release(GERCEK_YAYIN)
         self.assertEqual(info.version, "0.7.0")
         self.assertEqual(info.asset_name, "DeepFind-0.7.0.exe")
@@ -209,7 +209,7 @@ class HazirlamaTestleri(unittest.TestCase):
             with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(kok / "lad")}):
                 klasor = update.prepare(info)
             self.assertTrue((klasor / "DeepFind-9.9.9.exe").is_file())
-            # ZIP yerleşme hazırlığından sonra da duruyor (bekçi betik siler).
+            # ZIP still sits after settle prep (the watcher script deletes it).
             self.assertTrue((kok / "lad" / "DeepFind" / "Updates" /
                              "DeepFind-9.9.9.zip").is_file())
 
@@ -234,7 +234,7 @@ class BekciBetikTestleri(unittest.TestCase):
             self.assertIn("PID=4242", govde)
             self.assertIn('" %PID% "', govde)                 # tasklist beklemesi
             self.assertIn("find.exe", govde)                  # System32 tam yolu
-            self.assertIn(str(calisan.parent), govde)         # hedef üst dizin
+            self.assertIn(str(calisan.parent), govde)         # target parent dir
             self.assertIn("--restarted", govde)
             self.assertIn("--kasa", govde)
             self.assertIn("DeepFind-9.9.9.exe", govde)
@@ -264,11 +264,11 @@ class BekciBetikTestleri(unittest.TestCase):
                 (eski / "eski.txt").write_text("x", encoding="utf-8")
                 artik = kok / "artik.zip"
                 artik.write_bytes(b"z")
-                # Yarış koruması: taze öğeler varsayılan eşikte korunur.
+                # Race guard: fresh items are protected at the default threshold.
                 update.temizle(aktif_klasor=aktif)
                 self.assertTrue(eski.exists())
                 self.assertTrue(artik.exists())
-                # Eskimiş öğeler silinir; aktif klasör yine korunur.
+                # Stale items are deleted; the active folder stays protected.
                 gecmis = _z.time() - 24 * 3600
                 for yol in (eski, artik):
                     os.utime(yol, (gecmis, gecmis))

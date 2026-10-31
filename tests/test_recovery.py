@@ -257,8 +257,8 @@ def test_belge_metni_anahtari_icerir(tmp_path):
     metin = recovery.document_text(db, anahtar)
     assert anahtar in metin
     assert "EVKC" in metin
-    # Biçimli belgede anahtar okunabilirlik için gruplanır; ama belgeden
-    # normalize edilerek aynen geri okunabilmelidir (yazdırılan belge işe yaramalı).
+    # In a formatted document the key is grouped for readability; but from the document
+    # must read back identically once normalized (the printed document has to work).
     guzel = recovery.document_text(db, anahtar, bicimli=True)
     assert recovery.normalize(guzel) == anahtar
     con.close()
@@ -271,7 +271,7 @@ def test_anahtar_dosyasindan_geri_okunur(tmp_path):
     recovery.write_container(db, PW, anahtar)
     recovery.write_key_file(db, anahtar)
     assert recovery.load_key(db) == anahtar
-    # dosyayı başka yere kopyalamak da çalışır (kullanıcı belgeyi saklar)
+    # copying the file elsewhere works too (the user keeps the document)
     kopya = tmp_path / "yazdirilacak.txt"
     kopya.write_text(recovery.document_text(db, anahtar, bicimli=True), encoding="utf-8")
     assert recovery.normalize(kopya.read_text(encoding="utf-8")) == anahtar

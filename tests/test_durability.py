@@ -165,8 +165,8 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
             # update.py: yalniz %LOCALAPPDATA%/DeepFind/Updates altina yazar
             # (indirme/acma/artik toplama); kaynak-dizin kaniti
             # test_update.py::AcmaTestleri + temizle testleri (runtime).
-            # installer.py: yalnız doğrulanmış Updates kurulumunun yanına bekçi yazar;
-            # test_local_model.py::test_installer_handoff_uses_managed_path bunu doğrular.
+            # installer.py: writes the watcher only next to a verified Updates install;
+            # test_local_model.py::test_installer_handoff_uses_managed_path proves it.
             # model_indir.py: yalniz %LOCALAPPDATA%/DeepFind/models (ya da
             # cagrida verilen acik yol) altina yazar; kaynak-dizin kaniti
             # test_model_indir.py::test_varsayilan_hedef_yonetilen_alan (runtime).

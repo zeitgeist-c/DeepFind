@@ -1,4 +1,4 @@
-"""A7 gorsel kanit: ana pencere acik/koyu tema ekran goruntusu (offscreen)."""
+"""A7 visual proof: main window light/dark theme screenshots (offscreen)."""
 import os
 import sys
 import time
@@ -71,7 +71,7 @@ def main():
         app.processEvents()
         time.sleep(0.01)
     if pen.sonuc_model.rowCount():
-        # M1 kanıtı: küçük resimler ve seçili evrak paneli dolana kadar bekle.
+        # M1 proof: wait until thumbnails and the selected-document panel fill.
         deadline = time.monotonic() + 90
         while pen._thumb_loader is not None and time.monotonic() < deadline:
             app.processEvents()
@@ -85,7 +85,7 @@ def main():
     while pen.onizleme.busy():
         app.processEvents()
         time.sleep(0.01)
-    # M2 kanıtı: sayfa rayı küçük resimleri de hazır olsun.
+    # M2 proof: page-rail thumbnails ready too.
     deadline = time.monotonic() + 60
     while pen.onizleme._ray_loader is not None and time.monotonic() < deadline:
         app.processEvents()
@@ -96,7 +96,7 @@ def main():
         pen.nav.setCurrentRow(0)
         app.processEvents()
         pen.grab().save(os.path.join(output, f"ana-{mod}.png"))
-        # M2 kanıtı: önizleme penceresi (sayfa rayı + yakınlaştırma kademeleri).
+        # M2 proof: preview window (page rail + zoom steps).
         if pen.preview_dialog.isVisible():
             app.processEvents()
             pen.preview_dialog.grab().save(os.path.join(output, f"onizleme-{mod}.png"))
@@ -106,7 +106,7 @@ def main():
         pen.grab().save(os.path.join(output, f"dar-menu-{mod}.png"))
         pen._nav_toggle()
         print(f"kaydedildi: ana-{mod}.png", flush=True)
-        # M3 kanıtı: filtre çipleri ve ızgara görünümü.
+        # M3 proof: filter chips and grid view.
         pen.nav.setCurrentRow(0)
         pen.yil_filtre.setText("2024")
         while pen._search_thread is not None:
@@ -127,14 +127,14 @@ def main():
             app.processEvents()
             time.sleep(0.01)
         app.processEvents()
-        # M4 kanıtı: çoklu seçim ve toplu işlem çubuğu.
+        # M4 proof: multi-select and bulk action bar.
         pen._secim_ayarla(-1)
         app.processEvents()
         pen.grab().save(os.path.join(output, f"ara-secim-{mod}.png"))
         print(f"kaydedildi: ara-secim-{mod}.png", flush=True)
         pen._secim_ayarla(0)
         app.processEvents()
-        # M5 kanıtı: sorgu sözdizimi ve satır içi doğrulama (docspell deseni).
+        # M5 proof: query syntax and inline validation (docspell pattern).
         pen.arama_kutu.setText("Ankara yil:2024")
         deadline = time.monotonic() + 20
         while (pen._debounce.isActive() or pen._search_thread is not None) \

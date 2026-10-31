@@ -45,13 +45,13 @@ def test_bilinmeyen_alan_konum_bildirir():
     assert "bilinmeyen alan" in c.hata
     assert c.imlec == metin.index("turl")
     assert sorgu.imlec_satiri(metin, c.imlec) == " " * 7 + "^"
-    assert c.serbest == "Ankara"  # doğru çözülen kısım korunur
+    assert c.serbest == "Ankara"  # the correctly resolved part is preserved
 
 
 def test_gecersiz_yil_ve_tur_reddedilir():
     assert "'yil' 4 haneli" in sorgu.cozumle("yil:24", TURLER).hata
     assert "bilinmeyen tür" in sorgu.cozumle("tur:epub", TURLER).hata
-    # Tür listesi verilmezse yalnız biçim düzeltilir, doğrulama yapılmaz.
+    # Without a kind list only the format is fixed, no verification.
     assert sorgu.cozumle("tur:epub").alanlar == {"tur": ".epub"}
 
 

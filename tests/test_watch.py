@@ -51,7 +51,7 @@ def test_win32_olay_gelir(tmp_path):
     iz = watch.Izleyici(str(tmp_path), lambda dirs: None)
     iz.start()
     try:
-        # İlk dosya izleme başlamadan düşebilir; birkaç kez dene.
+        # The first file may land before watching starts; retry a few times.
         deadline = time.monotonic() + 15
         n = 0
         while time.monotonic() < deadline:

@@ -36,10 +36,10 @@ def test_anahtar_kaynak_degisince_degisir(tmp_path):
     dosya.write_bytes(b"%PDF-1.4\n")
     temel = thumbs.anahtar(str(dosya), 10, 100)
     assert temel == thumbs.anahtar(str(dosya), 10, 100)
-    assert temel != thumbs.anahtar(str(dosya), 11, 100)          # boyut değişti
-    assert temel != thumbs.anahtar(str(dosya), 10, 101)          # mtime değişti
-    assert temel != thumbs.anahtar(str(dosya), 10, 100, "l")     # tür değişti
-    # Windows'ta yol büyük/küçük harf duyarsızdır: aynı anahtar üretilmeli.
+    assert temel != thumbs.anahtar(str(dosya), 11, 100)          # size changed
+    assert temel != thumbs.anahtar(str(dosya), 10, 101)          # mtime changed
+    assert temel != thumbs.anahtar(str(dosya), 10, 100, "l")     # kind changed
+    # Paths are case-insensitive on Windows: the same key must be produced.
     assert temel == thumbs.anahtar(str(dosya).upper(), 10, 100)
 
 
@@ -159,13 +159,13 @@ def test_kucuk_resim_kaynak_dizine_dokunmaz(tmp_path, monkeypatch):
     st = thumbs._damga(belge)
     hedef = thumbs.hedef_yolu(belge, st[0], st[1], "s", dizin)
     workers.run_work("thumb", (belge, hedef, thumbs.KUCUK))
-    # Önbellek dosyası kaynak dizinin dışında kaldı ve kaynak dokunulmadan durdu.
+    # Cache file stayed outside the source dir, the source untouched.
     assert os.path.exists(hedef)
     assert os.path.dirname(os.path.abspath(hedef)) == os.path.abspath(dizin)
     sonraki = {p.name: (p.stat().st_size, p.stat().st_mtime_ns)
                for p in kaynak_dizin.iterdir()}
     assert sonraki == onceki
-    # Budama yalnız önbellek dizinindeki dosyaları siler.
+    # Pruning deletes only files inside the cache dir.
     thumbs.buda(dizin, sinir=0)
     assert list(kaynak_dizin.iterdir()) and not os.listdir(dizin)
     assert {p.name: (p.stat().st_size, p.stat().st_mtime_ns)

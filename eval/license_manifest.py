@@ -26,7 +26,7 @@ def main():
     sys.path.insert(0, os.path.join(KOK, "src"))
     from deepfind.version import __version__
     sys.path.insert(0, os.path.join(VENV))
-    satir = [f"# DeepFind {__version__} — Üçüncü-taraf lisansları", "",
+    satir = [f"# DeepFind {__version__} — Third-party licenses", "",
              "Üretim: kurulu dağıtımdan, dosya-içi METADATA + lisans metni adıyla.",
              ""]
     for ad in ILGILI:

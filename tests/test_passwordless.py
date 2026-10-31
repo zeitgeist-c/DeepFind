@@ -52,7 +52,7 @@ def test_pw01_kurulum_sifresiz_isaretler(tmp_path):
 def test_pw02_sifresiz_mi_ayrimi(tmp_path):
     """İşaret yoksa ya da kasa şifreliyse şifresiz sayılmaz."""
     sifresiz = _bos_kasa(tmp_path, sentinel=True)
-    assert vault.sifresiz_mi(sifresiz) is False  # iç anahtar açar ama işaret yok
+    assert vault.sifresiz_mi(sifresiz) is False  # inner key opens but no mark
     con = vault.open_vault(sifresiz, vault.SIFRESIZ_ANAHTAR)
     migrate.set_setting(con, "kasa_sifresiz", "1")
     con.close()
@@ -93,8 +93,8 @@ def test_pw05_sihirbaz_sifresiz_secenegi():
     from deepfind.wizard import Sihirbaz
     s = Sihirbaz()
     s.restart()
-    s.next()  # şifre sayfası
-    assert s.validateCurrentPage() is True  # boş alanlar: şifresiz kabul
+    s.next()  # password page
+    assert s.validateCurrentPage() is True  # blank fields: accepted passwordless
     assert s.secim["sifre"] == ""
     s.s1.setText("kisa")
     s.s2.setText("kisa")
@@ -126,13 +126,13 @@ def test_pw06_pencere_kilit_yok_ve_sifre_ekle(tmp_path, monkeypatch):
     try:
         assert pen.sifresiz is True
         assert all(title != "Kasayı kilitle" for _b, title in pen.rail_actions)
-        pen.kilitle()  # şifresiz kasada kilitleme yok sayılır
+        pen.kilitle()  # locking is treated as absent on a passwordless vault
         assert pen._locked is False and pen.con is not None
         pen._kurtarma_tazele()
         assert "gerekmez" in pen.kurtarma_durum.text()
         assert pen.kurtarma_olustur.isEnabled() is False
         assert pen.sifre_btn.text() == "Şifre ekle"
-        _bekle(pen, app)  # açılış işleri (OCR) bitsin; diyalog akışı için gerekli
+        _bekle(pen, app)  # let the launch jobs (OCR) finish; needed for the dialog flow
 
         class _Sahte:
             """Kabul eden sahte şifre diyaloğu."""

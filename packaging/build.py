@@ -1,4 +1,4 @@
-"""Sürüm, EXE/BAT/ZIP ve bağımlılık lisanslarını birlikte üretir."""
+"""Build the release, EXE/BAT/ZIP and dependency licenses together."""
 from pathlib import Path
 import importlib.metadata
 import hashlib
@@ -31,7 +31,7 @@ def main():
         Image.open(png).save(ROOT / "build/deepfind.ico")
         build_env = os.environ.copy()
         windows = Path(os.environ["SystemRoot"])
-        # Başka programların PATH DLL'leri dağıtıma sızmamalı (Poppler ICU vb.).
+        # Other programs' PATH DLLs must not leak into the bundle (Poppler ICU etc.).
         build_env["PATH"] = os.pathsep.join(map(str, [Path(sys.executable).parent,
             Path(sys.base_prefix), Path(sys.base_prefix) / "DLLs",
             windows / "System32", windows]))
@@ -72,7 +72,7 @@ def main():
                     target = licenses / name / Path(*safe_parts)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(source, target)
-    # Kurulu Qt dağıtımında LGPL metni bulunmuyorsa önceki doğrulanmış metni kullan.
+    # When the installed Qt bundle lacks the LGPL text, reuse the previously verified text.
     lgpl = ROOT / "packaging/licenses/LGPL-3.0-only.txt"
     if lgpl.is_file():
         shutil.copyfile(lgpl, licenses / "LGPL-3.0-only.txt")
@@ -82,11 +82,11 @@ def main():
     if gerekli_mi(str(package / '_internal/embedding/embeddinggemma-2-Q8_0.gguf')):
         raise RuntimeError('GGUF model pakette eksik veya özeti geçersiz')
     shutil.copyfile(ROOT / 'build/embedding/manifest.json', licenses / 'embedding-manifest.json')
-    # RapidOCR motoru pakettir: model + config verileri _internal/rapidocr altında olmalı.
+    # RapidOCR engine is packaged: model + config data must sit under _internal/rapidocr.
     model_root = package / "_internal" / "rapidocr" / "models"
     if not any(model_root.glob("*.onnx")):
         raise RuntimeError("RapidOCR ONNX modelleri pakette bulunamadı")
-    # Paket dumanı: kurulu EXE gerçekten açılıp OCR zincirini çalıştırabiliyor mu?
+    # Package smoke: does the installed EXE really open and run the OCR chain?
     import tempfile
     smoke_report = Path(tempfile.gettempdir()) / f"deepfind-smoke-{__version__}.json"
     if smoke_report.exists():
@@ -99,7 +99,7 @@ def main():
         rapor = {"ok": False, "stage": f"rapor-okunamadi exit={proc.returncode}"}
     if proc.returncode != 0 or not rapor.get("ok"):
         raise RuntimeError(f"paket dumanı başarısız: {rapor} | {(proc.stderr or '')[-500:]}")
-    for name in ("README.md", "LISANSLAR.md", f"DENETIM-{__version__}.md"):
+    for name in ("README.md", "LICENSE"):
         if (ROOT / name).is_file():
             shutil.copyfile(ROOT / name, package / name)
     (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

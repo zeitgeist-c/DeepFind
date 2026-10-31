@@ -58,14 +58,14 @@ def test_drive_root_exclusion_matches_all_files_under_it(tmp_path):
     indeks boşaltılamıyordu.
     """
     from deepfind import exclusions
-    # normpath sürücü kökünü ayraçlı tutar — gerçek canlı durum
+    # normpath keeps the drive root with separator — real live state
     root = os.path.normpath("C:\\")
     assert root == "C:\\" or root == "C:/"
     assert exclusions.is_excluded(os.path.join(root, "kaynak", "belge.pdf"), [root])
     assert exclusions.is_excluded(os.path.join(root, "DumpStack.log"), [root])
     assert exclusions.is_excluded(root, [root])
     assert not exclusions.is_excluded("D:\\x\\y.pdf", [root])
-    # Klasör kökü davranışı bozulmadı
+    # Folder-root behavior unbroken
     dizin = os.path.normpath("C:\\Users\\user")
     assert exclusions.is_excluded("C:\\Users\\user\\belge.pdf", [dizin])
     assert not exclusions.is_excluded("C:\\Users\\user2\\b.pdf", [dizin])

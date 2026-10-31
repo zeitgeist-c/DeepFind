@@ -56,10 +56,10 @@ def test_engine_backfill_requeues_low_quality_once(tmp_path):
     con.execute("INSERT INTO ocr_coverage VALUES (?,?,?,?,?)", (fid, 1, 2, "basic", None))
     con.commit()
     assert ocr_setup.engine_backfill(con) == 1
-    # ikinci kez koşurunca hiçbir şey yapmaz (sürüm arttı)
+    # re-running does nothing (version bumped)
     assert ocr_setup.engine_backfill(con) == 0
     assert con.execute("SELECT count(*) FROM jobs WHERE kind='ocr'").fetchone()[0] == 1
-    # bozuk satır silindi, temiz satır kaldı
+    # broken row deleted, clean row kept
     assert con.execute("SELECT count(*) FROM ocr_coverage WHERE page=1").fetchone()[0] == 0
     assert con.execute("SELECT count(*) FROM ocr_coverage WHERE page=2").fetchone()[0] == 1
     assert con.execute("SELECT v FROM schema_meta WHERE k='ocr_version'").fetchone()[0] == OCR_VERSION

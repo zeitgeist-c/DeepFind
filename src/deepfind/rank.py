@@ -1,6 +1,7 @@
 """Semantic document retrieval from encrypted embeddings, with source filters."""
 from __future__ import annotations
 from . import normalize as nz, snippet as snip
+from .theme import t
 
 def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
                     offset=0, tag=None, kodla=None):
@@ -18,7 +19,7 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
         session=embed_mod.hazir_oturum()
         if session is None:
             return dict(output,engine_status=embed_mod.status(),
-                        semantic_error='Anlamsal arama modeli hazır değil. Model durumunu kontrol edip yeniden deneyin.')
+                        semantic_error=t('Anlamsal arama modeli hazır değil. Model durumunu kontrol edip yeniden deneyin.'))
         kodla=lambda texts:session.encode(texts,gorev='sorgu')
     try:
         qvec=np.asarray(kodla([query]),dtype=np.float32)
@@ -28,7 +29,7 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
         if not np.isfinite(qnorm) or qnorm<1e-12:raise ValueError('Boş sorgu vektörü')
         qvec=qvec/qnorm
     except Exception:
-        return dict(output,semantic_error='Arama modeli sorguyu işleyemedi. Model durumunu kontrol edip yeniden deneyin.')
+        return dict(output,semantic_error=t('Arama modeli sorguyu işleyemedi. Model durumunu kontrol edip yeniden deneyin.'))
     filters = ["e.model_ver=?", "e.dim=?", "f.index_status NOT IN ('excluded','pending','missing')", "f.source_status='ok'", "s.kind NOT IN ('name_only','context')"]
     args = [embed_mod.MODEL_VER, embed_mod.DIM]
     if year:

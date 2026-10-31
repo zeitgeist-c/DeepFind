@@ -55,7 +55,7 @@ def test_csv_hucreleri_formul_olarak_baslamaz(con, ad):
     out = rank.results_csv(con, [dict(name=ad, path="C:/a/b.pdf", ext=".pdf",
                                       file_id=1)])
     satir = out.splitlines()[1]
-    # Alan tırnaklanmış olsa da gerçek değer tek tırnakla başlamalı.
+    # Even when the field is quoted, the real value must start with a single quote.
     assert "'" in satir.split(",")[0]
 
 

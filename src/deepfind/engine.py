@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 import secrets
 import socket
+from .theme import t
 import subprocess
 import sys
 import threading
@@ -57,7 +58,7 @@ def close():
     with _LOCK:
         _GENERATION += 1
         old, _SESSION = _SESSION, None
-        _STATUS.update(state='Bekliyor', backend='', device='', error='')
+        _STATUS.update(state=t('Bekliyor'), backend='', device='', error='')
     if old is not None: old.close()
 
 
@@ -72,7 +73,7 @@ def set_backend(name):
 def hazir_oturum(yol=None):
     if _SESSION is not None:
         if _SESSION.alive(): return _SESSION
-        _STATUS.update(state='Model süreci durdu', backend='', device='', error='Anlamsal arama için motoru yeniden başlatın.')
+        _STATUS.update(state=t('Model süreci durdu'), backend='', device='', error=t('Anlamsal arama için motoru yeniden başlatın.'))
     return None
 
 
@@ -88,9 +89,9 @@ def isit_oturumu(yol=None, cancel=None):
             _SESSION.close()
             _SESSION = None
         if not Path(yol or _varsayilan_model_yolu()).is_file():
-            _STATUS.update(state='Model eksik', error='Kurulumu onarın; model dosyası bulunamadı.')
+            _STATUS.update(state=t('Model eksik'), error=t('Kurulumu onarın; model dosyası bulunamadı.'))
             return None
-        _STATUS.update(state='Model yükleniyor', error='')
+        _STATUS.update(state=t('Model yükleniyor'), error='')
         try:
             if yol is None:
                 from .model_indir import gerekli_mi
@@ -102,11 +103,11 @@ def isit_oturumu(yol=None, cancel=None):
                     new.close()
                     return None
                 _SESSION = new
-                _STATUS.update(state='Hazır', backend=new.backend, device=new.device, error=new.fallback)
+                _STATUS.update(state=t('Hazır'), backend=new.backend, device=new.device, error=new.fallback)
                 return new
         except Exception as exc:
             if generation == _GENERATION:
-                _STATUS.update(state='Klasik arama etkin', error=str(exc))
+                _STATUS.update(state=t('Klasik arama etkin'), error=str(exc))
             return None
 
 

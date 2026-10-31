@@ -598,7 +598,7 @@ size change" would loop, because render hides then shows the canvas."""
             # The same button goes back: return to the page view.
             self._index_view = False
             self.metin.hide()
-            self.index_button.setText('İndeks metnini göster')
+            self.index_button.setText(t('İndeks metnini göster'))
             if self._path and self._path.lower().endswith(".pdf") and self._orijinal is not None:
                 self.goruntu.show()
                 self.canvas.show()

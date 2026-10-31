@@ -1,4 +1,4 @@
-"""Kurulumun bütün adımları için yalnız sentetik verili görsel kontrol."""
+"""Visual check with synthetic data only, for every step of the setup."""
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path

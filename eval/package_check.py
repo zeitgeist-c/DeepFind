@@ -1,4 +1,4 @@
-"""Teslim ZIP'ini açıp içindeki gerçek EXE ile sentetik kabul akışını çalıştırır."""
+"""Open the delivery ZIP and run the synthetic acceptance flow with the real EXE inside."""
 import hashlib
 import json
 import subprocess

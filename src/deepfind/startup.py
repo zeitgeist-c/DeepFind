@@ -123,7 +123,7 @@ class OpeningDialog(QDialog):
         if total:
             self.bar.setRange(0, 100)
             oran = max(0, min(100, int(done * 100 / total)))
-            self.bar.setFormat('Bu aşama: %p%')
+            self.bar.setFormat(t('Bu aşama: %p%'))
             self.bar.setValue(oran)
             self._son_oran = (done, total)
             self.detail.setText(self._ayrinti())

@@ -121,7 +121,7 @@ def test_guncelleme_bolumu_kaynak_kopyada(pencere):
     assert pencere.update_iptal_btn.isHidden()
     assert pencere.update_bar.isHidden()
     assert "kaynak koddan" in pencere.update_durum.text()
-    # Tehlikeli iş yapılmadı: sessiz/kendiliğinden indirme yok.
+    # No dangerous work done: no silent/spontaneous download.
     assert pencere._guncelleme_info is None
 
 
@@ -191,13 +191,13 @@ def test_kucuk_resim_liste_ve_detay_panelinde(pencere, tmp_path, monkeypatch):
     assert isinstance(veri, QPixmap) and not veri.isNull()
     assert os.listdir(dizin), "önbellek dizini boş kaldı"
 
-    # Seçim değişince büyük önizleme de dolmalı.
+    # The large preview must fill when the selection changes.
     pencere.sonuc_liste.setCurrentIndex(pencere.sonuc_model.index(0, 0))
     pencere._secim_guncelle()
     _wait_thumbs(pencere)
     goruntu = pencere.secim_gorsel.pixmap()
     assert goruntu is not None and not goruntu.isNull()
-    # Düzen kuralı: kutu alttaki başlıkla çakışmaz (sabit yükseklik taşması yok).
+    # Layout rule: the box never collides with the title below (no fixed-height overflow).
     assert pencere.secim_gorsel.geometry().bottom() <= pencere.secim_ad.geometry().top()
     assert pencere.secim_gorsel.geometry().width() > 0
 
@@ -229,7 +229,7 @@ def _ikinci_belge(pencere):
     kok = os.path.join(os.path.dirname(pencere.kasa_yolu), "arsiv")
     yol = _pdf(kok, "ikinci-belge.pdf", "Ankara ikinci evrak 2024")
     time.sleep(3.0)
-    # Tarayıcı yeni dosyayı kararlılık penceresi geçene kadar "pending" tutar.
+    # The watcher holds a new file as "pending" until the stability window passes.
     for _ in range(4):
         coordinator.run_scan(pencere.con, pencere.kasa_yolu, kok, require_vectors=False)
         if pencere.con.execute(
@@ -272,20 +272,20 @@ def test_onizleme_zoom_kademeleri(pencere, tmp_path, monkeypatch):
         vp = o.canvas.viewport().size()
         pm = o.goruntu.pixmap()
         assert pm is not None and not pm.isNull()
-        # Genişliğe sığdır: sayfa genişliği görünür alana oturur (ray görününce
-        # tuval daralır ve sığdırma tazelenir).
+        # Fit width: page width seats into the visible area (when the rail shows
+        # canvas narrows and the fit refreshes).
         assert vp.width() - 34 <= pm.width() <= vp.width() + 4
-        # Sayfaya sığdır: yükseklik de görünür alana oturur.
+        # Fit page: height seats into the visible area too.
         o._zoom_ayarla("sayfa")
         otur()
         pm2 = o.goruntu.pixmap()
         assert pm2.height() <= vp.height() and pm2.height() >= vp.height() - 30
-        # %200: sığdırmadan belirgin biçimde büyük.
+        # %200: clearly larger than the unfit size.
         o._zoom_ayarla(2.0)
         otur()
         pm3 = o.goruntu.pixmap()
         assert pm3.width() > pm2.width() * 2
-        # + düğmesi kademe adımlar: sığdırma modundan %100'e geçer.
+        # + button step levels: jump from fit mode to 100%.
         o._zoom_ayarla("genislik")
         o._zoom_adim(1)
         assert o.zoom_sec.currentData() == 1.0
@@ -309,18 +309,18 @@ def test_onizleme_sayfa_rayi_ve_klavye(pencere, tmp_path, monkeypatch):
             _app().processEvents(); time.sleep(0.01)
         _app().processEvents()
         assert all(not o.ray.item(i).icon().isNull() for i in range(5))
-        # Raydan sayfa seçimi.
+        # Page selection from the rail.
         o._ray_secildi(o.ray.item(2))
         _wait_preview(o)
         assert o.sayfa_no.value() == 3 and o.ray.currentRow() == 2
-        # Klavye: sağ ok ilerler, sol ok geri döner.
+        # Keyboard: right arrow advances, left arrow goes back.
         o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Right, Qt.NoModifier))
         _wait_preview(o)
         assert o.sayfa_no.value() == 4
         o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Left, Qt.NoModifier))
         _wait_preview(o)
         assert o.sayfa_no.value() == 3
-        # Klavye: +/- kademe adımları, 0 %100'e döner.
+        # Keyboard: +/- step levels, 0 returns to 100%.
         o._zoom_ayarla(2.0)
         _wait_preview(o)
         o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Minus, Qt.NoModifier))
@@ -329,7 +329,7 @@ def test_onizleme_sayfa_rayi_ve_klavye(pencere, tmp_path, monkeypatch):
         assert o.zoom_sec.currentData() == 2.0
         o.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_0, Qt.NoModifier))
         assert o.zoom_sec.currentData() == 1.0
-        # Son sayfada ileri gitmek taşmaz.
+        # Advancing past the last page never overflows.
         o._git(99)
         _wait_preview(o)
         assert o.sayfa_no.value() == 5
@@ -367,12 +367,12 @@ def test_filtre_cipleri_kaldirir_ve_yeniden_arar(pencere):
     cipler = _cipler(pencere)
     assert len(cipler) == 2
     assert "Yıl: 2024" in cipler[0].etiket.text()
-    # Eski çipler görünür kalmamalı: pencere altında yalnız aktif çipler bulunur.
+    # Old chips must not linger: only active chips under the window.
     from deepfind.ui import Cip
     assert len(pencere.findChildren(Cip)) == len(cipler)
-    # Yıl çipini kaldır: filtre düşer, arama yeniden koşar.
+    # Remove the year chip: the filter drops, the search re-runs.
     cipler = _cipler(pencere)
-    # Yıl çipini kaldır: filtre düşer, arama yeniden koşar.
+    # Remove the year chip: the filter drops, the search re-runs.
     cipler[0].kaldir.click()
     _wait_search(pencere)
     assert pencere.yil_filtre.text() == ""
@@ -380,7 +380,7 @@ def test_filtre_cipleri_kaldirir_ve_yeniden_arar(pencere):
     assert len(pencere.findChildren(Cip)) == 1
     assert pencere.filtre_sayi.text() == "1"
     assert pencere.sonuc_model.rowCount() >= 1
-    # Sıfırlama tüm filtreleri temizler.
+    # Reset clears every filter.
     pencere._filtre_temizle()
     _wait_search(pencere)
     assert pencere.tur_filtre.currentText() == "tümü"
@@ -403,8 +403,8 @@ def test_gorunum_modu_kalicidir_ve_izgara(pencere):
     assert pencere.sonuc_panel.currentIndex() == 1
     _app().processEvents()
     assert pencere.sonuc_izgara.isVisible()
-    assert not pencere.goster_btn.isEnabled()  # alan seçimi ızgarada anlamlı değil
-    # Kayıtlı ayar yeniden yüklendiğinde mod korunur.
+    assert not pencere.goster_btn.isEnabled()  # field selection is meaningless in the grid
+    # The saved setting keeps its mode on reload.
     migrate.set_setting(pencere.con, "gorunum_modu", "izgara")
     pencere._gorunum = "satir"
     pencere._gorunum_uygula()
@@ -412,7 +412,7 @@ def test_gorunum_modu_kalicidir_ve_izgara(pencere):
     pencere._gorunum_yukle()
     assert pencere._gorunum == "izgara" and pencere.sonuc_panel.currentIndex() == 1
     assert pencere.gorunum_btnleri["izgara"].isChecked()
-    # Kompakt mod kısa satır kullanır; satır modu daha yüksek.
+    # Compact mode uses short rows; row mode is taller.
     pencere._gorunum_ayarla("kompakt")
     assert pencere.sonuc_liste.itemDelegate().compact
     assert pencere.sonuc_panel.currentIndex() == 0
@@ -432,9 +432,9 @@ def test_goster_alanlari_satiri_ve_ayari_etkiler(pencere):
     tam = pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
     assert len(tam.splitlines()) >= 3
     full_path = pencere.sonuclar[0]["path"]
-    assert full_path in tam  # gerçek fixture yolu görünür
+    assert full_path in tam  # real fixture path visible
     assert all(a.isChecked() for a in pencere.goster_menu.actions())
-    # Yolu kapat: satırdan düşer, ayar saklanır, ipucunda yol kalır.
+    # Close the path: drops from the row, the setting persists, the path stays in the hint.
     pencere._alan_degistir("yol", False)
     assert migrate.get_setting(pencere.con, "goster_alanlari") == "tur,ozet,etiket"
     kisa = pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
@@ -444,14 +444,14 @@ def test_goster_alanlari_satiri_ve_ayari_etkiler(pencere):
     durum = {a.text(): a.isChecked() for a in pencere.goster_menu.actions()}
     assert durum == {"Yol": False, "Tür ve etiket": True,
                      "İçerik özeti": True, "Etiketler": True}
-    # Tümü kapanırsa yalnız ad kalır (boş ayar "hepsi" sayılmaz).
+    # When all close, only the name stays (a blank setting never counts as "all").
     for anahtar in ("tur", "ozet", "etiket"):
         pencere._alan_degistir(anahtar, False)
     assert migrate.get_setting(pencere.con, "goster_alanlari") == ""
     assert pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole).splitlines() == \
         [pencere.sonuclar[0]["name"]]
     assert not any(a.isChecked() for a in pencere.goster_menu.actions())
-    # Alan geri açıldığında satıra döner.
+    # When the field reopens, it returns to the row.
     pencere._alan_degistir("yol", True)
     assert migrate.get_setting(pencere.con, "goster_alanlari") == "yol"
     assert full_path in pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
@@ -466,19 +466,19 @@ def test_toplu_secim_etiket_ve_csv(pencere, tmp_path, monkeypatch):
     pencere._ara_simdi()
     _wait_search(pencere)
     assert pencere.sonuc_model.rowCount() == 2
-    assert not pencere.toplu_etiket_btn.isEnabled()  # seçim yokken kapalı
-    # Tümünü seç: sayaç ve toplu düğmeler etkinleşir.
+    assert not pencere.toplu_etiket_btn.isEnabled()  # off without a selection
+    # Select all: counter and bulk buttons enable.
     pencere._secim_ayarla(-1)
     assert pencere.secim_sayac.text() == "2 seçili"
     assert pencere.toplu_etiket_btn.isEnabled() and pencere.toplu_csv_btn.isEnabled()
     assert len(pencere._secili_idler()) == 2
-    # Sayfa seçimi ilk 50 sonuçla sınırlıdır.
+    # Page selection is limited to the first 50 results.
     pencere._secim_ayarla(50)
     assert pencere.secim_sayac.text() == "2 seçili"
-    # Hiçbiri: seçim ve düğmeler kapanır.
+    # None: selection and buttons switch off.
     pencere._secim_ayarla(0)
     assert pencere.secim_sayac.text() == "" and not pencere.toplu_csv_btn.isEnabled()
-    # Toplu etiket ekleme: tek işlem, iki belgeye de yazılır.
+    # Bulk tag add: one transaction, written to both documents.
     pencere._secim_ayarla(-1)
     uyarilar = []
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Vergi 2024", True))
@@ -490,7 +490,7 @@ def test_toplu_secim_etiket_ve_csv(pencere, tmp_path, monkeypatch):
     assert uyarilar == []
     for satir in pencere.sonuclar:
         assert "vergi 2024" in rank.file_tags(pencere.con, satir["file_id"])
-    # Toplu etiket kaldırma.
+    # Bulk tag removal.
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("vergi 2024", True))
     pencere._secim_ayarla(-1)
     pencere._toplu_etiket(kaldir=True)
@@ -499,14 +499,14 @@ def test_toplu_secim_etiket_ve_csv(pencere, tmp_path, monkeypatch):
     assert uyarilar == []
     for satir in pencere.sonuclar:
         assert "vergi 2024" not in rank.file_tags(pencere.con, satir["file_id"])
-    # Seçim CSV'si: yalnız seçili satır yazılır.
+    # Selection CSV: only the selected row is written.
     hedef = tmp_path / "secili.csv"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
                         lambda *a, **k: (str(hedef), "CSV (*.csv)"))
     pencere._secim_ayarla(1)
     pencere._toplu_csv()
     satirlar = hedef.read_text(encoding="utf-8-sig").strip().splitlines()
-    assert len(satirlar) == 2  # başlık + 1 seçili sonuç
+    assert len(satirlar) == 2  # title + 1 selected result
     assert pencere.sonuclar[0]["name"] in satirlar[1]
 
 
@@ -521,7 +521,7 @@ def test_sorgu_sozdizimi_alanlari_uygular(pencere):
     assert pencere.tur_filtre.currentText() == ".pdf"
     assert pencere.sonuc_model.rowCount() >= 1
     assert len(_cipler(pencere)) == 2
-    # Alan adı içermeyen sorgu eskisi gibi serbest metin arar.
+    # A query without a field name searches free text, as before.
     pencere.yil_filtre.clear()
     pencere.tur_filtre.setCurrentIndex(pencere.tur_filtre.findText("tümü"))
     pencere.arama_kutu.setText("Ankara vergi levhası")
@@ -529,7 +529,7 @@ def test_sorgu_sozdizimi_alanlari_uygular(pencere):
     _wait_search(pencere)
     assert pencere.sonuc_model.rowCount() >= 1
     assert _cipler(pencere) == []
-    # Yalnız alan verilirse liste boş kalır, kullanıcı yönlendirilir.
+    # With fields only, the list stays empty, the user is guided.
     pencere.arama_kutu.setText("etiket:vergi")
     pencere._ara_simdi()
     _wait_search(pencere)
@@ -554,7 +554,7 @@ def test_sorgu_hatasi_arama_calistirmaz_ve_imlec_gosterir(pencere):
     assert "^" in pencere.sorgu_uyari.text()
     assert pencere._search_thread is None
     assert pencere.sonuc_model.rowCount() == onceki
-    # Düzeltilince uyarı kaybolur ve arama yeniden koşar.
+    # Once fixed the warning clears and the search re-runs.
     pencere.arama_kutu.setText("Ankara tur:pdf")
     pencere._ara_simdi()
     _wait_search(pencere)
@@ -776,7 +776,7 @@ def test_kok_kaldir_isci_surucu_koku_ve_koruma(tmp_path):
     isci.hata.connect(hata.append)
     isci.kos()
     assert not hata, hata
-    assert sonuc == [2]  # C:\ altındaki 2 dosya silindi
+    assert sonuc == [2]  # 2 files under C:\ deleted
 
     con = vault.open_vault(db, PW)
     kalan = [p for (p,) in con.execute("SELECT path FROM files").fetchall()]
@@ -821,7 +821,7 @@ def test_kok_kaldir_worker_gui_kilitlemez(tmp_path, monkeypatch):
     _app()
     gui_pulse = []
     QTimer.singleShot(50, lambda: gui_pulse.append(True))
-    # Worker sözlük yenilerken GUI timer'ı çalışmalı.
+    # The GUI timer must run while the worker refreshes the dictionary.
     deadline = time.monotonic() + 15
     while th.isRunning() and time.monotonic() < deadline:
         _app().processEvents()
@@ -1046,7 +1046,7 @@ def test_015_time_source_and_layout(pencere, monkeypatch):
     pencere.show()
     _app().processEvents()
     buttons = [b for b, _ in pencere.rail_actions]
-    # Yeni ray düzeni: eylemler alt alta, daraltma düğmesinin altında.
+    # New rail layout: actions stacked, under the collapse button.
     assert buttons[1].y() > buttons[0].y()
     assert pencere.rail_toggle.y() < buttons[0].y()
     assert all(b.width() >= b.fontMetrics().horizontalAdvance(b.text()) + 20 for b in buttons)

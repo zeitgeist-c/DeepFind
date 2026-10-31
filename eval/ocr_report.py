@@ -1,4 +1,4 @@
-"""A6 kapı raporu: triyaj, OCR kalite/sure, butce, bellek. Sentetik veri."""
+"""A6 gate report: triage, OCR quality/time, budget, memory. Synthetic data only."""
 from __future__ import annotations
 
 import json
