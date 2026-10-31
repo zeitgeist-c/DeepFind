@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 
 CLI_KOMUTLAR = {"init", "tara", "ara", "haric-tut", "yedek-al", "yedek-liste",
-                "geri-yukle", "parola-degistir", "tani", "-h", "--help"}
+                "geri-yukle", "parola-degistir", "tani", "sikistir", "-h", "--help"}
 # Deger alan bayraklar: router ilk konumsal parcayi ararken bunlar + degerleri atlanir.
 # (Aksi halde `--kasa X` komutundaki X, komut sanilip arayuz dalina dusulur.)
 DEGERLI_BAYRAKLAR = {"--kasa", "--sifre", "--hedef", "--staging", "--yedek-sifre",

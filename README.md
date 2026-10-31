@@ -4,7 +4,7 @@
 
 **Describe the document you remember, not the filename you saved it under.**
 
-DeepFind indexes the documents already sitting in your folders — PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV and scanned JPG/PNG/TIFF — and finds them by meaning. The files never move. The index lives in a SQLCipher-encrypted vault on your machine, and nothing about your documents is sent anywhere.
+DeepFind indexes the documents already sitting in your folders — PDF, XLSX/XLS, DOCX, TXT/CSV and scanned JPG/PNG/TIFF — and finds them by meaning. The files never move. The index lives in a SQLCipher-encrypted vault on your machine, and nothing about your documents is sent anywhere.
 
 ![DeepFind · Search](./docs/screenshots/01-ara.png)
 
@@ -36,7 +36,7 @@ DeepFind indexes the documents already sitting in your folders — PDF, XLSX/XLS
 | Capability | Detail |
 |---|---|
 | **Semantic search** | EmbeddingGemma 2 Q8_0, 256-dimensional L2-normalised vectors — search by describing the content |
-| **Broad format support** | PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV, JPG/PNG/TIFF |
+| **Broad format support** | PDF, XLSX/XLS, DOCX, TXT/CSV, JPG/PNG/TIFF |
 | **OCR** | RapidOCR with bundled PP-OCR models and ONNX Runtime for scanned PDFs and images |
 | **Encrypted vault** | SQLCipher database plus a password and a recovery key |
 | **Local models** | text model, Vulkan/CPU engines and OCR ship with the installer — no internet, API key, Ollama or Python needed |

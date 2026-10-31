@@ -234,7 +234,7 @@ def test_cli_yedek_tani_parola(tmp_path, capsys):
     assert "manuel" in out
     assert _cli.main(["--kasa", db, "--sifre", PW, "tani"]) == 0
     out = capsys.readouterr().out
-    assert "Evrakci " in out and "belge=1" in out and "sifre" not in out.lower().replace(
+    assert "DeepFind " in out and "belge=1" in out and "sifre" not in out.lower().replace(
         "kasa sifresi", "")
     yedekler = backup.list_backups(yb)
     assert len(yedekler) == 1

@@ -1821,7 +1821,7 @@ class AnaPencere(QMainWindow):
     def _sorgu_uyari_goster(self, ham, cozum):
         """Hatalı sorguda imleçli uyarı gösterir; arama çalıştırılmaz."""
         satir = sorgu.imlec_satiri(ham, cozum.imlec)
-        self.sorgu_uyari.setText(t("Sorgu hatası: {cozum.hata}\n{ham}\n{satir}", cozum=cozum.hata, ham=ham, satir=satir))
+        self.sorgu_uyari.setText(t("Sorgu hatası: {cozum.hata}\n{ham}\n{satir}", cozum=cozum, ham=ham, satir=satir))
         self.sorgu_uyari.show()
 
     def _sorgu_alanlarini_uygula(self, alanlar):

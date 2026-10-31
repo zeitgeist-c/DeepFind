@@ -4,7 +4,7 @@
 
 **Kaydettiğin dosya adını değil, hatırladığın belgeyi tarif et.**
 
-DeepFind, klasörlerinde duran belgeleri indeksler — PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV ve taranmış JPG/PNG/TIFF — ve onları anlamına göre bulur. Dosyalar hiç taşınmaz. İndeks makinenin içinde SQLCipher ile şifreli bir kasada durur ve belgelerin hakkında hiçbir şey dışarı gönderilmez.
+DeepFind, klasörlerinde duran belgeleri indeksler — PDF, XLSX/XLS, DOCX, TXT/CSV ve taranmış JPG/PNG/TIFF — ve onları anlamına göre bulur. Dosyalar hiç taşınmaz. İndeks makinenin içinde SQLCipher ile şifreli bir kasada durur ve belgelerin hakkında hiçbir şey dışarı gönderilmez.
 
 ![DeepFind · Arama](./docs/screenshots/01-ara.png)
 
@@ -36,7 +36,7 @@ DeepFind, klasörlerinde duran belgeleri indeksler — PDF, XLSX/XLS, DOCX, ODT,
 | Yetenek | Ayrıntı |
 |---|---|
 | **Anlamsal arama** | EmbeddingGemma 2 Q8_0, 256 boyutlu L2 normalize vektörler — içeriği tarif ederek ara |
-| **Geniş biçim desteği** | PDF, XLSX/XLS, DOCX, ODT, RTF, TXT/CSV, JPG/PNG/TIFF |
+| **Geniş biçim desteği** | PDF, XLSX/XLS, DOCX, TXT/CSV, JPG/PNG/TIFF |
 | **OCR** | taranmış PDF ve görseller için RapidOCR, gömülü PP-OCR modelleri ve ONNX Runtime |
 | **Şifreli kasa** | SQLCipher veritabanı, parola ve kurtarma anahtarı |
 | **Yerel modeller** | metin modeli, Vulkan/CPU motorları ve OCR kurulumla gelir — internet, API anahtarı, Ollama veya Python gerekmez |
