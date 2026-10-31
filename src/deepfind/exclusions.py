@@ -1,4 +1,4 @@
-"""Hariç kuralları: yeni işi engelle; bekleyen işi, metni ve vektörleri temizle."""
+"""Exclusion rules: block new jobs; purge pending jobs, texts and vectors."""
 from __future__ import annotations
 
 import os
@@ -34,8 +34,8 @@ def is_excluded(path: str, rules: list) -> bool:
     pl = os.path.normpath(path).lower()
     for r in rules:
         rl = os.path.normpath(r).lower()
-        # Kök zaten ayraçla bitiyorsa (C:\, klasör kökü) çift ayraç arama:
-        # yalnızca rl + ayraç ile eşleştir.
+        # When the root already ends with a separator (C:\, folder root), double-separator search:
+        # match with rl + separator only.
         if rl.endswith("\\") or rl.endswith("/"):
             if pl == rl or pl.startswith(rl):
                 return True
@@ -46,7 +46,7 @@ def is_excluded(path: str, rules: list) -> bool:
 
 
 def purge_rule(con, rule: str, *, commit=True) -> int:
-    """Kural kapsamındaki dosyaların aktif içeriğini + bekleyen işlerini sil. Silinen dosya sayısı."""
+    """Delete the active content + pending jobs of files in the rule's scope. Deleted file count."""
     rule = normalize_rule(rule)
     # SQL LIKE narrows candidates. Strip trailing separators before appending
     # both separator variants; otherwise C:\ becomes a double-separator pattern.

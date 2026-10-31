@@ -1,8 +1,7 @@
-"""Paylaşılan görsel bileşenler: yüzeyler, satırlar, rozetler, boş durumlar.
+"""Shared visual components: surfaces, rows, badges, empty states.
 
-Tasarım kuralı: tek yüzey + kıl payı ayırıcı. Kutu içinde kutu yok; renkler
-her zaman `theme.pal()` üzerinden gelir, sabit renk kullanılmaz.
-"""
+Design rule: single surface + hairline divider. No box inside a box; colors
+always come through `theme.pal()`, never hardcoded."""
 from PySide6.QtCore import Qt, QSize, QRect, QRectF, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QFontMetrics, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
@@ -29,7 +28,7 @@ def card():
 
 
 def bolme():
-    """Bölümler arası ince yatay çizgi."""
+    """Thin horizontal line between sections."""
     cizgi = QFrame()
     cizgi.setObjectName("ayrac")
     cizgi.setFrameShape(QFrame.NoFrame)
@@ -37,7 +36,7 @@ def bolme():
 
 
 def ayrac_d():
-    """Sütunlar arası ince dikey çizgi."""
+    """Thin vertical line between columns."""
     cizgi = QFrame()
     cizgi.setObjectName("ayracD")
     cizgi.setFrameShape(QFrame.NoFrame)
@@ -45,7 +44,7 @@ def ayrac_d():
 
 
 def sayfa_basi(baslik, aciklama=""):
-    """Sayfa başlığı şeridi: başlık + açıklama; sağa denetim eklenir."""
+    """Page title strip: title + description; controls dock right."""
     bar = QWidget()
     bar.setObjectName("headBar")
     bar.setAttribute(Qt.WA_StyledBackground, True)
@@ -70,12 +69,12 @@ def sayfa_basi(baslik, aciklama=""):
 
 
 def bolum(baslik):
-    """Bölüm başlığı (kutu değil, yalnız yazı)."""
+    """Section title (not a box, just text)."""
     return label(baslik, "eyebrow")
 
 
 def sayac(text=""):
-    """Sayaç rozeti."""
+    """Counter badge."""
     chip = QLabel(text)
     chip.setProperty("sayac", True)
     chip.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
@@ -83,7 +82,7 @@ def sayac(text=""):
 
 
 def stat_seridi(kalemler):
-    """Ölçü şeridi: (başlık, değer, alt yazı) üçlülerinden kutusuz şerit."""
+    """Metric strip: (title, value, caption) triples with no boxes."""
     strip = QWidget()
     strip.setObjectName("statStrip")
     strip.setAttribute(Qt.WA_StyledBackground, True)
@@ -111,7 +110,7 @@ def stat_seridi(kalemler):
 
 
 def ayar_satiri(baslik, ipucu, denetim):
-    """Ayarlar satırı: solda başlık+ipucu, sağda denetim; altta kıl payı çizgi."""
+    """Settings row: title+hint left, control right; hairline rule below."""
     satir = QWidget()
     outer = QHBoxLayout(satir)
     outer.setContentsMargins(0, 9, 0, 9)
@@ -142,12 +141,11 @@ def ayar_satiri(baslik, ipucu, denetim):
 
 
 class GorselKutusu(QLabel):
-    """Küçük resmi kutusuna sığdıran, kutu ölçüsü değişince yeniden ölçekleyen görsel.
+    """An image that fits its thumbnail box, rescaling when the box changes.
 
-    Sabit yükseklik kulllanılmaz: sütun kısaldığında sabit kutu taşar ve
-    alttaki metinlerle çakışır. Bu bileşen en-boy oranını korur; kutu minimum
-    ölçünün altına inmez, fazla alanı kendisi alır.
-    """
+No fixed height is ever used: when the column shortens, a fixed box overflows
+and collides with the texts below. This component keeps the aspect ratio; the box never
+goes under its minimum measure, it takes the extra space itself."""
 
     def __init__(self, parent=None, minimum=(180, 200), maximum_height=420):
         super().__init__(parent)
@@ -176,7 +174,7 @@ class GorselKutusu(QLabel):
 
 
 class Toast(QWidget):
-    """Pencere içi onay şeridi: kendiliğinden kaybolur, yerleşimi kaydırmaz."""
+    """In-window confirmation strip: fades by itself, never shifts the layout."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -284,12 +282,11 @@ class EmptyState(QWidget):
 
 
 class CardDelegate(QStyledItemDelegate):
-    """Düz liste satırı: başlık + ikincil satırlar; seçimde sol vurgu çubuğu.
+    """Flat list row: title + secondary lines; left accent bar when selected.
 
-    `thumb=True` iken satır başında küçük resim kutusu çizilir. Görsel
-    `Qt.DecorationRole`'den gelir (QPixmap); yoksa nötr zeminde simge düşer,
-    böylece yükleme gecikmesi düzeni zıplatıp yeniden akıtmaz.
-    """
+With `thumb=True` a thumbnail box is drawn at the row head. The image
+comes from `Qt.DecorationRole` (QPixmap); without one an icon lands on neutral ground,
+so load latency never jolts the layout into reflow."""
 
     _ONBELLEK = {}
 
@@ -316,7 +313,7 @@ class CardDelegate(QStyledItemDelegate):
         return QSize(240, self._satir_yuksekligi())
 
     def _gorsel_ciz(self, painter, index, kutu: QRectF, p):
-        """Küçük resim kutusunu çizer; görsel yoksa nötr zeminde simge koyar."""
+        """Draw the thumbnail box; place an icon on neutral ground when imageless."""
         pixmap = index.data(Qt.DecorationRole)
         if isinstance(pixmap, QPixmap) and not pixmap.isNull():
             gorsel = pixmap.scaled(int(kutu.width()), int(kutu.height()),
@@ -389,7 +386,7 @@ class CardDelegate(QStyledItemDelegate):
 
 
 class Cip(QFrame):
-    """Kaldırılabilir filtre çipi: etiket + × düğmesi (paperless filtre rozeti deseni)."""
+    """Removable filter chip: tag + × button (paperless filter badge pattern)."""
 
     silindi = Signal()
 
@@ -414,7 +411,7 @@ class Cip(QFrame):
 
 
 class GridDelegate(QStyledItemDelegate):
-    """Izgara görünümü: üstte küçük resim, altta ad ve tek satır bilgi."""
+    """Grid view: thumbnail on top, name and one info line below."""
 
     def __init__(self, parent, hucre=(176, 212)):
         super().__init__(parent)

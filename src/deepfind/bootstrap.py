@@ -1,4 +1,4 @@
-"""İlk kasayı arayüzü bekletmeden hazırlar; kaynak dosyalara dokunmaz."""
+"""Prepare the first vault without stalling the UI; never touch source files."""
 import os
 from PySide6.QtCore import QObject, Signal
 from . import vault, migrate

@@ -325,7 +325,7 @@ class Sihirbaz(QWizard):
         self._mesaj(t("Arama listesi temizlendi. Asıl klasörler korunuyor."))
 
     def _sifresiz_degistir(self, on):
-        """'Şifre kullanmayacağım' işaretlenince alanlar kapanır ve temizlenir."""
+        """When 'I will not use a password' is ticked, fields close and clear."""
         for field in (self.s1, self.s2):
             field.setEnabled(not on)
             if on:
@@ -374,7 +374,7 @@ class Sihirbaz(QWizard):
         if self.currentPage() is self.page(1):
             a, b = self.s1.text(), self.s2.text()
             if self.sifresiz_kutu.isChecked() or not (a or b):
-                # Şifre isteğe bağlı: boş bırakılırsa kasa şifresiz kurulur.
+                # Password optional: blank means the vault is created passwordless.
                 self.sifre_hata.setText("")
                 self.secim["sifre"] = ""
                 return super().validateCurrentPage()

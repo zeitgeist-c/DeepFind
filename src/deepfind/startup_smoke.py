@@ -1,4 +1,4 @@
-"""Sentetik kasayla gerçek ilk kurulum girişini paket içinde denetler."""
+"""Verify the real first-run login inside the package, on a synthetic vault."""
 import os
 import time
 from pathlib import Path

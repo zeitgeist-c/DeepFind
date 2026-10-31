@@ -18,7 +18,7 @@ def model_yolu() -> str:
 
 
 def model_var_mi(yol: str | None = None) -> bool:
-    """Üretim modeli diskte mi? Model yoksa anlamsal tarama eksik kalır."""
+    """Is the production model on disk? Semantic scan stays incomplete without a model."""
     import os
 
     return os.path.isfile(yol or embed_mod._varsayilan_model_yolu())

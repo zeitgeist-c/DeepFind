@@ -1,4 +1,4 @@
-"""Kalıcı iş kuyruğu: claim/lease, artan retry, çöküş kurtarma, duraklat/iptal bayrakları."""
+"""Durable job queue: claim/lease, escalating retry, crash recovery, pause/cancel flags."""
 from __future__ import annotations
 
 import time
@@ -25,7 +25,7 @@ def enqueue(con, file_id: int, sig: str, kind: str = "extract") -> None:
 
 
 def claim(con, kinds=("extract",), *, scoped=False) -> dict | None:
-    """Süresi dolmuş lease dahil tek iş al. Tek DB yazıcısı varsayımıyla."""
+    """Take a single job, expired leases included. Assumes one DB writer."""
     t = now()
     marks = ",".join("?" * len(kinds))
     scope = " AND file_id IN (SELECT file_id FROM scan_selected)" if scoped else ""
@@ -52,7 +52,7 @@ def complete(con, job_id: int) -> None:
 
 
 def fail(con, job_id: int, error_code: str) -> str:
-    """Hata: retry veya kalıcı basarisiz. Donus: 'retry' | 'dead'."""
+    """Error: retry or permanent failure. Returns: 'retry' | 'dead'."""
     t = now()
     row = con.execute("SELECT attempts FROM jobs WHERE job_id=?", (job_id,)).fetchone()
     att = (row[0] if row else 0) + 1
@@ -73,7 +73,7 @@ def fail(con, job_id: int, error_code: str) -> str:
 
 
 def recover_running(con, *, commit=True) -> int:
-    """Açılışta yarım işleri pending yap (güç kesintisi)."""
+    """Mark half-done jobs pending at launch (power loss)."""
     cur = con.execute("UPDATE jobs SET status='pending', lease_until=0 WHERE status='running'")
     if commit:
         con.commit()

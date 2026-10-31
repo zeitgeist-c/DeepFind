@@ -1,10 +1,9 @@
-"""RapidOCR motoru: tek paylaşılan motor örneği, tembel yükleme, kilitli çağrı.
+"""RapidOCR engine: one shared engine instance, lazy load, locked calls.
 
-PP-OCR modelleri ONNX Runtime üzerinde çalışır; Türkçeyi ek dil indirmeden okur.
-Motor ilk kullanımda (~1 sn) yüklenir; süreç başına bir kez kurulur ve kilitli
-tutulur. OCR işleri ayrı spawn süreçlerinde koştuğu için her işçi kendi motorunu
-yükler — ana arayüz süreci bloklanmaz.
-"""
+PP-OCR models run on ONNX Runtime; they read Turkish with no extra language download.
+The engine loads on first use (~1 s); it is installed once per process and kept
+locked. OCR jobs run in separate spawn processes, so every worker loads
+its own engine — the main UI process never blocks."""
 from __future__ import annotations
 
 import importlib.util
@@ -18,7 +17,7 @@ _lock = threading.Lock()
 _engine = None
 _failed = False
 
-# rapidocr 3.x paket içi modeller (indirme yok): det + cls + rec
+# rapidocr 3.x in-package models (no download): det + cls + rec
 _MODEL_FILES = (
     "PP-OCRv6_det_small.onnx",
     "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
@@ -27,7 +26,7 @@ _MODEL_FILES = (
 
 
 def stack_present() -> bool:
-    """Pahalı import yapmadan RapidOCR zinciri kurulu mu?"""
+    """Is the RapidOCR chain installed, without an expensive import?"""
     for mod in ("rapidocr", "onnxruntime", "cv2", "numpy"):
         try:
             if importlib.util.find_spec(mod) is None:
@@ -38,7 +37,7 @@ def stack_present() -> bool:
 
 
 def models_present() -> bool:
-    """Modeller rapidocr paketinin içinde gelir; varlıkları yetir, boyut 0 değil."""
+    """Models ship inside the rapidocr package; existence suffices, size non-zero."""
     try:
         import rapidocr
         from pathlib import Path
@@ -50,7 +49,7 @@ def models_present() -> bool:
 
 
 def get_engine():
-    """Paylaşılan RapidOCR örneği; kurulamazsa RuntimeError (motor eksik)."""
+    """The shared RapidOCR instance; RuntimeError when uninstallable (engine missing)."""
     global _engine, _failed
     if _engine is not None:
         return _engine
@@ -61,11 +60,11 @@ def get_engine():
     with _lock:
         if _engine is None:
             try:
-                # rapidocr model yüklerken INFO satırları basar; konsolsuz
-                # masaüstü uygulamada bunlar gürültü — kendi ayarıyla kıs.
-                # Not: `from rapidocr import RapidOCR` paketlenmiş (donmuş)
-                # uygulamada lazy __getattr__ yüzünden kırılıyor; iç modülden
-                # doğrudan import her ortamda kanıtlı çalışıyor.
+                # rapidocr prints INFO lines while loading models; console-free
+                # in the desktop app these are noise — mute with its own setting.
+                # Note: `from rapidocr import RapidOCR` is packaged (frozen)
+                # breaks in the app because of lazy __getattr__; from the inner module
+                # direct import is proven to work in every environment.
                 from rapidocr.main import RapidOCR
                 _engine = RapidOCR(params={"Global.log_level": "warning"})
             except Exception as exc:
@@ -76,14 +75,14 @@ def get_engine():
 
 
 def run(image_bgr, use_det: bool = True, use_cls: bool = True, use_rec: bool = True):
-    """BGR ndarray -> RapidOCR sonucu (kilitli tek çağrı)."""
+    """BGR ndarray -> RapidOCR result (single locked call)."""
     engine = get_engine()
     with _lock:
         return engine(image_bgr, use_det=use_det, use_cls=use_cls, use_rec=use_rec)
 
 
 def reset() -> None:
-    """Test/onarım: motor örneğini unut (yeniden kurulum izinli)."""
+    """Test/repair: forget the engine instance (reinstall allowed)."""
     global _engine, _failed
     with _lock:
         _engine = None

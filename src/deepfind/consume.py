@@ -1,15 +1,14 @@
-"""Tüketim klasörü: kararlı dosya hedefe taşınır; indeksleme normal taramaya kalır.
+"""Consume folder: a settled file moves to the target; indexing stays with normal scan.
 
-Tasarım: taşıma dosya sisteminde atomik (os.replace), DB kaydı taşınmaz —
-eski yol kaydı silinir, hedef kapsamlı mini taramada yeniden indekslenir
-(OCR dahil tüm hatlar çalışır). Desteklenmeyen türler yerinde bırakılır.
-"""
+Design: the move is atomic on the filesystem (os.replace), the DB record does not move —
+the old path record is deleted, the target is re-indexed by a scoped mini-scan
+(all lanes including OCR run). Unsupported types are left in place."""
 from __future__ import annotations
 
 import os
 import time
 
-STABLE_NS = 2_000_000_000  # coordinator ile aynı karar eşiği
+STABLE_NS = 2_000_000_000  # same decision threshold as the coordinator
 
 
 def _desteklenir(path: str) -> bool:
@@ -28,7 +27,7 @@ def _hedef_yol(hedef_dir: str, ad: str) -> str:
 
 
 def tuket(con, path: str, hedef_dir: str) -> str:
-    """'moved' | 'unstable' | 'skipped'. DB kilitliyse exception (çağıran erteler)."""
+    """'moved' | 'unstable' | 'skipped'. Exception when the DB is locked (caller defers)."""
     if not os.path.isfile(path) or not os.path.isdir(hedef_dir):
         return "skipped"
     if not _desteklenir(path):
@@ -39,8 +38,8 @@ def tuket(con, path: str, hedef_dir: str) -> str:
         if time.time_ns() - st.st_mtime_ns < STABLE_NS:
             return "unstable"
         varis = _hedef_yol(hedef_dir, os.path.basename(path))
-        # Önce indeks kaydını düşür, sonra taşı: DB kilitliyse dosya taşınmış
-        # ama indekste eski yoluyla kalmış (hayalet) kayıt oluşmasın.
+        # Drop the index record first, then move: when the DB is locked the file is moved
+        # but no record left behind under its old path (ghost) in the index.
         con.execute("DELETE FROM files WHERE path=?", (os.path.abspath(path),))
         con.execute("DELETE FROM files WHERE path=?", (path,))
         con.commit()

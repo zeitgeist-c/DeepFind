@@ -1,14 +1,13 @@
-"""Belge onizleme: PDF sayfa goruntusu, Excel veri bolgesi, Word metin/tablo.
+"""Document preview: PDF page image, Excel data region, Word text/table.
 
-M2 (REA deseni): yakınlaştırma kademeleri — "Genişliğe sığdır", "Sayfaya
-sığdır" ve yüzde kademeleri (paperless `pdf-viewer` zoom kademeleri); solda
-sayfa küçük resmi rayı, tembel yüklemeli (papermerge `PageList`); klavye
-gezinmesi ve −/+ adımları (paperless belge görüntüleyici).
+M2 (REA pattern): zoom steps — "fit width", "fit page"
+and percent steps (paperless `pdf-viewer` zoom steps); page thumbnail rail on the
+left, lazily loaded (papermerge `PageList`); keyboard
+navigation and -/+ steps (paperless document viewer).
 
-Kurallar (plan bolum 20.3): guvenilir bbox yoksa kutu uydurulmaz; kaynak
-degismisse eski snippet ile yeni goruntu ayni surummus gibi sunulmaz;
-erisim yoksa son indeks metni gosterilir, sayfa goruntusu yok denir.
-"""
+Rules (plan section 20.3): never invent a box without a trusted bbox; never present
+old snippets with a new image as if the same version when the source
+changed; without access show the last indexed text and say there is no page image."""
 from __future__ import annotations
 
 import os
@@ -27,11 +26,11 @@ from .tasks import DatabaseTask, indexed_text
 from .ui import EmptyState, label
 from .theme import t
 
-# (etiket, veri) — veri "genislik"/"sayfa" ya da yüzde çarpanı (float)
+# (tag, data) — data is "width"/"page" or a percent multiplier (float)
 KADEMELER = ((t("Genişliğe sığdır"), "genislik"), (t("Sayfaya sığdır"), "sayfa"),
              ("%50", 0.5), ("%75", 0.75), ("%100", 1.0),
              ("%125", 1.25), ("%150", 1.5), ("%200", 2.0))
-RAY_ADIM = 12  # sayfa rayında her turda üretilen küçük resim sayısı
+RAY_ADIM = 12  # thumbnails produced per round on the page rail
 
 
 class PreviewWorker(QThread):
@@ -45,7 +44,7 @@ class PreviewWorker(QThread):
     def run(self):
         from .workers import run_work
         try:
-            # stat ve dosya açma dahil kaynak işlemleri UI dışında.
+            # source operations including stat and file open stay off the UI.
             st = os.stat(self.args[0])
             changed = bool(self.expected and tuple(self.expected) != (st.st_size, st.st_mtime_ns))
             result = run_work(self.kind, self.args, stop=self.stop.is_set)
@@ -73,7 +72,7 @@ class Onizleme(QWidget):
         self._generation = 0
         self._expected = None
         self._fallback = ""
-        # sayfa rayı durumu
+        # page rail state
         self._ray_loader = None
         self._ray_yuklenen = 0
         self._ray_toplam = 0
@@ -166,9 +165,9 @@ class Onizleme(QWidget):
         self.canvas.setAlignment(Qt.AlignCenter)
         self.canvas.setFrameShape(QScrollArea.NoFrame)
         self.canvas.hide()
-        self.canvas.viewport().installEventFilter(self)  # sığdırma tazeleme
+        self.canvas.viewport().installEventFilter(self)  # fit refresh
 
-        # Sayfa rayı + sayfa tuvali yan yana (ray yalnız PDF'te görünür).
+        # Page rail + page canvas side by side (rail visible only for PDFs).
         self.ray = QListWidget()
         self.ray.setObjectName("pageRail")
         self.ray.setFixedWidth(96)
@@ -206,7 +205,7 @@ class Onizleme(QWidget):
         self.more_button.clicked.connect(self._load_more)
         k.addWidget(self.more_button)
 
-        # Sığdırma modlarında pencere boyutu değişince tek yeniden render.
+        # Single re-render when the window size changes in fit modes.
         self._fit_timer = QTimer(self)
         self._fit_timer.setSingleShot(True)
         self._fit_timer.setInterval(160)
@@ -214,7 +213,7 @@ class Onizleme(QWidget):
         self.temizle()
 
     def yenile(self):
-        """Tema değişiminde boş durum simgesini tazeler."""
+        """Refresh the empty-state icon on theme change."""
         if hasattr(self, "empty"):
             self.empty.yenile()
 
@@ -239,7 +238,7 @@ class Onizleme(QWidget):
         self._expected = con.execute("SELECT size,mtime_ns FROM files WHERE path=?", (path,)).fetchone()
         ext = (sonuc.get("ext") or "").lower()
         if ext == ".pdf":
-            # Büyük kasada segments sorgusu arayüzü kilitleyebilir. Arama özeti hazırdır.
+            # On a large vault the segments query can lock the UI. A search summary is ready.
             self._fallback = sonuc.get("snippet") or ""
             self._pdf(path, sonuc.get("page") or 1)
         elif ext in (".xlsx", ".xls"):
@@ -294,11 +293,10 @@ class Onizleme(QWidget):
         return bool(self._threads)
 
     def closeEvent(self, ev):
-        """Pencere kapanırken koşan render iş parçacıklarını bitir.
+        """Finish the running render worker threads as the window closes.
 
-        Qt, koşan bir QThread nesnesi yok edilirse süreci düşürür; görüntüleyici
-        bağımsız kullanıldığında (ör. test/araç) bu koruma gereklidir.
-        """
+Qt kills the process when a running QThread object is destroyed; this guard
+is required when the viewer is used standalone (e.g. test/tool)."""
         self.temizle()
         deadline = time.monotonic() + 3
         for thread in list(self._threads):
@@ -322,7 +320,7 @@ class Onizleme(QWidget):
                 self._zoom_ayarla(1.0); ev.accept(); return
         super().keyPressEvent(ev)
 
-    # -- yakınlaştırma --
+    # -- zoom --
     def _zoom_verisi(self):
         return self.zoom_sec.currentData()
 
@@ -334,7 +332,7 @@ class Onizleme(QWidget):
     def _zoom_ayarla(self, veri):
         i = self.zoom_sec.findData(veri)
         if i >= 0:
-            self.zoom_sec.setCurrentIndex(i)  # değişim sinyali uygular
+            self.zoom_sec.setCurrentIndex(i)  # applies the change signal
         else:
             self._zoom_uygula()
 
@@ -348,7 +346,7 @@ class Onizleme(QWidget):
         self._zoom_ayarla(yuzdeler[i])
 
     def _fit_kutusu(self):
-        """Sığdırma modları için (en fazla genişlik, en fazla yükseklik) px."""
+        """(max width, max height) px for fit modes."""
         veri = self._zoom_verisi()
         if veri not in ("genislik", "sayfa"):
             return None
@@ -359,7 +357,7 @@ class Onizleme(QWidget):
             yukseklik = max(120, (ölçü.height() - 18) if ölçü.height() >= 240 else 900)
         return (genislik, yukseklik)
 
-    # -- iç --
+    # -- inner --
     def _durum_kontrol(self, con, path):
         try:
             st = os.stat(path)
@@ -390,11 +388,10 @@ class Onizleme(QWidget):
         self._start("pdf", (self._path, max(1, sayfa), zoom, kutu))
 
     def _fit_yenile(self):
-        """Sığdırma kutusu gerçekten değiştiyse yeniden render zamanla.
+        """Schedule a re-render only when the fit box really changed.
 
-        Kutu değişmediyse render tetiklenmez: render sırasında tuval gizlenip
-        gösterildiği için naif bir "her boyut değişiminde render" döngü kurar.
-        """
+No render fires when the box is unchanged: a naive "render on every
+size change" would loop, because render hides then shows the canvas."""
         if not (self._path and self._path.lower().endswith(".pdf") and self._orijinal is not None):
             return
         if self._zoom_verisi() not in ("genislik", "sayfa"):
@@ -418,14 +415,14 @@ class Onizleme(QWidget):
         if self._orijinal is None or self._orijinal.isNull():
             return
         if self._son_kind == "pdf":
-            pm = self._orijinal  # işçi istenen yoğunlukta render etti
+            pm = self._orijinal  # the worker rendered at the requested density
         else:
             pm = self._olcekle(self._orijinal)
         self.goruntu.setPixmap(pm)
         self.goruntu.resize(pm.size())
 
     def _olcekle(self, pixmap):
-        """PDF dışı görsellerde yakınlaştırma kademesini istemci tarafında uygular."""
+        """Apply the zoom step client-side for non-PDF images."""
         veri = self._zoom_verisi()
         ölçü = self.canvas.viewport().size()
         if veri == "genislik":
@@ -511,7 +508,7 @@ class Onizleme(QWidget):
             self.bilgi.setText(self.bilgi.text() + f" • Sayfa: {result['sheet']}")
             self.tablo.resizeColumnsToContents()
 
-    # -- sayfa rayı (papermerge PageList deseni; tembel yükleme) --
+    # -- page rail (papermerge PageList pattern; lazy loading) --
 
     def _ray_durdur(self):
         yukleyici = getattr(self, "_ray_loader", None)
@@ -521,7 +518,7 @@ class Onizleme(QWidget):
             self._ray_loader = None
 
     def _ray_kur(self, toplam):
-        """Raya ilk sayfaları ekler; kalanı kaydırdıkça üretilir."""
+        """Append the first pages to the rail; the rest is produced while scrolling."""
         self._ray_durdur()
         self.ray.clear()
         self._ray_pixmaps = {}
@@ -594,11 +591,11 @@ class Onizleme(QWidget):
         if bar.maximum() > 0 and deger >= bar.maximum() and self._ray_yuklenen < self._ray_toplam:
             self._ray_baslat()
 
-    # -- OCR/indeks metni görünümü --
+    # -- OCR/index text view --
 
     def _show_index(self):
         if self._index_view:
-            # Aynı düğme geri döndürür: sayfa görüntüsüne dön.
+            # The same button goes back: return to the page view.
             self._index_view = False
             self.metin.hide()
             self.index_button.setText('İndeks metnini göster')

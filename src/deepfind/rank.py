@@ -59,8 +59,8 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
 
     ordered=sorted(best.items(),key=lambda item:(-item[1][0],item[1][1][0],item[0]))
     selected=ordered[offset:offset+limit]
-    # Sayfa özeti ve yıllar seçilen kayıtlar için tek sorguda okunur; kayıt
-    # başına iki ayrı sorgu (N+1) limit=200'de 401 sorguya çıkıyordu.
+    # Page summary and years read in one query for the selected records; record
+    # two queries per item (N+1) grew to 401 queries at limit=200.
     seg_idler = [data[5] for _fid, (_sim, data) in selected]
     dosya_idler = [fid for fid, _item in selected]
     raw_haritasi = {}
@@ -111,12 +111,11 @@ def delete_search(con, name: str) -> None:
 
 
 def _csv_hucre(deger):
-    """CSV formül enjeksiyonunu etkisizleştir.
+    """Neutralize CSV formula injection.
 
-    Excel/LibreOffice `=,+,-,@` ile başlayan hücreyi formül olarak çalıştırır;
-    dosya adı ve etiketler kullanıcı/kaynak denetiminde olduğundan başına
-    tek tırnak konur (hücre metin olarak okunur, görünen değer değişmez).
-    """
+Excel/LibreOffice runs a cell starting with `=,+,-,@` as a formula;
+since file names and tags are user/source controlled, a single quote is
+prepended (the cell reads as text, the displayed value never changes)."""
     metin = "" if deger is None else str(deger)
     tehlikeli = ("=", "+", "-", "@", chr(9), chr(13))
     if metin.startswith(tehlikeli):
@@ -125,11 +124,11 @@ def _csv_hucre(deger):
 
 
 def results_csv(con, results) -> str:
-    """Arama sonuçlarını CSV metni yapar (dosya yazımı çağıranda)."""
+    """Make search results into CSV text (file writing stays with the caller)."""
     import csv
     import io
     satirlar = list(results)
-    # Etiketler tek sorguda: satır başına sorgu (N+1) dışa aktarımı yavaşlatıyordu.
+    # Tags in one query: per-row queries (N+1) were slowing down export.
     etiketler = tags_many_map(con, [r.get("file_id") for r in satirlar])
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
@@ -152,11 +151,10 @@ def file_tags(con, file_id) -> list:
 
 
 def tags_many_map(con, file_ids) -> dict:
-    """Toplu etiket okuma: {file_id: [tag, ...]} tek sorguda.
+    """Bulk tag read: {file_id: [tag, ...]} in one query.
 
-    Sonuç listesi/CSV gibi N kayıt dolaşan yollar tek tek sorgu açmasın
-    (N+1); tablo yoksa boş sözlük döner.
-    """
+Paths walking N records like result lists/CSV must not open one query
+per row (N+1); returns an empty dict when the table is missing."""
     idler = [fid for fid in dict.fromkeys(file_ids) if fid is not None]
     if not idler:
         return {}
@@ -188,11 +186,10 @@ def remove_tag(con, file_id, tag: str) -> None:
 
 
 def tags_many(con, file_ids, tag: str, *, auto: int = 0, remove: bool = False) -> int:
-    """Birden çok belgeye etiket ekler/kaldırır: tek işlem, hatada tümü geri alınır.
+    """Add/remove tags on several documents: one transaction, all rolled back on error.
 
-    Yarı uygulanmış toplu işlem bırakmamak için tüm satırlar yazıldıktan sonra
-    tek `commit` yapılır; herhangi bir hata `rollback` ile geri alınır.
-    """
+A single `commit` runs only after every row is written, so that no
+partially applied bulk job is ever left behind; any error rolls back."""
     tag = (tag or "").strip().lower()
     if not tag:
         raise ValueError("etiket gerekli")

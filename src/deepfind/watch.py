@@ -1,10 +1,9 @@
-"""Canlı klasör izleme: Win32 ReadDirectoryChangesW, yeni bağımlılık yok.
+"""Live folder watch: Win32 ReadDirectoryChangesW, no new dependencies.
 
-Tasarım: izleyici thread yalnız olay toplar + debounce yapar; DB'ye yazmaz.
-Değişen dizinler `on_change(dirs)` ile arayüze verilir, tarama mevcut
-`_tara_baslat(roots=..., automatic=True)` yolundan koşar. Güç kesintisinde
-olaylar kaybolur; zamanlanmış tarama güvenlik ağı olarak kalır.
-"""
+Design: the watcher thread only collects events + debounces; it never writes to the DB.
+Changed dirs reach the UI via `on_change(dirs)`, scanning runs through the existing
+`_tara_baslat(roots=..., automatic=True)` path. Events die on power loss;
+scheduled scan stays as the safety net."""
 from __future__ import annotations
 
 import os
@@ -37,7 +36,7 @@ def _altinda(path: str, root: str) -> bool:
 
 
 def coalesce(dirs, roots) -> list:
-    """Değişen dizinleri üst köklere indirge. Çoksa köklerin tamamı istenir."""
+    """Reduce changed dirs to top roots. When many, all roots are wanted."""
     temiz = sorted({os.path.abspath(d) for d in dirs if os.path.isabs(d)}, key=len)
     koks = [os.path.abspath(r) for r in roots]
     secili = []
@@ -52,12 +51,12 @@ def coalesce(dirs, roots) -> list:
 
 
 def hazir(bekleyen: dict, simdi: float) -> list:
-    """Debounce süresi dolan dizinler."""
+    """Dirs whose debounce time expired."""
     return sorted(d for d, son in bekleyen.items() if simdi - son >= DEBOUNCE_SEC)
 
 
 class Izleyici(threading.Thread):
-    """Kök başına izleyici thread. Windows dışında hemen çıkar."""
+    """One watcher thread per root. Exits immediately off Windows."""
 
     def __init__(self, root: str, on_change):
         super().__init__(daemon=True, name=f"izle-{os.path.basename(root) or root}")
@@ -68,7 +67,7 @@ class Izleyici(threading.Thread):
         self._kilit = threading.Lock()
 
     def bildir(self, yollar, simdi: float | None = None):
-        """Olay girişi (gerçek API + test kancası)."""
+        """Event entry (real API + test hook)."""
         if simdi is None:
             simdi = time.monotonic()
         with self._kilit:
@@ -77,7 +76,7 @@ class Izleyici(threading.Thread):
                     self._bekleyen[os.path.dirname(os.path.abspath(yol))] = simdi
 
     def bosalt(self, simdi: float | None = None) -> list:
-        """Süresi dolanları al ve bildir. Donus: bildirilen dizinler."""
+        """Take the expired ones and report. Returns: reported dirs."""
         if simdi is None:
             simdi = time.monotonic()
         with self._kilit:
@@ -97,7 +96,7 @@ class Izleyici(threading.Thread):
         import ctypes
         from ctypes import wintypes
         k32 = ctypes.windll.kernel32
-        # 64-bit'te HANDLE kesilmesin: prototipler şart (yoksa heap bozulur).
+        # Never truncate HANDLE on 64-bit: prototypes are mandatory (otherwise the heap corrupts).
         k32.CreateFileW.restype = wintypes.HANDLE
         k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
                                     wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
@@ -123,7 +122,7 @@ class Izleyici(threading.Thread):
         while not self._dur.is_set():
             sap = k32.CreateFileW(self.root, 0x0001, 7, None, 3, 0x02000000 | 0x40000000, None)
             if sap == wintypes.HANDLE(-1).value:
-                # Kök yok/çevrimdışı (NAS kopuk): bekle, zamanlanmış tarama devrede.
+                # Root missing/offline (NAS detached): wait, scheduled scan is on duty.
                 self._dur.wait(30)
                 continue
             try:
@@ -149,20 +148,20 @@ class Izleyici(threading.Thread):
                 ok = k32.ReadDirectoryChangesW(sap, buf, BUF_SIZE, True, IZLE_FILTRE,
                                                None, ctypes.byref(ov), None)
                 if not ok:
-                    return  # sap bozuldu; dış döngü yeniden açar
+                    return  # deviation broke; the outer loop reopens
                 rc = k32.WaitForSingleObject(olay, 2000)
                 if self._dur.is_set():
                     k32.CancelIoEx(sap, ctypes.byref(ov))
                     k32.GetOverlappedResult(sap, ctypes.byref(ov), ctypes.byref(n), True)
                     return
-                if rc != 0:  # timeout: bekleyen okumayı iptal edip yeniden ver
+                if rc != 0:  # timeout: cancel the pending read and re-issue
                     k32.CancelIoEx(sap, ctypes.byref(ov))
                     k32.GetOverlappedResult(sap, ctypes.byref(ov), ctypes.byref(n), True)
                     k32.ResetEvent(olay)
                     self.bosalt()
                     continue
                 if not k32.GetOverlappedResult(sap, ctypes.byref(ov), ctypes.byref(n), False):
-                    if k32.GetLastError() == 1022:  # ERROR_NOTIFY_ENUM_DIR: taşma
+                    if k32.GetLastError() == 1022:  # ERROR_NOTIFY_ENUM_DIR: overflow
                         with self._kilit:
                             self._bekleyen.clear()
                         self._on_change([self.root])

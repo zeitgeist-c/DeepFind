@@ -267,8 +267,8 @@ class TaramaIsci(QObject):
 
 
 class KokKaldirIsci(QObject):
-    """Kökü ve ona bağlı metin/vektörleri GUI'yi kilitlemeden kaldır."""
-    bitti = Signal(int)   # silinen dosya sayısı
+    """Remove the root and its bound texts/vectors without locking the GUI."""
+    bitti = Signal(int)   # deleted file count
     hata = Signal(str)
 
     def __init__(self, kasa_yolu, sifre, kok):
@@ -336,7 +336,7 @@ class KokKaldirIsci(QObject):
 
 
 class HaricIsci(QObject):
-    """Hariç kuralını ekle ve içerik temizliğini atomik, arka planda uygula."""
+    """Add the exclusion rule and apply content cleanup atomically, in the background."""
     bitti = Signal(str, int)
     hata = Signal(str)
 
@@ -378,15 +378,14 @@ class HaricIsci(QObject):
 
 
 class GuncellemeIsci(QObject):
-    """Arka planda güncelleme denetimi/indirmesi; ağ GUI'yi meşgul etmez.
+    """Background update check/download; the network never keeps the GUI busy.
 
-    Denetim ve indirme ayrı çağrılır; sinyaller ana thread'e kuyruklanır.
-    İptal bir threading.Event'tir: indirme döngüsü her parçada yoklar,
-    yarım dosya silinir.
-    """
-    denetlendi = Signal(object)      # UpdateInfo ya da None (güncel)
+Check and download are invoked separately; signals are queued to the main thread.
+Cancel is a threading.Event: the download loop polls it on every chunk,
+a half file is deleted."""
+    denetlendi = Signal(object)      # UpdateInfo or None (current)
     ilerleme = Signal(int, int)      # inen bayt, toplam bayt
-    hazir = Signal(str, str)         # sürüm, yerleşmeye hazır klasör
+    hazir = Signal(str, str)         # version, folder ready to settle
     hata = Signal(str)
 
     def __init__(self, gorev, current="", info=None, parent=None):
@@ -412,12 +411,12 @@ class GuncellemeIsci(QObject):
                 return
             diagnostics.record("update_error", type(error).__name__)
             self.hata.emit(str(error))
-        except Exception as error:  # noqa: BLE001 - beklenmeyen hata kullanıcıya tasinir
+        except Exception as error:  # noqa: BLE001 - unexpected errors surface to the user
             diagnostics.record("update_error", type(error).__name__)
             self.hata.emit(t("Güncelleme tamamlanamadı."))
 
     def _ilerleme(self, done, total):
-        # Birleştirme: megabayt başına tek sinyal GUI thread'ini serbest tutar.
+        # Coalescing: one signal per megabyte keeps the GUI thread free.
         if done % (1024 * 1024) < 256 * 1024 or done == total:
             self.ilerleme.emit(done, total)
 
@@ -499,23 +498,23 @@ class AnaPencere(QMainWindow):
         theme.apply(QApplication.instance(), self.tema_sec.currentData())
         self._sayfa_kartlari()
         self._tema_yenile()
-        # İlk açılışta kurtarma anahtarı yoksa sessizce üret (kullanıcı şifresini
-        # unutursa indeks kurtarılabilsin). Kullanıcıya Ayarlar'da gösterilir.
+        # When no recovery key exists at first launch, generate one quietly (the user's password
+        # so the index stays recoverable if forgotten). Shown to the user in Settings.
         try:
             self._kurtarma_ilk_kurulum()
         except Exception as error:  # noqa: BLE001
             diagnostics.record("recovery_setup_failed", type(error).__name__)
         QTimer.singleShot(1500, self._kurtarma_bildirim_goster)
-        # Güncelleme artıklarını topla (çalışılan klasör hariç) ve ilk sessiz
-        # denetimi 30 sn sonra yap: program açılışı gecikmesin.
+        # Collect update leftovers (except the working folder) and the first silent
+        # run the check after 30 s: never delay program launch.
         try:
             update_mod.temizle(aktif_klasor=os.path.dirname(os.path.abspath(sys.executable)))
         except Exception:
             pass
         QTimer.singleShot(1200, self._guncelleme_sonuc_bildir)
         QTimer.singleShot(30_000, self._guncelleme_zamanli)
-        # Güncelleme yeni klasöre taşındıysa açılış kaydı eski yolu gösteriyor
-        # olabilir; kayıt varsa çalışan yola tazele (kapalı kayıt açılmaz).
+        # When the update moved to a new folder, the startup entry points at the old path
+        # is possible; when a record exists, refresh to the live path (a closed record never opens).
         if self._guncelleme_yapilabilir():
             try:
                 if sched.autostart_guncelle(identity.APP_IDENTITY, sys.executable, self.kasa_yolu):
@@ -524,7 +523,7 @@ class AnaPencere(QMainWindow):
                 pass
 
     def _guncelleme_sonuc_bildir(self):
-        """Bekçi betiğin bıraktığı güncelleme sonucunu bir kez duyur."""
+        """Announce the update result left by the watcher script, exactly once."""
         sonuc = update_mod.son_sonuc()
         if sonuc == "ok":
             self._toast_goster(t("Güncelleme tamamlandı: DeepFind {__version__}.", __version__=__version__))
@@ -535,7 +534,7 @@ class AnaPencere(QMainWindow):
             self._toast_goster(t("Güncelleme kurulamadı veya yönetici onayı iptal edildi. Ayarlar → Güncellemeler'den yeniden deneyin."))
 
     def _kurtarma_ilk_kurulum(self):
-        """Kurtarma anahtarı yoksa üret; sonucu tek seferlik bildirime hazırla."""
+        """Generate a recovery key when none exists; stage the result for a one-shot notice."""
         if self.con is None or self._locked or not self._sifre or self.sifresiz:
             return
         durum = recovery.status(self.kasa_yolu)
@@ -545,7 +544,7 @@ class AnaPencere(QMainWindow):
         self._kurtarma_yeni_bildirim = anahtar
 
     def _kurtarma_bildirim_goster(self):
-        """Yeni üretilen kurtarma anahtarını engellemeden duyur (bir kez)."""
+        """Announce the freshly generated recovery key without blocking (once)."""
         anahtar = getattr(self, "_kurtarma_yeni_bildirim", "")
         self._kurtarma_yeni_bildirim = ""
         if not anahtar:
@@ -554,13 +553,13 @@ class AnaPencere(QMainWindow):
         self.durum.showMessage(
             t("Şifrenizi unutursanız kurtarma anahtarınızla kasayı açabilirsiniz."), 10000)
 
-    # -- güncelleme: herkese açık yayın deposundan, kullanıcı denetimiyle --
+    # -- updates: from the public release repo, under user control --
     def _guncelleme_yapilabilir(self):
-        """Güncelleme akışı gerçek kurulum ister; kaynak koddan çalışmaz."""
+        """The update flow needs a real install; it never runs from source."""
         return bool(getattr(sys, "frozen", False))
 
     def _guncelleme_zamanli(self):
-        # İlk sessiz denetim açılıştan 30 sn sonra; sonra günde bir.
+        # First silent check 30 s after launch; then once a day.
         if not self._guncelleme_yapilabilir() or self._locked or self.con is None:
             return
         stamp = migrate.get_setting(self.con, "update_son_kontrol", "")
@@ -580,8 +579,8 @@ class AnaPencere(QMainWindow):
             self._guncelleme_durum_yaz(t("Güncelleme denetleniyor…"))
             self.update_denetle_btn.setEnabled(False)
         self._guncelleme_sessiz = sessiz
-        # Ebeveynsiz işçi: QObject ebeveynliyken moveToThread çalışmaz ve ağ
-        # işi GUI thread'inde donar. Yaşam süresi _guncelleme_isci referansıyla.
+        # Parentless worker: moveToThread fails on a QObject with a parent, and the network
+        # would freeze the job on the GUI thread. Lifetime is held by the _guncelleme_isci reference.
         isci = GuncellemeIsci("denetle", current=__version__)
         isci.denetlendi.connect(self._guncelleme_denetlendi)
         isci.hata.connect(self._guncelleme_denetleme_hatasi)
@@ -610,9 +609,9 @@ class AnaPencere(QMainWindow):
         self.update_denetle_btn.setEnabled(True)
         if info is None:
             self._guncelleme_info = None
-            # Tek geri bildirim: Ayarlar sayfasındaki satır içi durum.
-            # Toast aynı metni sayfanın altından perdeleyip çift gösterim
-            # üretiyordu; kaldırılandı (sade UI, bilgi tek yerde).
+            # Single feedback: the inline status on the Settings page.
+            # Toast veils the same text behind the page, showing it twice
+            # it used to produce; removed (plain UI, info in one place).
             self._guncelleme_durum_yaz(t("En güncel sürümü kullanıyorsunuz ({__version__}).", __version__=__version__))
             return
         self._guncelleme_info = info
@@ -633,8 +632,8 @@ class AnaPencere(QMainWindow):
     def _guncelleme_denetleme_hatasi(self, mesaj):
         self.update_denetle_btn.setEnabled(True)
         if self._guncelleme_sessiz:
-            # Sessiz denetim hatası kullanıcıya gösterilmez; bir sonraki
-            # açılışta yeniden denenir.
+            # A silent check failure is never shown to the user; the next
+            # retried at launch.
             self._guncelleme_durum_yaz(t("Sessiz denetim başarısız; sonraki açılışta yeniden denenecek."))
             return
         self._guncelleme_durum_yaz(mesaj)
@@ -673,8 +672,8 @@ class AnaPencere(QMainWindow):
             f"{round(total / (1024 * 1024))} MB")
 
     def _guncelleme_hazir(self, surum, klasor):
-        # Bekçi betik önce bu sürecin çıkmasını bekler, sonra yeni EXE'yi açar.
-        # Betik kurulamazsa uygulama kapanmamalı: hata göster, indirme geri gel.
+        # The watcher script first waits for this process to exit, then opens the new EXE.
+        # If the script cannot be installed the app must not quit: show the error, fall back to download.
         try:
             update_mod.spawn_swap(os.getpid(), Path(klasor), Path(sys.executable),
                                   self.kasa_yolu)
@@ -700,9 +699,9 @@ class AnaPencere(QMainWindow):
     def _guncelleme_iptal(self):
         if self._guncelleme_isci is not None:
             self._guncelleme_isci.iptal_et()
-            # İndirme döngüsü iptali bir sonraki parçada görür; işçi sinyal
-            # göndermeden döner, bu yüzden thread'i burada kapatıyoruz —
-            # yoksa temizlik hiç çalışmaz ve düğmeler kalıcı kilitlenir.
+            # The download loop sees cancellation at the next chunk; the worker signal
+            # returns before sending, so we shut the thread down here —
+            # otherwise cleanup never runs and buttons lock permanently.
             if self._guncelleme_thread is not None:
                 self._guncelleme_thread.quit()
         self.update_iptal_btn.setVisible(False)
@@ -718,7 +717,7 @@ class AnaPencere(QMainWindow):
         self.update_durum.setText(metin)
 
     def _guncelleme_sifirla(self):
-        """Kilit/çıkışta güncelleme satırını başlangıç durumuna döndür."""
+        """Return the update row to its initial state on lock/exit."""
         self._guncelleme_info = None
         if self._guncelleme_yapilabilir():
             self.update_durum.setText(t("Sürüm {__version__} kurulu.", __version__=__version__))
@@ -776,7 +775,7 @@ class AnaPencere(QMainWindow):
         for text, kind, callback in ((t("Kasayı kilitle"), "lock", self.kilitle),
                                      (t("Çıkış"), "exit", self._cikis)):
             if self.sifresiz and kind == "lock":
-                continue  # Şifresiz kasada kilit ekranı yok.
+                continue  # No lock screen on a passwordless vault.
             button = QPushButton(text)
             button.setIcon(theme.symbol_icon(kind))
             button.setIconSize(QSize(17, 17))
@@ -857,7 +856,7 @@ class AnaPencere(QMainWindow):
         self._tema_yenile()
 
     def _toolbar(self):
-        """Başlık şeridi: sayfa başlığı + durum rozeti + ortak işlemler."""
+        """Title strip: page title + status badge + shared actions."""
         self.head_bar = sayfa_basi(t("Ara"), t("Dosya adı, içerik ve klasör bağlamıyla arayın."))
         self.workspace.insertWidget(0, self.head_bar)
         self.tarama_pill = label(t("Kasa açık"), "pill")
@@ -881,7 +880,7 @@ class AnaPencere(QMainWindow):
             self.nav.item(i).setIcon(theme.symbol_icon(kind))
 
     def _tema_yenile(self):
-        """Tema değişince kod içinde üretilen simgeleri tazeler."""
+        """Refresh code-generated icons when the theme changes."""
         self._nav_ikonlari()
         self.rail_toggle.setIcon(theme.symbol_icon("right" if self._collapsed else "left"))
         for button, title in self.rail_actions:
@@ -893,7 +892,7 @@ class AnaPencere(QMainWindow):
             self.csv_btn.setIcon(theme.symbol_icon("backup"))
 
     def _sayfa_basligi(self, index, baslik, aciklama):
-        """Sekme başlığını üst şeride yazar; bölüm içi işlem çubuğu sayfada kalır."""
+        """Write the tab title to the top strip; the section action bar stays on the page."""
         if index == self.yigin.currentIndex():
             self.head_bar.baslik.setText(baslik)
             self.head_bar.aciklama.setText(aciklama)
@@ -904,11 +903,10 @@ class AnaPencere(QMainWindow):
             self._toast.goster(mesaj)
 
     def _sayfa_kartlari(self):
-        """Her sekmenin kök yerleşimini tek yüzeye oturtur (kart içinde kart yok).
+        """Seat every tab's root layout on a single surface (no card inside a card).
 
-        Hem kurulum sırasında hem de `archive_ui.install` sonrasında çağrılır;
-        bu yüzden yığındaki her sayfayı gezer.
-        """
+Called both during setup and after `archive_ui.install`;
+so it walks every page on the stack."""
         for i in range(self.yigin.count()):
             widget = self.yigin.widget(i)
             if widget is None:
@@ -985,7 +983,7 @@ class AnaPencere(QMainWindow):
         self.onizleme.setFocus()
 
     def _onizleme_satir(self):
-        """Önizlenen belgenin arama sonuçlarındaki satırı (yoksa None)."""
+        """The previewed document's row in the search results (None when absent)."""
         yol = (getattr(self, "_preview_result", None) or {}).get("path")
         if not yol:
             return None
@@ -995,7 +993,7 @@ class AnaPencere(QMainWindow):
         return None
 
     def _onizleme_konum(self):
-        """Önizleme penceresindeki belge konumunu ve gezinme düğmelerini tazeler."""
+        """Refresh the document position and navigation buttons in the preview window."""
         satir = self._onizleme_satir()
         if satir is None:
             self.preview_konum.setText("")
@@ -1122,14 +1120,14 @@ class AnaPencere(QMainWindow):
         k = QVBoxLayout(w)
         k.setContentsMargins(22, 18, 22, 20)
         k.setSpacing(14)
-        # Küçük resim yükleyicileri: arama başına tazelenir (bkz. _thumblari_baslat).
+        # Thumbnail loaders: refreshed per search (see _thumblari_baslat).
         self._thumb_loader = None
         self._buyuk_loader = None
         self._dosya_thumb_loader = None
         self._thumb_items = {}
         self._buyuk_path = None
         self._buyuk_pixmap = None
-        self._sorgu_alanlari = set()   # sorgunun kurduğu alanlar (M5)
+        self._sorgu_alanlari = set()   # fields established by the query (M5)
 
         self.search_bar = QWidget()
         ust = QHBoxLayout(self.search_bar)
@@ -1149,7 +1147,7 @@ class AnaPencere(QMainWindow):
         search.clicked.connect(self._ara_simdi)
         ust.addWidget(search)
         k.addWidget(self.search_bar)
-        # Satır içi sorgu doğrulaması (docspell deseni): hatalı alanda imleç gösterilir.
+        # Inline query validation (docspell pattern): cursor shown on the faulty field.
         self.sorgu_uyari = QLabel("")
         self.sorgu_uyari.setProperty("hata", True)
         self.sorgu_uyari.setTextFormat(Qt.PlainText)
@@ -1199,7 +1197,7 @@ class AnaPencere(QMainWindow):
         self.filtre_sayi = sayac("")
         self.filtre_sayi.hide()
         form.addWidget(self.filtre_sayi)
-        # Aktif filtreler başlığın hemen altında: kaldırılabilir çipler + sıfırlama.
+        # Active filters right under the header: removable chips + reset.
         self.filtre_cipleri = QVBoxLayout()
         self.filtre_cipleri.setSpacing(5)
         form.addLayout(self.filtre_cipleri)
@@ -1277,7 +1275,7 @@ class AnaPencere(QMainWindow):
         self.sonuc_sayi.hide()
         bas.addWidget(self.sonuc_sayi)
         bas.addStretch(1)
-        # Görünüm modu (paperless görünüm anahtarı deseni).
+        # View mode (paperless view-switch pattern).
         self.gorunum_btnleri = {}
         for etiket, mod, ikon in (("Kompakt", "kompakt", "compact"),
                                   (t("Satırlar"), "satir", "rows"),
@@ -1293,7 +1291,7 @@ class AnaPencere(QMainWindow):
             dugme.clicked.connect(lambda _c=False, m=mod: self._gorunum_ayarla(m))
             self.gorunum_btnleri[mod] = dugme
             bas.addWidget(dugme)
-        # Gösterilecek alanlar (paperless "Show" menüsü deseni).
+        # Visible fields (paperless "Show" menu pattern).
         self.goster_btn = QPushButton(t("Göster"))
         self.goster_btn.setProperty("kucuk", True)
         self.goster_btn.setToolTip(t("Satırlarda hangi bilgiler görünsün"))
@@ -1306,7 +1304,7 @@ class AnaPencere(QMainWindow):
         self.csv_btn.clicked.connect(self._sonuc_csv)
         bas.addWidget(self.csv_btn)
         ok.addLayout(bas)
-        # Toplu işlem çubuğu: seçim denetimleri + toplu etiket/CSV.
+        # Bulk action bar: selection controls + bulk tags/CSV.
         self.toplu_bar = QWidget()
         toplu = QHBoxLayout(self.toplu_bar)
         toplu.setContentsMargins(0, 0, 0, 0)
@@ -1366,10 +1364,10 @@ class AnaPencere(QMainWindow):
             gorunum.selectionModel().selectionChanged.connect(
                 lambda *_a: self._secim_guncelle_bulk())
         self.sonuc_panel = QStackedWidget()
-        self.sonuc_panel.addWidget(self.sonuc_liste)   # 0: satır/kompakt
-        self.sonuc_panel.addWidget(self.sonuc_izgara)  # 1: ızgara
+        self.sonuc_panel.addWidget(self.sonuc_liste)   # 0: row/compact
+        self.sonuc_panel.addWidget(self.sonuc_izgara)  # 1: grid
         self.search_empty = EmptyState(t("Aradığınız belgeye ulaşın"), t("Dosya adı veya içerikte geçen birkaç kelime yazın.\nSonuçlar burada listelenir."))
-        self.sonuc_panel.addWidget(self.search_empty)  # 2: boş durum
+        self.sonuc_panel.addWidget(self.search_empty)  # 2: empty state
         self._bos_index = 2
         self.sonuc_panel.setCurrentIndex(self._bos_index)
         ok.addWidget(self.sonuc_panel, 1)
@@ -1453,20 +1451,20 @@ class AnaPencere(QMainWindow):
         self.secim_kopyala.setEnabled(True)
         self._buyuk_gorsel_yukle(secili.get("path"))
 
-    # -- çoklu seçim ve toplu işlem --
+    # -- multi-select and bulk actions --
 
     def _secim_satirlari(self):
-        """Etkin görünümde seçili satır numaraları."""
+        """Selected row numbers in the active view."""
         secim = self._aktif_gosterim().selectionModel()
         return {i.row() for i in secim.selectedIndexes() if i.isValid()}
 
     def _secili_idler(self):
-        """Seçili sonuçların file_id'leri (satıra göre sıralı)."""
+        """The selected results' file_ids (ordered by row)."""
         return [self.sonuclar[s]["file_id"] for s in sorted(self._secim_satirlari())
                 if 0 <= s < len(self.sonuclar)]
 
     def _secim_ayarla(self, adet):
-        """Seçim denetimi: 0 temizler, pozitif ilk n sonucu, -1 tümünü seçer."""
+        """Selection control: 0 clears, positive selects the first n results, -1 selects all."""
         gorunum = self._aktif_gosterim()
         model = self.sonuc_model
         secim = gorunum.selectionModel()
@@ -1478,7 +1476,7 @@ class AnaPencere(QMainWindow):
         self._secim_guncelle_bulk()
 
     def _secim_guncelle_bulk(self):
-        """Toplu işlem çubuğunu ve tek belge panelini seçime göre tazeler."""
+        """Refresh the bulk action bar and the single-document panel from the selection."""
         adet = len(self._secim_satirlari())
         self.secim_sayac.setText(t("{adet} seçili", adet=adet) if adet else "")
         self.secim_sayac.setVisible(bool(adet))
@@ -1489,7 +1487,7 @@ class AnaPencere(QMainWindow):
             self._secim_guncelle()
 
     def _toplu_etiket(self, kaldir=False):
-        """Seçili belgelere tek işlemde etiket ekler/kaldırır (hatada geri alınır)."""
+        """Add/remove tags on the selected documents in one transaction (rolled back on error)."""
         from PySide6.QtWidgets import QInputDialog
         idler = self._secili_idler()
         if not idler:
@@ -1516,7 +1514,7 @@ class AnaPencere(QMainWindow):
         archive_ui.job(self, "toplu_etiket", islem, bitti, writable=True, failed=hata)
 
     def _toplu_csv(self):
-        """Yalnız seçili sonuçları CSV olarak indirir."""
+        """Download only the selected results as CSV."""
         secilenler = [self.sonuclar[s] for s in sorted(self._secim_satirlari())
                       if 0 <= s < len(self.sonuclar)]
         if not secilenler:
@@ -1534,10 +1532,10 @@ class AnaPencere(QMainWindow):
             return
         QMessageBox.information(self, "CSV", f"{len(secilenler)} seçili sonuç kaydedildi.")
 
-    # -- küçük resimler --
+    # -- thumbnails --
 
     def _thumblari_durdur(self):
-        """Koşan küçük resim yükleyicilerini durdur (arama/kilit geçişleri)."""
+        """Stop the running thumbnail loaders (search/lock transitions)."""
         for ad in ("_thumb_loader", "_buyuk_loader", "_dosya_thumb_loader"):
             yukleyici = getattr(self, ad, None)
             if yukleyici is not None:
@@ -1545,13 +1543,13 @@ class AnaPencere(QMainWindow):
                 yukleyici.wait(3000)
                 setattr(self, ad, None)
 
-    # -- filtre çipleri --
+    # -- filter chips --
 
     ALANLAR = ("yol", "tur", "ozet", "etiket")
     GORUNUMLER = ("kompakt", "satir", "izgara")
 
     def _filtre_degerleri(self):
-        """(etiket, değer, temizleme işlevi) üçlüleri — yalnız dolu olanlar çip olur."""
+        """(tag, value, clear-function) triples — only non-empty ones become chips."""
         return (
             (t("Yıl"), self.yil_filtre.text().strip(), self.yil_filtre.clear),
             (t("Tür"), "" if self.tur_filtre.currentText() == t("tümü") else self.tur_filtre.currentText(),
@@ -1561,13 +1559,13 @@ class AnaPencere(QMainWindow):
         )
 
     def _filtre_cipleri(self):
-        """Aktif filtreleri kaldırılabilir çip olarak gösterir; sayaç ve sıfırlama."""
+        """Show the active filters as removable chips; counter and reset."""
         while self.filtre_cipleri.count():
             oge = self.filtre_cipleri.takeAt(0)
             widget = oge.widget()
             if widget is not None:
-                # deleteLater tek başına yetmez: widget layout'tan çıksa da
-                # görünür kalır; önce gizlenip ebeveyninden ayrılır.
+                # deleteLater alone is not enough: even after the widget leaves the layout,
+                # stays visible; first hidden, then detached from its parent.
                 widget.hide()
                 widget.setParent(None)
                 widget.deleteLater()
@@ -1585,7 +1583,7 @@ class AnaPencere(QMainWindow):
         self.filtre_sifirla.setVisible(bool(aktif))
 
     def _filtre_temizle(self):
-        """Tüm arama filtrelerini temizler ve aramayı yeniler."""
+        """Clear all search filters and refresh the search."""
         self.yil_filtre.clear()
         self.tur_filtre.setCurrentIndex(max(0, self.tur_filtre.findText(t("tümü"))))
         self.sirket_filtre.clear()
@@ -1593,17 +1591,17 @@ class AnaPencere(QMainWindow):
         self._sorgu_alanlari = set()
         self._ara_simdi()
 
-    # -- görünüm modları ve gösterilecek alanlar --
+    # -- view modes and visible fields --
 
     def _alanlar(self):
-        """Satırlarda gösterilecek alanlar (ayar yoksa tümü; boşsa yalnız ad)."""
+        """Fields shown in rows (all when unset; name only when empty)."""
         varsayilan = ",".join(self.ALANLAR)
         ham = (migrate.get_setting(self.con, "goster_alanlari", varsayilan)
                if self.con is not None else varsayilan)
         return {a for a in ham.split(",") if a}
 
     def _goster_menu_tazele(self):
-        """Gösterilecek alanlar menüsünü mevcut seçimle kurar."""
+        """Build the visible-fields menu from the current selection."""
         self.goster_menu.clear()
         alanlar = self._alanlar()
         for etiket, anahtar in (("Yol", "yol"), (t("Tür ve etiket"), "tur"),
@@ -1614,7 +1612,7 @@ class AnaPencere(QMainWindow):
             eylem.toggled.connect(lambda acik, a=anahtar: self._alan_degistir(a, acik))
 
     def _alan_degistir(self, anahtar, acik):
-        """Bir alanı aç/kapat; ayarı sakla ve satırları yeniden yaz."""
+        """Toggle one field; persist the setting and rewrite the rows."""
         alanlar = self._alanlar()
         if acik:
             alanlar.add(anahtar)
@@ -1628,7 +1626,7 @@ class AnaPencere(QMainWindow):
         self._thumblari_baslat()
 
     def _gorunum_yukle(self):
-        """Kayıtlı görünüm modunu ve alan seçimini uygular (kasa açılışında)."""
+        """Apply the saved view mode and field selection (at vault open)."""
         mod = (migrate.get_setting(self.con, "gorunum_modu", "satir")
                if self.con is not None else "satir")
         if mod not in self.GORUNUMLER:
@@ -1646,14 +1644,14 @@ class AnaPencere(QMainWindow):
         self._gorunum_uygula()
 
     def _gorunum_uygula(self):
-        """Görünüm moduna göre delege ve panel seçimi."""
+        """Delegate and panel selection by view mode."""
         mod = getattr(self, "_gorunum", "satir")
         self.sonuc_liste.setItemDelegate(
             CardDelegate(self.sonuc_liste, thumb=True, compact=(mod == "kompakt")))
         for anahtar, dugme in self.gorunum_btnleri.items():
             dugme.setChecked(anahtar == mod)
         self.goster_btn.setEnabled(mod != "izgara")
-        # Etkin olmayan yüzeyin seçimi temizlenir (iki görünüm ayrı seçim tutar).
+        # The inactive surface's selection is cleared (each view keeps its own selection).
         for gorunum in (self.sonuc_liste, self.sonuc_izgara):
             if gorunum is not self._aktif_gosterim():
                 gorunum.selectionModel().clearSelection()
@@ -1663,13 +1661,13 @@ class AnaPencere(QMainWindow):
         self.sonuc_izgara.doItemsLayout()
 
     def _sonuc_gorunumu(self, dolu):
-        """Sonuç yüzeyi: dolu değilse boş durum, doluysa seçili görünüm."""
+        """Result surface: empty state when bare, selected view when filled."""
         if not dolu:
             self.sonuc_panel.setCurrentIndex(self._bos_index)
             return
         self.sonuc_panel.setCurrentIndex(1 if getattr(self, "_gorunum", "satir") == "izgara" else 0)
 
-    # -- satır içeriği --
+    # -- row content --
 
     @staticmethod
     def _durum_notu(sonuc):
@@ -1680,7 +1678,7 @@ class AnaPencere(QMainWindow):
         return ""
 
     def _satir_metni(self, sonuc, etiketler, ozet):
-        """Seçili alanlara göre satır metni (ad her zaman ilk satırdır)."""
+        """Row text from the selected fields (name is always the first line)."""
         alanlar = self._alanlar()
         tur = sonuc.get("ext", "").lstrip(".").upper()
         durum = self._durum_notu(sonuc)
@@ -1698,11 +1696,11 @@ class AnaPencere(QMainWindow):
         return "\n".join(satirlar)
 
     def _satirlari_yaz(self):
-        """`sonuclar` listesini gösterilecek alanlara göre modele yeniden yazar."""
+        """Rewrite the `sonuclar` list into the model from the visible fields."""
         from PySide6.QtGui import QTextDocument
         self.sonuc_model.clear()
-        # Etiketler tek sorguda toplanır; satır başına sorgu (N+1) uzun
-        # sonuç listelerinde arayüz iş parçacığını blokluyordu.
+        # Tags are collected in one query; per-row queries (N+1) on long
+        # was blocking the UI thread in result lists.
         try:
             etiket_haritasi = rank.tags_many_map(
                 self.con, [s.get("file_id") for s in self.sonuclar])
@@ -1719,18 +1717,17 @@ class AnaPencere(QMainWindow):
             self.sonuc_model.appendRow(item)
     @staticmethod
     def _gorsel_tur(ext):
-        """Küçük resmi üretilebilen uzantılar (PDF + görseller)."""
+        """Extensions that can produce a thumbnail (PDF + images)."""
         ext = (ext or "").lower()
         return ext == ".pdf" or ext in (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp")
 
     def _list_gorselleri(self, model, esleme, slot):
-        """Bir QStandardItemModel için küçük resim yükleyicisi kurar.
+        """Set up a thumbnail loader for a QStandardItemModel.
 
-        `esleme`: {kaynak yol: satır}. Yükleyici `slot` adlı öznitelikte
-        tutulur; yenisi kurulmadan önce var olan durdurulur. Sinyaller bağlı
-        metoda bağlanır: iş parçacıkları arası kuyruklu bağlantı sayesinde
-        QPixmap yalnızca GUI iş parçacığında kurulur.
-        """
+`esleme`: {source path: row}. The loader lives on the `slot` attribute;
+any existing one is stopped before a new one is installed. Signals bind to
+the bound method: thanks to queued cross-thread connections,
+QPixmap is only ever built on the GUI thread."""
         onceki = getattr(self, slot, None)
         if onceki is not None:
             onceki.durdur()
@@ -1749,7 +1746,7 @@ class AnaPencere(QMainWindow):
         yukleyici.start()
 
     def _thumb_sinyali(self, yol, tur, dosya):
-        """Küçük resim hazır: satırı günceller (GUI iş parçacığında)."""
+        """Thumbnail ready: update the row (on the GUI thread)."""
         if self.con is None or self._locked:
             return
         yukleyici = self.sender()
@@ -1764,7 +1761,7 @@ class AnaPencere(QMainWindow):
             return
         pixmap = QPixmap(dosya) if dosya else QPixmap()
         if pixmap.isNull():
-            return  # üretilemedi: satır simge yer tutucusunda kalır
+            return  # could not be produced: the row stays on its icon placeholder
         model.setData(model.index(satir, 0), pixmap, Qt.DecorationRole)
 
     def _gorsel_yukleyici_bitti(self):
@@ -1776,12 +1773,12 @@ class AnaPencere(QMainWindow):
         thumbs.buda()
 
     def _thumblari_baslat(self):
-        """Görüntülenebilir ilk sonuçlar için küçük resimleri sırayla üret."""
+        """Produce thumbnails in order for the first viewable results."""
         self._thumb_items = {sonuc["path"]: satir for satir, sonuc in enumerate(self.sonuclar[:40])}
         self._list_gorselleri(self.sonuc_model, self._thumb_items, "_thumb_loader")
 
     def _buyuk_gorsel_yukle(self, path):
-        """Seçili evrak panelindeki büyük önizlemeyi hazırla (aynı dosya ise bekle)."""
+        """Prepare the large preview in the selected-document panel (wait when same file)."""
         if path == getattr(self, "_buyuk_path", None):
             return
         onceki = getattr(self, "_buyuk_loader", None)
@@ -1813,24 +1810,23 @@ class AnaPencere(QMainWindow):
         self._buyuk_pixmap = pixmap
         self.secim_gorsel.gorsel_ata(pixmap)
 
-    # -- sorgu sözdizimi --
+    # -- query syntax --
 
     def _tur_secenekleri(self):
         return [self.tur_filtre.itemText(i) for i in range(self.tur_filtre.count())]
 
     def _sorgu_uyari_goster(self, ham, cozum):
-        """Hatalı sorguda imleçli uyarı gösterir; arama çalıştırılmaz."""
+        """Show a cursor-pointed warning on a faulty query; the search never runs."""
         satir = sorgu.imlec_satiri(ham, cozum.imlec)
         self.sorgu_uyari.setText(t("Sorgu hatası: {cozum.hata}\n{ham}\n{satir}", cozum=cozum, ham=ham, satir=satir))
         self.sorgu_uyari.show()
 
     def _sorgu_alanlarini_uygula(self, alanlar):
-        """Sorgudaki alanları filtre denetimlerine yazar (sinyaller kapatılarak).
+        """Write the query's fields into the filter controls (signals muted).
 
-        Kural: sorgu **yalnızca kendi kurduğu** alanı temizler. Kullanıcının elle
-        girdiği filtre, sorgu metni değişti diye silinmez; sorgudan çıkarılan
-        alan (`yil:2024` silindiyse) ise geri alınır.
-        """
+Rule: the query only clears a field **it set itself**. A manually
+entered filter is never deleted just because the query text changed; a
+field dropped from the query (`yil:2024` deleted) is taken back."""
         onceki = getattr(self, "_sorgu_alanlari", set())
         for anahtar, denetim in (("yil", self.yil_filtre),
                                  ("klasor", self.sirket_filtre),
@@ -1872,9 +1868,9 @@ class AnaPencere(QMainWindow):
             return
         self.sorgu_uyari.hide()
         self._sorgu_alanlarini_uygula(cozum.alanlar)
-        self._filtre_cipleri()  # filtre durumu arama sonucundan bağımsız görünür
+        self._filtre_cipleri()  # filter state renders independently of the search result
         q = cozum.serbest
-        self._sorgu_serbest = q  # sonuç eşleştirmesi ham kutu metniyle değil, çözülen metinle
+        self._sorgu_serbest = q  # result matching against resolved text, not raw box text
         self._pending_search = None
         if self._search_thread is not None:
             self._search_thread.stop.set()
@@ -1978,7 +1974,7 @@ class AnaPencere(QMainWindow):
         self._thumblari_baslat()
 
     def _aktif_gosterim(self):
-        """Etkin sonuç görünümü (ızgara ya da satır listesi)."""
+        """The active result view (grid or row list)."""
         return (self.sonuc_izgara if getattr(self, "_gorunum", "satir") == "izgara"
                 else self.sonuc_liste)
 
@@ -2010,7 +2006,7 @@ class AnaPencere(QMainWindow):
         self.etiket_yaz.clear()
         self._ara_simdi()
 
-    # -- etiket kuralları --
+    # -- tag rules --
     def _kural_tazele(self):
         self.kural_liste.clear()
         if self.con is None:
@@ -2300,7 +2296,7 @@ class AnaPencere(QMainWindow):
                 split.setOrientation(orientation)
                 split.setSizes([220, 440])
         except RuntimeError:
-            # Pencere kapanırken zamanlanmış çağrı: nesne silinmiş olabilir.
+            # Scheduled call while the window closes: the object may be gone.
             pass
 
     def _kok_ekle(self):
@@ -2328,7 +2324,7 @@ class AnaPencere(QMainWindow):
         if QMessageBox.question(self, t("Kaynağı kaldır"),
                                 t("Bu klasörün yerel arama kayıtları kaldırılacak. Kaynak belgeler korunur. Devam edilsin mi?")) != QMessageBox.Yes:
             return
-        # GUI'yi kilitlemeden arka planda boşaltır; büyük arşivlerde dakikalar alabilir.
+        # Empties in the background without locking the GUI; can take minutes on large archives.
         self._debounce.stop()
         self._pending_search = None
         self._kaldir_yol = yol
@@ -2660,7 +2656,7 @@ class AnaPencere(QMainWindow):
         if not kokler:
             QMessageBox.information(self, t("Tarama"), t("Taranacak en az bir klasör seçin."))
             return
-        # Aynı kapsamın iç içe kökleri bir kez taranır.
+        # Nested roots of the same scope are scanned once.
         unique = []
         for path in sorted(set(map(os.path.abspath, kokler)), key=len):
             if not any(self._under(path, parent) for parent in unique):
@@ -2907,7 +2903,7 @@ class AnaPencere(QMainWindow):
                 diagnostics.record("watch_start_failed")
 
     def _izleme_olay(self, dirs):
-        # Izleyici thread'inden gelir: GUI'ye dokunulmaz, yalnız set güncellenir.
+        # Arrives from the watcher thread: never touch the GUI, only update the set.
         with self._izleme_kilit:
             self._izleme_bekleyen.update(d for d in dirs if os.path.isdir(d))
         diagnostics.record("watch_event")
@@ -2938,7 +2934,7 @@ class AnaPencere(QMainWindow):
                 f"İzleme: {len(bekleyen)} klasörde değişiklik → tarama başlıyor.")
             self._tara_baslat(roots=bekleyen, automatic=True)
 
-    # -- geçmiş: liste + seçili arama ayrıntısı --
+    # -- history: list + selected search detail --
     def _ekran_gecmis(self):
         w = QWidget()
         k = QVBoxLayout(w)
@@ -3081,9 +3077,9 @@ class AnaPencere(QMainWindow):
             hist_mod.clear(self.con)
             self._gecmis_tazele()
 
-    # -- kurtarma anahtarı: Ayarlar icinde bolum --
+    # -- recovery key: section inside Settings --
     def _kurtarma_bolumu(self, k):
-        """Kurtarma anahtarı durumu, oluşturma, yenileme, kaldırma ve belge."""
+        """Recovery key state, creation, refresh, removal and docs."""
         k.addWidget(bolum(t("Kurtarma anahtarı")))
         self.kurtarma_durum = label("", "ikincil")
         self.kurtarma_durum.setWordWrap(True)
@@ -3226,7 +3222,7 @@ class AnaPencere(QMainWindow):
         if secim.exec() == QDialog.Accepted:
             belge.print_(yazici)
         else:
-            # Yazdırma iptal edildiyse dosyaya kaydetmeyi öner.
+            # When printing is cancelled, offer saving to file.
             var = QFileDialog.getSaveFileName(
                 self, "Kurtarma belgesini kaydet",
                 os.path.join(os.path.dirname(self.kasa_yolu), "deepfind-kurtarma-belgesi.txt"),
@@ -3256,7 +3252,7 @@ class AnaPencere(QMainWindow):
 
     # -- yedekler: Ayarlar icinde bolum; ayri sekme degil --
     def _yedek_bolumu(self, k):
-        """Yedek listesi ve işlemleri; Ayarlar sayfasının sonuna eklenir."""
+        """Backup list and actions; appended at the end of the Settings page."""
         bas = QHBoxLayout()
         bas.setSpacing(9)
         bas.addWidget(bolum(t("Yedekler")))
@@ -3292,7 +3288,7 @@ class AnaPencere(QMainWindow):
         self._yedek_tazele()
 
     def _guncelleme_bolumu(self, k):
-        """Güncellemeler: durum satırı + denetle/indir/iptal ve ilerleme."""
+        """Updates: status line + check/download/cancel and progress."""
         bas = QHBoxLayout()
         bas.setSpacing(9)
         bas.addWidget(bolum(t("Güncellemeler")))
@@ -3339,7 +3335,7 @@ class AnaPencere(QMainWindow):
         archive_ui.job(self,'backup_create',lambda con:backup_mod.create_backup(con,path,password,directory,manual=True,forbid_under=roots),ready,writable=True)
 
     def _yedek_acilir(self, yol, sifre):
-        """Yedek verilen şifreyle açılıp doğrulanabiliyor mu (sessiz deneme)."""
+        """Can the backup open and verify with the given password (silent probe)."""
         try:
             return backup_mod.verify_backup(yol, sifre)["ok"]
         except Exception:
@@ -3353,7 +3349,7 @@ class AnaPencere(QMainWindow):
             return
         yol = self.yedek_model.item(idx.row()).data()
         if self.sifresiz:
-            # Şifresiz kasada yedekler de iç anahtarla korunur; şifre sorulmaz.
+            # On a passwordless vault backups are protected by the inner key too; no password asked.
             backup_password = vault.SIFRESIZ_ANAHTAR
         else:
             password_dialog = ParolaDialog(self, verify=lambda pw: None)
@@ -3362,7 +3358,7 @@ class AnaPencere(QMainWindow):
                 return
             backup_password = password_dialog.old.text()
             password_dialog.old.clear()
-            # Şifresiz dönemde alınmış yedekler iç anahtarla açılır (kullanıcı bilmez).
+            # Backups taken in the passwordless era open with the inner key (user never knows).
             if not self._yedek_acilir(yol, backup_password or self._sifre) \
                     and self._yedek_acilir(yol, vault.SIFRESIZ_ANAHTAR):
                 backup_password = vault.SIFRESIZ_ANAHTAR
@@ -3607,14 +3603,14 @@ class AnaPencere(QMainWindow):
         return True
 
     def _sifre_islemi(self):
-        """Şifresiz kasada şifre ekler; şifreli kasada parolayı değiştirir."""
+        """Add a password on a passwordless vault; change the passphrase on an encrypted one."""
         if self.sifresiz:
             self._sifre_ekle()
         else:
             self._parola_degistir()
 
     def _sifre_ekle(self):
-        """Şifresiz kasaya şifre ekle; kurtarma anahtarı o an hazırlanır."""
+        """Add a password to a passwordless vault; the recovery key is prepared on the spot."""
         if not self._exclusive_ready():
             return
         d = ParolaDialog(self, mode="ekle")
@@ -3750,7 +3746,7 @@ class AnaPencere(QMainWindow):
         for ad, fn in ((t("Aç"), self._bring_forward), (t("Şimdi tara"), self._tara_baslat),
                        (t("Kasayı kilitle"), self.kilitle), (t("Çıkış"), self._cikis)):
             if self.sifresiz and ad == t("Kasayı kilitle"):
-                continue  # Şifresiz kasada kilit yok.
+                continue  # No lock on a passwordless vault.
             a = QAction(ad, self)
             a.triggered.connect(fn)
             m.addAction(a)
@@ -3919,7 +3915,7 @@ class AnaPencere(QMainWindow):
         self.scope_sources.clear()
         self.retry_scan.hide()
         self.haric_kutu.clear()
-        self._filtre_cipleri()  # M3: aktif filtre çipleri ve sayacı temizlenir
+        self._filtre_cipleri()  # M3: active filter chips and the counter are cleared
         self.oneri.clear()
         self.sonuc_sayi.clear()
         self.secim_ad.setText(t("Henüz seçim yok"))
@@ -3949,7 +3945,7 @@ class AnaPencere(QMainWindow):
         self._kilit_hazir()
 
     def _kilit_ekrani(self):
-        """Kilit ekranını kur: şifre veya (istenirse) kurtarma anahtarıyla açma."""
+        """Set up the lock screen: unlock with password or (optionally) recovery key."""
         self._unlock_dialog = ParolaDialog(self, verify=self._unlock, allow_remember=False,
                                            kasa_yolu=self.kasa_yolu)
         self._unlock_dialog.accepted.connect(self._unlocked)
@@ -3957,7 +3953,7 @@ class AnaPencere(QMainWindow):
         self._kurtarma_kopru()
 
     def _kurtarma_kopru(self):
-        """'Şifremi unuttum' basılırsa kurtarma ekranına geç (kilit diyaloğunu yeniden kur)."""
+        """When 'I forgot my password' is pressed, jump to the recovery screen (rebuild the lock dialog)."""
         pencere = self._unlock_dialog
         def gecis():
             if pencere.result() != MOD_KURTARMA:
@@ -3980,13 +3976,13 @@ class AnaPencere(QMainWindow):
         pencere.finished.connect(gecis)
 
     def _kurtarma_bitti(self, kod):
-        """Kurtarma penceresi kapandı: açıldıysa devam, olmadıysa kilit ekranına dön."""
+        """Recovery window closed: continue when unlocked, back to the lock screen otherwise."""
         if self._locked and self.con is None:
             self._kilit_ekrani()
             self._kilit_hazir()
 
     def _kurtarma_yap(self, paket):
-        """('kurtarma', anahtar, yeni_sifre) -> kasayı kurtar ve bağlantıyı aç."""
+        """('kurtarma', key, new_password) -> recover the vault and open the connection."""
         _etiket, anahtar, yeni_sifre = paket
         sonuc = recovery.recover(self.kasa_yolu, anahtar, yeni_sifre,
                                  backup_dir=self._yedek_dizin())
@@ -3998,7 +3994,7 @@ class AnaPencere(QMainWindow):
             self._sifre = ""
             raise RuntimeError(t("Kurtarma sonrası kasa açılamadı: {error}", error=error)) from error
         self._kurtarma_sonucu = sonuc
-        # Kurtarma penceresi kapanınca _unlocked çalışsın
+        # run _unlocked once the recovery window closes
         QTimer.singleShot(0, self._unlocked)
 
     def _kilit_hazir(self):
@@ -4052,7 +4048,7 @@ class AnaPencere(QMainWindow):
         self._exiting = True
         self._izleme_durdur()
         if self._guncelleme_isci is not None:
-            # Bekleyen güncelleme işi kapanışı geciktirmesin.
+            # A pending update job must not delay shutdown.
             self._guncelleme_isci.iptal_et()
             if self._guncelleme_thread is not None:
                 self._guncelleme_thread.quit()
@@ -4096,9 +4092,9 @@ class AnaPencere(QMainWindow):
         QApplication.instance().quit()
 
     def closeEvent(self, ev):
-        # Küçük resim yükleyicileri hafiftir: kapanışı geciktirmeden burada
-        # bitirilirler. Koşan bir QThread nesnesi pencereyle birlikte yok
-        # edilirse Qt süreci düşürür (0xC0000409).
+        # Thumbnail loaders are light: here without delaying shutdown
+        # they are finished. A running QThread object must not die with the window;
+        # doing so crashes the Qt process (0xC0000409).
         self._thumblari_durdur()
         try:
             tepsiye = self.con is not None and \
@@ -4112,8 +4108,8 @@ class AnaPencere(QMainWindow):
             self.scan_dialog.hide()
             self.hide()
             return
-        # Önizleme nesnesi yok edilmeden önce kendi yükleyicileri (sayfa rayı)
-        # durdurulur; koşan QThread pencereyle birlikte yok edilirse Qt düşer.
+        # its own loaders (page rail) before the preview object is destroyed
+        # it is stopped; Qt crashes if a running QThread dies with the window.
         self.onizleme.temizle()
         if (self.isci_thread is not None or self._search_thread is not None or self.onizleme.busy()
                 or self._jobs or self._kaldir_thread is not None or self._haric_thread is not None
@@ -4209,8 +4205,8 @@ def main(kasa_yolu=None, sifre=None):
     ap.add_argument("--tray", action="store_true")
     args, _bilinmeyen = ap.parse_known_args()
     if "--restarted" in _bilinmeyen:
-        # Güncelleme bekçi betiğinden gelen normal açılış: tek seferlik
-        # komut yok, taze sürüm sadece açılır.
+        # Normal launch coming from the update watcher script: one-shot
+        # no command: a fresh version just opens.
         diagnostics.install()
         diagnostics.record("update_restarted")
     app = QApplication.instance() or QApplication([])
@@ -4256,7 +4252,7 @@ def main(kasa_yolu=None, sifre=None):
         sifre = setup.s1.text()
         os.makedirs(os.path.dirname(os.path.abspath(args.kasa)), exist_ok=True)
         if not sifre:
-            # Şifre boş bırakıldı: kasa iç anahtarla açılır, açılışta şifre sorulmaz.
+            # Password left blank: the vault opens with the inner key, no password asked at launch.
             sifre = vault.SIFRESIZ_ANAHTAR
             diagnostics.record("setup_passwordless")
     if setup is not None:
@@ -4319,7 +4315,7 @@ def main(kasa_yolu=None, sifre=None):
         exit_button.clicked.connect(app.quit)
         content.addWidget(exit_button)
         progress.show()
-        # Başlangıç nesneleri, tüm sinyaller tamamlanana kadar uygulamaya ait.
+        # Startup objects belong to the app until all signals are delivered.
         app._startup = {"dialog": progress, "lock": instance_lock}
 
         def failed(message):
@@ -4364,7 +4360,7 @@ def main(kasa_yolu=None, sifre=None):
             thread.start()
 
         retry.clicked.connect(prepare)
-        progress.rejected.connect(lambda: None)  # Hazırlık sırasında Esc süreci kapatmaz.
+        progress.rejected.connect(lambda: None)  # Esc does not kill the process during preparation.
         QTimer.singleShot(0, prepare)
         try:
             return app.exec()
@@ -4383,7 +4379,7 @@ def main(kasa_yolu=None, sifre=None):
                 remember.forget(args.kasa)
                 sifre = None
     if sifre is None and vault.sifresiz_mi(args.kasa):
-        # Şifresiz kasa: iç anahtar açıyorsa kullanıcıya sorulmadan açılır.
+        # Passwordless vault: opens without asking when the inner key works.
         sifre = vault.SIFRESIZ_ANAHTAR
         diagnostics.record("passwordless_open")
     while sifre is None:
@@ -4395,7 +4391,7 @@ def main(kasa_yolu=None, sifre=None):
         app._login = login
         sonuc = login.exec()
         if sonuc == MOD_KURTARMA:
-            # "Şifremi unuttum": kurtarma anahtarıyla aç, yeni şifre belirle.
+            # "I forgot my password": unlock with the recovery key, set a new password.
             if not os.path.isfile(recovery.container_path(args.kasa)):
                 QMessageBox.information(
                     None, "Kurtarma",
@@ -4412,7 +4408,7 @@ def main(kasa_yolu=None, sifre=None):
             kurtarma = ParolaDialog(mode="kurtarma", verify=kurtar, kasa_yolu=args.kasa)
             app._login = kurtarma
             if kurtarma.exec() != QDialog.Accepted:
-                # "Şifremi biliyorum" veya kapatma: giriş ekranına dön.
+                # "I know my password" or close: back to the login screen.
                 diagnostics.record("login_recovery_cancelled")
                 continue
             remember.forget(args.kasa)

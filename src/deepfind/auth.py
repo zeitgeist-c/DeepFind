@@ -1,19 +1,18 @@
-"""Kasa giriş, parola yenileme ve kurtarma anahtarı ekranları."""
+"""Vault login, passphrase refresh and recovery-key screens."""
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                                QPushButton, QCheckBox, QFrame, QHBoxLayout)
 from .ui import brand as draw_brand, label
 from .theme import t
 
-# Dialog kapanış kodu: kullanıcı "şifremi unuttum" istedi.
+# Dialog close code: the user asked "I forgot my password".
 MOD_KURTARMA = 2
 
 
 class ParolaDialog(QDialog):
-    """Kasa girişi, şifre değiştirme ve kurtarma anahtarıyla açma.
+    """Vault login, password change and unlock-with-recovery-key.
 
-    `mode`: "giris" (varsayılan) | "degistir" | "kurtarma".
-    Geriye dönük uyumluluk: `change=True` -> mode="degistir".
-    """
+`mode`: "giris" (default) | "degistir" | "kurtarma".
+Backward compatibility: `change=True` -> mode="degistir"."""
 
     def __init__(self, parent=None, *, change=False, verify=None, allow_remember=True,
                  mode=None, kasa_yolu=None):
@@ -137,7 +136,7 @@ class ParolaDialog(QDialog):
             self.submit.setText(t("Kurtarma anahtarıyla aç"))
             return
         if self.mode == "ekle":
-            # Şifresiz kasaya şifre ekleme: mevcut şifre alanı yok.
+            # Adding a password to a passwordless vault: no current-password field.
             for field, caption in ((self.new, t("Yeni şifre • en az 12 karakter")),
                                    (self.confirm, t("Yeni şifreyi tekrar girin"))):
                 field.setEchoMode(QLineEdit.Password)

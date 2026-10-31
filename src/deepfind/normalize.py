@@ -27,12 +27,11 @@ def folded(s: str) -> str:
 
 
 def folded_esit_uzunluk(s: str) -> str:
-    """Uzunluğu değiştirmeyen TR lower + diakritik katlama.
+    """Length-preserving TR lower + diacritic folding.
 
-    `folded` boşlukları daralttığı için konum kaydırır; snippet gibi ham
-    metin offset'i ile birebir eşleşmesi gereken yerlerde bu sürüm kullanılır.
-    Kural: her karakter tek karaktere eşlenir (İ→i, I→ı, ş→s, boşluk→boşluk).
-    """
+`folded` shifts positions by collapsing spaces, so this version is used
+wherever raw-text offsets must match one-to-one, like snippets.
+Rule: every character maps to exactly one character."""
     parcalar = []
     for karakter in s or "":
         kucuk = karakter.replace("I", "ı").replace("İ", "i").lower()
@@ -41,9 +40,9 @@ def folded_esit_uzunluk(s: str) -> str:
 
 
 def install(con) -> None:
-    """fold() UDF'ini bağlantıya kaydet. Her bağlantıda çağrılmalı: FTS
-    trigger'ları indekse katlanmış metni bu SQL içinden yazar (v9).
-    Idempotent: kayitliyse yeniden kaydetme SQLITE_MISUSE verebilir."""
+    """Register the fold() UDF on the connection. Must run on every connection: FTS
+triggers write the folded text into the index from inside this SQL (v9).
+Idempotent: re-registering when registered may raise SQLITE_MISUSE."""
     try:
         con.execute("SELECT fold('i')").fetchone()
     except Exception:

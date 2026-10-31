@@ -1,9 +1,8 @@
-"""OCR hazırlık denetimi: RapidOCR paketi modelleriyle birlikte gelir, indirme yok.
+"""OCR readiness check: RapidOCR ships with its models, no download.
 
-Motor Python bağımlılığıdır (rapidocr + onnxruntime); modeller rapidocr paketinin
-içindedir. Bu modül kurululuğu doğrular ve ertelenmiş OCR işlerini yeniden sıraya
-alır. Ağ erişimi gerektirmez.
-"""
+The engine is a Python dependency (rapidocr + onnxruntime); the models live
+inside the rapidocr package. This module verifies installation and re-queues
+deferred OCR jobs. Needs no network access."""
 from __future__ import annotations
 
 from . import rapid
@@ -11,16 +10,15 @@ from .theme import t
 
 
 def ready() -> tuple[bool, list[str]]:
-    """(hazır_mı, eksik_liste). Pahalı motor kurulumu yapmaz, yalnız varlık denetimi."""
+    """(is_ready, missing_list). Never performs the expensive engine setup, only an existence check."""
     from . import ocr
     return ocr.engine_ok()
 
 
 def ensure(progress=None) -> None:
-    """Kurulum adımı: motoru gerçekten kurmayı dener (ilk ~1 sn yükleme).
+    """Setup step: genuinely try installing the engine (first ~1 s load).
 
-    Başarısızsa RuntimeError; UI onarım akışı mesajı gösterir.
-    """
+RuntimeError on failure; the UI shows the repair-flow message."""
     if progress:
         progress("motor", 1, 1, 0, 1)
     ok, missing = ready()
@@ -28,14 +26,14 @@ def ensure(progress=None) -> None:
         raise RuntimeError(t("OCR bileşenleri eksik: ") + ", ".join(missing) +
                            t(" — uygulama paketini yeniden edinin."))
     rapid.get_engine()
-    # Isindirma amacliydi: ornek UI sürecinde durmasın (ONNX belleği boşuna tutulur).
+    # It was meant as warm-up: must not stop in the sample UI process (would hold ONNX memory for nothing).
     rapid.reset()
     if progress:
         progress("ready", 1, 1, 1, 1)
 
 
 def reopen_deferred(con) -> int:
-    """Yalnız daha önce motor/model yüzünden ertelenen OCR işlerini yeniden dene."""
+    """Retry only OCR jobs previously deferred over engine/model gaps."""
     if not ready()[0]:
         return 0
     result = con.execute(
@@ -46,9 +44,9 @@ def reopen_deferred(con) -> int:
 
 
 def engine_backfill(con) -> int:
-    """Motor değişiminde (Tesseract→RapidOCR) eski düşük kaliteli OCR kayıtlarını
-    yeniden kuyruğa alır: bozuk/kapsanamayan kayıt satırları silinir, etkin
-    revizyonu olan dosyalara OCR işi eklenir. ocr_version bir kez yürütür."""
+    """On engine change (Tesseract to RapidOCR), re-queue old low-quality OCR records:
+broken/uncoverable record rows are deleted, files with a live
+revision get an OCR job. ocr_version runs it once."""
     from .migrate import OCR_VERSION
     row = con.execute("SELECT v FROM schema_meta WHERE k='ocr_version'").fetchone()
     if not row or row[0] == OCR_VERSION:

@@ -1,8 +1,7 @@
 """Blocking first-run OCR readiness page; verification runs off the UI thread.
 
-RapidOCR modelleri paketle gelir: indirme yok, doğrulama + tek seferlik motor
-kurulumu (ısınma) yapılır. Hata olursa kullanıcıya onarım/çıkış seçenekleri kalır.
-"""
+RapidOCR models ship with the package: no download, verification + one-shot engine
+setup (warm-up). On error the user keeps repair/exit options."""
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot

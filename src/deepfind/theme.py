@@ -1,9 +1,8 @@
-"""Tasarım jetonları ve uygulama stil sayfası (0.5 arayüz dili).
+"""Design tokens and the app stylesheet (0.5 UI language).
 
-Tek yüzey + kıl payı ayırıcı: kart içinde kart yok. Ray temayla uyumludur
-(açıkta yumuşak gri, koyuda nötr koyu). Kod içinde sabit renk kullanılmaz;
-renk gereken yerde `pal()` çağrılır.
-"""
+Single surface + hairline divider: no card inside a card. The rail follows the theme
+(soft gray on light, neutral dark on dark). No hardcoded colors in code;
+wherever a color is needed, call `pal()`."""
 from __future__ import annotations
 
 TOKENS = {
@@ -26,8 +25,8 @@ TOKENS = {
 MODES = ("sistem", "acik", "koyu")
 
 
-# Kod, kendi adıyla etiket, Qt çeviri dosyası, QLocale karşılığı.
-# English ilk ve varsayılan; bayraklar dil kimliği yerine kullanılmaz.
+# Code, tag under its own name, Qt translation file, QLocale counterpart.
+# English first and default; flags are never used as language identity.
 LANGUAGES = [
     ("en", "English", None, ("English", "UnitedStates")),
     ("tr", "Türkçe", "qtbase_tr", ("Turkish", "Turkey")),
@@ -49,12 +48,12 @@ DEFAULT_LANGUAGE = "en"
 
 
 def resolve_language(code):
-    """Bilinen kod -> kendisi; kayıt yoksa/bozuksa İngilizce."""
+    """Known code -> itself; English when unregistered/broken."""
     return code if code in CODES else DEFAULT_LANGUAGE
 
 
 def install_language(app, code):
-    """Qt standart çevirisi + locale'i kullanıcı seçimine göre kur."""
+    """Install the Qt standard translation + locale from the user choice."""
     from PySide6.QtCore import QLocale, QLibraryInfo, QTranslator
     code = resolve_language(code)
     entry = next(e for e in LANGUAGES if e[0] == code)
@@ -83,26 +82,20 @@ def install_language(app, code):
 
 
 _LANG = DEFAULT_LANGUAGE
-try:
-    from .i18n_en1 import EN1 as _EN1
-except ImportError:
-    _EN1 = {}
-try:
-    from .i18n_en2 import EN2 as _EN2
-except ImportError:
-    _EN2 = {}
-try:
-    from .i18n_en3 import EN3 as _EN3
-except ImportError:
-    _EN3 = {}
-try:
-    from .i18n_en4 import EN4 as _EN4
-except ImportError:
-    _EN4 = {}
-try:
-    from .i18n_en5 import EN5 as _EN5
-except ImportError:
-    _EN5 = {}
+from .i18n_tables import (
+    DE1 as _DE1, DE2 as _DE2, DE3 as _DE3, DE4 as _DE4, DE5 as _DE5,
+    EN1 as _EN1, EN2 as _EN2, EN3 as _EN3, EN4 as _EN4, EN5 as _EN5,
+    ES1 as _ES1, ES2 as _ES2, ES3 as _ES3, ES4 as _ES4, ES5 as _ES5,
+    FR1 as _FR1, FR2 as _FR2, FR3 as _FR3, FR4 as _FR4, FR5 as _FR5,
+    IT1 as _IT1, IT2 as _IT2, IT3 as _IT3, IT4 as _IT4, IT5 as _IT5,
+    JA1 as _JA1, JA2 as _JA2, JA3 as _JA3, JA4 as _JA4, JA5 as _JA5,
+    KO1 as _KO1, KO2 as _KO2, KO3 as _KO3, KO4 as _KO4, KO5 as _KO5,
+    NL1 as _NL1, NL2 as _NL2, NL3 as _NL3, NL4 as _NL4, NL5 as _NL5,
+    PB1 as _PB1, PB2 as _PB2, PB3 as _PB3, PB4 as _PB4, PB5 as _PB5,
+    PL1 as _PL1, PL2 as _PL2, PL3 as _PL3, PL4 as _PL4, PL5 as _PL5,
+    RU1 as _RU1, RU2 as _RU2, RU3 as _RU3, RU4 as _RU4, RU5 as _RU5,
+    ZH1 as _ZH1, ZH2 as _ZH2, ZH3 as _ZH3, ZH4 as _ZH4, ZH5 as _ZH5,
+)
 
 
 def _merge(*parts):
@@ -112,226 +105,6 @@ def _merge(*parts):
     return m
 
 
-try:
-    from .i18n_de1 import DE1 as _DE1
-except ImportError:
-    _DE1 = {}
-try:
-    from .i18n_de2 import DE2 as _DE2
-except ImportError:
-    _DE2 = {}
-try:
-    from .i18n_de3 import DE3 as _DE3
-except ImportError:
-    _DE3 = {}
-try:
-    from .i18n_de4 import DE4 as _DE4
-except ImportError:
-    _DE4 = {}
-try:
-    from .i18n_de5 import DE5 as _DE5
-except ImportError:
-    _DE5 = {}
-try:
-    from .i18n_es1 import ES1 as _ES1
-except ImportError:
-    _ES1 = {}
-try:
-    from .i18n_es2 import ES2 as _ES2
-except ImportError:
-    _ES2 = {}
-try:
-    from .i18n_es3 import ES3 as _ES3
-except ImportError:
-    _ES3 = {}
-try:
-    from .i18n_es4 import ES4 as _ES4
-except ImportError:
-    _ES4 = {}
-try:
-    from .i18n_es5 import ES5 as _ES5
-except ImportError:
-    _ES5 = {}
-try:
-    from .i18n_fr1 import FR1 as _FR1
-except ImportError:
-    _FR1 = {}
-try:
-    from .i18n_fr2 import FR2 as _FR2
-except ImportError:
-    _FR2 = {}
-try:
-    from .i18n_fr3 import FR3 as _FR3
-except ImportError:
-    _FR3 = {}
-try:
-    from .i18n_fr4 import FR4 as _FR4
-except ImportError:
-    _FR4 = {}
-try:
-    from .i18n_fr5 import FR5 as _FR5
-except ImportError:
-    _FR5 = {}
-try:
-    from .i18n_it1 import IT1 as _IT1
-except ImportError:
-    _IT1 = {}
-try:
-    from .i18n_it2 import IT2 as _IT2
-except ImportError:
-    _IT2 = {}
-try:
-    from .i18n_it3 import IT3 as _IT3
-except ImportError:
-    _IT3 = {}
-try:
-    from .i18n_it4 import IT4 as _IT4
-except ImportError:
-    _IT4 = {}
-try:
-    from .i18n_it5 import IT5 as _IT5
-except ImportError:
-    _IT5 = {}
-try:
-    from .i18n_pb1 import PB1 as _PB1
-except ImportError:
-    _PB1 = {}
-try:
-    from .i18n_pb2 import PB2 as _PB2
-except ImportError:
-    _PB2 = {}
-try:
-    from .i18n_pb3 import PB3 as _PB3
-except ImportError:
-    _PB3 = {}
-try:
-    from .i18n_pb4 import PB4 as _PB4
-except ImportError:
-    _PB4 = {}
-try:
-    from .i18n_pb5 import PB5 as _PB5
-except ImportError:
-    _PB5 = {}
-try:
-    from .i18n_ru1 import RU1 as _RU1
-except ImportError:
-    _RU1 = {}
-try:
-    from .i18n_ru2 import RU2 as _RU2
-except ImportError:
-    _RU2 = {}
-try:
-    from .i18n_ru3 import RU3 as _RU3
-except ImportError:
-    _RU3 = {}
-try:
-    from .i18n_ru4 import RU4 as _RU4
-except ImportError:
-    _RU4 = {}
-try:
-    from .i18n_ru5 import RU5 as _RU5
-except ImportError:
-    _RU5 = {}
-try:
-    from .i18n_pl1 import PL1 as _PL1
-except ImportError:
-    _PL1 = {}
-try:
-    from .i18n_pl2 import PL2 as _PL2
-except ImportError:
-    _PL2 = {}
-try:
-    from .i18n_pl3 import PL3 as _PL3
-except ImportError:
-    _PL3 = {}
-try:
-    from .i18n_pl4 import PL4 as _PL4
-except ImportError:
-    _PL4 = {}
-try:
-    from .i18n_pl5 import PL5 as _PL5
-except ImportError:
-    _PL5 = {}
-try:
-    from .i18n_nl1 import NL1 as _NL1
-except ImportError:
-    _NL1 = {}
-try:
-    from .i18n_nl2 import NL2 as _NL2
-except ImportError:
-    _NL2 = {}
-try:
-    from .i18n_nl3 import NL3 as _NL3
-except ImportError:
-    _NL3 = {}
-try:
-    from .i18n_nl4 import NL4 as _NL4
-except ImportError:
-    _NL4 = {}
-try:
-    from .i18n_nl5 import NL5 as _NL5
-except ImportError:
-    _NL5 = {}
-try:
-    from .i18n_zh1 import ZH1 as _ZH1
-except ImportError:
-    _ZH1 = {}
-try:
-    from .i18n_zh2 import ZH2 as _ZH2
-except ImportError:
-    _ZH2 = {}
-try:
-    from .i18n_zh3 import ZH3 as _ZH3
-except ImportError:
-    _ZH3 = {}
-try:
-    from .i18n_zh4 import ZH4 as _ZH4
-except ImportError:
-    _ZH4 = {}
-try:
-    from .i18n_zh5 import ZH5 as _ZH5
-except ImportError:
-    _ZH5 = {}
-try:
-    from .i18n_ja1 import JA1 as _JA1
-except ImportError:
-    _JA1 = {}
-try:
-    from .i18n_ja2 import JA2 as _JA2
-except ImportError:
-    _JA2 = {}
-try:
-    from .i18n_ja3 import JA3 as _JA3
-except ImportError:
-    _JA3 = {}
-try:
-    from .i18n_ja4 import JA4 as _JA4
-except ImportError:
-    _JA4 = {}
-try:
-    from .i18n_ja5 import JA5 as _JA5
-except ImportError:
-    _JA5 = {}
-try:
-    from .i18n_ko1 import KO1 as _KO1
-except ImportError:
-    _KO1 = {}
-try:
-    from .i18n_ko2 import KO2 as _KO2
-except ImportError:
-    _KO2 = {}
-try:
-    from .i18n_ko3 import KO3 as _KO3
-except ImportError:
-    _KO3 = {}
-try:
-    from .i18n_ko4 import KO4 as _KO4
-except ImportError:
-    _KO4 = {}
-try:
-    from .i18n_ko5 import KO5 as _KO5
-except ImportError:
-    _KO5 = {}
 TABLES = {"en": _merge(_EN1, _EN2, _EN3, _EN4, _EN5), "tr": {}, "de": _merge(_DE1, _DE2, _DE3, _DE4, _DE5), "es": _merge(_ES1, _ES2, _ES3, _ES4, _ES5), "fr": _merge(_FR1, _FR2, _FR3, _FR4, _FR5), "it": _merge(_IT1, _IT2, _IT3, _IT4, _IT5), "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4, _PB5), "ru": _merge(_RU1, _RU2, _RU3, _RU4, _RU5), "pl": _merge(_PL1, _PL2, _PL3, _PL4, _PL5), "nl": _merge(_NL1, _NL2, _NL3, _NL4, _NL5), "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4, _ZH5), "ja": _merge(_JA1, _JA2, _JA3, _JA4, _JA5), "ko": _merge(_KO1, _KO2, _KO3, _KO4, _KO5)}
 
 
@@ -363,7 +136,7 @@ def t(text, **kwargs):
 
 
 def install_turkish(app):
-    """Geriye uyumluluk: eski çağrılar İngilizce varsayılana düşer."""
+    """Backward compatibility: old calls fall back to the English default."""
     install_language(app, DEFAULT_LANGUAGE)
 
 
@@ -387,7 +160,7 @@ def app_icon():
 
 
 def symbol_icon(kind, color=None):
-    """Uygulamanın küçük, tutarlı çizgi simgeleri; harici font gerekmez."""
+    """The app's small, consistent line icons; no external font needed."""
     from PySide6.QtCore import Qt, QRectF
     from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
     if color is None:
@@ -463,7 +236,7 @@ def resolve(mode: str, system_dark: bool = False) -> str:
 
 
 def pal(**over) -> dict:
-    """Etkin temanın jetonları. Kod içinde sabit renk yerine bunu kullanın."""
+    """The active theme's tokens. Use this instead of hardcoded colors in code."""
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance()
     name = "acik"
@@ -509,7 +282,7 @@ QListWidget#pageRail::item:hover {{ background: {p['secili']}; }}
 QListWidget#pageRail::item:selected {{ background: {p['secili']}; color: {p['metin']};
  border: 1px solid {p['marka']}; }}
 
-/* -- filtre çipleri -- */
+/* -- filter chips -- */
 QFrame#cip {{ background: {p['marka_tint']}; border: 1px solid {p['sinir']};
  border-radius: 999px; }}
 QLabel[cipMetin="true"] {{ color: {p['marka']}; font-size: 12px; font-weight: 600;
@@ -630,7 +403,7 @@ QPlainTextEdit#log {{ font-family: 'Cascadia Mono', 'Consolas'; font-size: 12px;
 
 
 def apply(app, mode: str) -> str:
-    """Temayı uygula, çözülmüş adı döndür (sistem->acik/koyu)."""
+    """Apply the theme, return the resolved name (system->light/dark)."""
     from PySide6.QtGui import QStyleHints
     from PySide6.QtCore import QSettings
     from . import identity

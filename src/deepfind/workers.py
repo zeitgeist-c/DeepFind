@@ -1,4 +1,4 @@
-"""Kaynak okumasını zaman sınırı olan, anahtarsız alt süreçte çalıştır."""
+"""Run source reads in a time-boxed, keyless subprocess."""
 import multiprocessing as mp
 import time
 from .theme import t
@@ -35,7 +35,7 @@ def _perform(kind, args):
             page = doc[number - 1]
             width, height = page.get_size()
             if fit:
-                # fit: (en fazla genişlik px, en fazla yükseklik px); None = sınır yok
+                # fit: (max width px, max height px); None = no limit
                 sinirlar = [x / y for x, y in zip(fit, (width, height)) if x]
                 olcek = min(sinirlar) if sinirlar else 2.0 * zoom
             else:
@@ -72,13 +72,12 @@ def _perform(kind, args):
 
 
 def _thumb(kaynak, hedef, olcu, sayfa=1):
-    """Kaynağın istenen sayfasını/kadrajını küçük resme indirgeyip dosyaya yazar.
+    """Reduce the source's requested page/frame to a thumbnail and write it to file.
 
-    PDF sayfası pypdfium2 ile ~2x çözünürlükte render edilir, ardından
-    Pillow ile hedef ölçüye küçültülür (küçültme, doğrudan düşük ölçekli
-    render'dan daha okunur sonuç verir). Görsellerde EXIF yönü uygulanır;
-    çok kareli görsellerde (TIFF) `sayfa` karesi seçilir.
-    """
+A PDF page renders at ~2x resolution via pypdfium2, then
+Pillow shrinks it to the target measure (shrinking gives a more legible result
+than rendering at a directly low scale). EXIF orientation applies on images;
+on multi-frame images (TIFF) the `sayfa` frame is picked."""
     from PIL import Image, ImageOps
     import os
     hedef_dizin = os.path.dirname(hedef)
@@ -151,7 +150,7 @@ def run_work(kind, args, timeout=60, stop=None):
 
 
 def _terminate(process) -> None:
-    """Alt süreci ağacıyla birlikte kapat (Windows: taskkill /T)."""
+    """Shut the subprocess down with its tree (Windows: taskkill /T)."""
     if process.is_alive():
         import os
         if os.name == "nt":
@@ -168,7 +167,7 @@ def _terminate(process) -> None:
 
 
 def _serve(req_reader, resp_writer):
-    """Kalıcı işçi döngüsü: (kind,args) isteği al, yürüt, sonucu geri yolla."""
+    """Durable worker loop: take a (kind,args) request, run it, send the result back."""
     import pickle
     while True:
         try:
@@ -190,12 +189,11 @@ def _serve(req_reader, resp_writer):
 
 
 class OcrSession:
-    """Tarama turu boyunca yeniden kullanılan spawn işçisi.
+    """Spawn worker reused across a scan round.
 
-    RapidOCR+ONNX yükleme maliyeti (~5-10 sn) dosya başına değil tur başına
-    bir kez ödenir. Timeout/iptal/çökme sonrası süreç öldürülür; çağıran
-    bir sonraki iş için yeni oturum kurar.
-    """
+The RapidOCR+ONNX load cost (~5-10 s) is paid once per round, not per file.
+After timeout/cancel/crash the process is killed; the caller
+sets up a new session for the next job."""
 
     def __init__(self):
         import pickle
@@ -246,8 +244,7 @@ class OcrSession:
 
 
 class WorkerSession(OcrSession):
-    """Kalıcı genel işçi oturumu: tekrarlı kaynak işleri tek süreçte koşar.
+    """Durable generic worker session: repeated source jobs run in one process.
 
-    `OcrSession` ile aynı sözleşmeyi kullanır (`call(kind, args)`); adı işin
-    türünü değil, yaşam döngüsünü anlatır (ör. thumbnail üretimi).
-    """
+Uses the same contract as `OcrSession` (`call(kind, args)`); the name describes
+the lifecycle, not the job kind (e.g. thumbnail production)."""

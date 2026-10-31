@@ -131,7 +131,7 @@ def find_resumable_run(con, root: str):
 
 
 def apply_tag_rules(con, file_id: int, name: str, text: str = "") -> set:
-    """Kayıtlı kuralları işletir, eklenen etiketleri döner. Elle etiketlere dokunmaz."""
+    """Run the stored rules, return the added tags. Never touch manual tags."""
     from . import rank as rank_mod
     from . import normalize as nz
     try:
@@ -186,7 +186,7 @@ def build_manifest(con, root: str) -> tuple:
 
 def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
                      context: str = "") -> None:
-    """Dosya, revizyon ve içerik bölümlerini tek transaction'da değiştir."""
+    """Change the file, revision and content sections in one transaction."""
     import unicodedata
     from . import normalize as nz
     if 'start_offset' not in {r[1] for r in con.execute('PRAGMA table_info(segments)')}:
@@ -790,7 +790,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         if all_complete and not (stop and stop()):
             rows = con.execute("SELECT file_id, path FROM files").fetchall()
             for fid, p in rows:
-                # Bir kökün taraması diğer köklerin indeksini silemez.
+                # Scanning one root can never delete another root's index.
                 try:
                     if os.path.commonpath([os.path.abspath(p), os.path.abspath(root)]) != os.path.abspath(root):
                         continue

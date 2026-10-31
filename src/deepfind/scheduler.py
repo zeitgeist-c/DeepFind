@@ -117,12 +117,11 @@ def autostart_get(app_name: str) -> str | None:
 
 
 def autostart_guncelle(app_name: str, exe_path: str, vault_path: str | None = None) -> bool:
-    """Açılış kaydı varsa çalışan EXE yolunu güncelle; yoksa dokunma.
+    """Refresh the startup entry to the running EXE path when one exists; otherwise untouched.
 
-    Güncelleme programı yeni bir klasöre taşıdığından eski kayıt eski klasörü
-    gösterir; kaydı tazelemezsek makine bir sonraki açılışta eski sürümü
-    başlatır. Kapalı (silinmiş) kayıt kendiliğinden açılmaz.
-    """
+Since an update moves the program to a new folder, the old entry points at
+the old folder; without a refresh the machine would launch the old version
+on next boot. A closed (deleted) entry never reopens itself."""
     mevcut = autostart_get(app_name)
     if mevcut is None:
         return False

@@ -205,8 +205,8 @@ def cmd_parola(args) -> int:
 
 
 def cmd_sikistir(args) -> int:
-    """VACUUM: fiziksel boyutu küçült. Uygulama KAPALI iken calistirilmali;
-    buyuk kasada dakikalar surer ve kasa boyutu kadar gecici disk ister."""
+    """VACUUM: shrink the physical size. Run while the app is CLOSED;
+on a large vault it takes minutes and needs temp disk equal to the vault size."""
     _vault, _schema, *_rest, _m4 = _load()
     before = os.path.getsize(args.kasa) if os.path.exists(args.kasa) else 0
     con = _open_db(args)

@@ -1,4 +1,4 @@
-"""Paketli ana pencere/arama/önizleme/worker doğrulaması: yalnız sentetik veri."""
+"""Packaged main-window/search/preview/worker verification: synthetic data only."""
 import json
 import os
 from pathlib import Path
@@ -89,7 +89,7 @@ def run(report_path):
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
             assert pen.settings_page.isAncestorOf(pen.update_durum)
-            assert not pen.update_denetle_btn.isHidden()   # paketli: denetim açık
+            assert not pen.update_denetle_btn.isHidden()   # packaged: check on
             assert pen.update_indir_btn.isHidden()
             assert pen.update_bar.isHidden()
             pen.arama_kutu.setText("Ankara denetim")
@@ -203,10 +203,10 @@ def run(report_path):
             from .rank import search_semantic
             assert any(row['path']==ocr_image for row in search_semantic(pen.con,'Ankara belge')['results'])
             checkpoint('root-remove-worker')
-            # Kök kaldırma: ayrı thread'de çalışır, GUI yanıt verir, temizlik doğru.
+            # Root removal: runs on its own thread, GUI stays responsive, cleanup is correct.
             from deepfind.app import KokKaldirIsci
             from PySide6.QtCore import QThread
-            # Ana test kökünü çıkar; k2 temp içinde kalsın ve TemporaryDirectory temizlesin.
+            # Extract the main test root; keep k2 inside temp and let TemporaryDirectory clean up.
             pen.con.execute("DELETE FROM roots WHERE display_path=?", (temp,))
             k2 = str(Path(temp) / "ikinci-kok")
             os.makedirs(k2)

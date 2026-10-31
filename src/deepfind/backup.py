@@ -226,7 +226,7 @@ def restore_replace(vault_path: str, password: str, backup_path: str,
         if not rv["ok"]:
             raise RuntimeError("rollback snapshot dogrulanamadi; degisim yapilmadi")
         rollback_alindi = True
-    # Yedek üzerinde değil, ayrı şifreli staging snapshot üzerinde çalış.
+    # Work on a separate encrypted staging snapshot, not on the backup.
     import uuid
     tmp = vault_path + ".restore-" + uuid.uuid4().hex + ".db"
     src = vault.open_vault(backup_path, bpw)
@@ -260,7 +260,7 @@ def change_password(vault_path: str, old_pw: str, new_pw: str,
         raise ValueError("yeni sifre en az 12 karakter olmali")
     if old_pw == new_pw:
         raise ValueError(t("yeni şifre mevcut şifreden farklı olmalı"))
-    # Mevcut dosyaya rekey uygulamak yerine kopyayı hazırla, doğrula, atomik değiştir.
+    # Instead of rekeying the live file, prepare the copy, verify, swap atomically.
     con = vault.open_vault(vault_path, old_pw)
     import uuid
     tmp = vault_path + ".rekey-" + uuid.uuid4().hex + ".db"
@@ -286,7 +286,7 @@ def change_password(vault_path: str, old_pw: str, new_pw: str,
         bad.close()
         raise RuntimeError(t("eski şifre staging kasasını açıyor; değişim yapılmadı"))
     os.replace(tmp, vault_path)
-    # Şifre değişti: kurtarma anahtarı varsa yeni şifreye göre tazele.
+    # Password changed: refresh the recovery key against the new password when one exists.
     try:
         from . import recovery
         if os.path.isfile(recovery.container_path(vault_path)):

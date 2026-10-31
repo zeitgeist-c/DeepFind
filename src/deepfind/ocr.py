@@ -1,14 +1,13 @@
-"""Sayfa bazli yerel OCR: triyaj, sinirli render, RapidOCR (ONNX), bellek kapisi.
+"""Page-based local OCR: triage, bounded render, RapidOCR (ONNX), memory gate.
 
-Sozlesme:
-- Temel motor: RapidOCR (PP-OCR modelleri, ONNX Runtime). Cloud/LLM yok, ek dil
-  indirme yok — modeller rapidocr paketinin icinde gelir ve Turkceyi okur.
-- Gereksiz OCR yok: yeterli dogal metni olan sayfa atlanir (OCR-01).
-- Motor/model eksikligi ve bellek: kontrollu erteleme; içerik eksikliği görünür.
-- Gecici turevler: kontrollu temp dizini, is/cokme sonrasi temizlik.
-- OCR isleri spawn isci sürecinde kosar (workers.run_work); ana arayuz modeli
-  yuklemez, bekci thread siniri asan sureci oldurur.
-"""
+Contract:
+- Base engine: RapidOCR (PP-OCR models, ONNX Runtime). No cloud/LLM, no extra language
+downloads — models ship inside the rapidocr package and read Turkish.
+- No wasteful OCR: a page with enough native text is skipped (OCR-01).
+- Engine/model gaps and memory: controlled deferral; content gaps stay visible.
+- Temp derivatives: controlled temp dir, cleanup after job/crash.
+- OCR jobs run in a spawn worker process (workers.run_work); the main UI never
+loads the model, the watcher thread kills processes breaching the limit."""
 from __future__ import annotations
 
 import os

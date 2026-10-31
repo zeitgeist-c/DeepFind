@@ -1,14 +1,13 @@
-"""Belge küçük resimleri: yerel önbellek ve arka planda üretim.
+"""Document thumbnails: local cache and background production.
 
-Desen kaynağı (REA): paperless-ngx thumbnail'ı sunucuda dosyaya üretip
-`{id}.webp` olarak saklıyor ve uç nokta ETag ile önbellekliyor; papermerge
-`NodeThumbnail` ile listelerde gösteriyor. DeepFind karşılığı: anahtar
-(yol, boyut, mtime) değişmedikçe üretim tekrarlanmaz; ağır render `workers`
-alt sürecinde koşar, arayüz yalnızca hazır dosyayı yükler.
+Pattern source (REA): paperless-ngx produces the thumbnail server-side into a file,
+stores it as `{id}.webp` and caches the endpoint with ETag; papermerge
+shows it in lists with `NodeThumbnail`. DeepFind's counterpart: production
+never repeats while the key (path, size, mtime) is unchanged; heavy render runs
+in a `workers` subprocess, the UI only loads the finished file.
 
-Kural: küçük resim kaynak dosyanın yerine geçmez; yalnız görsel kolaylıktır.
-Üretilemezse sessizce simgeye düşülür (bozuk/erişilemeyen kaynak akışı bozmaz).
-"""
+Rule: a thumbnail never stands in for the source file; it is visual convenience only.
+When unproducible, fall back to an icon quietly (a broken/unreachable source never breaks the flow)."""
 from __future__ import annotations
 
 import hashlib
@@ -19,9 +18,9 @@ from PySide6.QtCore import QThread, Signal
 
 from . import paths, workers
 
-KUCUK = 300   # liste satırı küçük resmi (en uzun kenar, px)
-BUYUK = 900   # detay paneli önizlemesi
-SINIR = 4000  # önbellekte tutulacak en fazla dosya
+KUCUK = 300   # list-row thumbnail (longest edge, px)
+BUYUK = 900   # detail panel preview
+SINIR = 4000  # max files kept in cache
 
 
 def onbellek_dizini() -> str:
@@ -32,11 +31,10 @@ _UZANTI: str | None = None
 
 
 def bicim_uzantisi() -> str:
-    """Qt okuyabildiği ve Pillow yazabildiği biçimi seç (webp → jpg).
+    """Pick a format Qt can read and Pillow can write (webp → jpg).
 
-    PySide6-Essentials her kurulumda WebP eklentisini taşımayabilir; Qt'nin
-    gerçekten okuyabildiğini ölçmeden WebP yazmak sessiz boş görsele yol açar.
-    """
+PySide6-Essentials may not ship the WebP plugin on every install; writing WebP
+without measuring what Qt can really read leads to silently empty images."""
     global _UZANTI
     if _UZANTI is None:
         secim = ".jpg"
@@ -81,7 +79,7 @@ def _damga(path: str):
 
 
 def buda(dizin: str | None = None, sinir: int = SINIR) -> int:
-    """Önbelleği en yeni `sinir` dosyaya indir; silinen sayısını döndür."""
+    """Trim the cache down to the newest `sinir` files; return the deleted count."""
     dizin = dizin or onbellek_dizini()
     try:
         kayitlar = [os.path.join(dizin, ad) for ad in os.listdir(dizin)]
@@ -105,7 +103,7 @@ def buda(dizin: str | None = None, sinir: int = SINIR) -> int:
 
 
 def temizle(dizin: str | None = None) -> int:
-    """Önbelleği tamamen boşalt."""
+    """Empty the cache completely."""
     dizin = dizin or onbellek_dizini()
     silinen = 0
     try:
@@ -124,11 +122,10 @@ def temizle(dizin: str | None = None) -> int:
 
 
 class OnbellekYukleyici(QThread):
-    """Sırayla küçük resim üretir; önbellekte olanı doğrudan bildirir.
+    """Produce thumbnails in order; report cached ones directly.
 
-    İşler: (kaynak yol, tür) ikilileri. Sinyal: (kaynak yol, tür, dosya).
-    Dosya boş dize ise üretim yapılamadı (arayüz simgeye düşer).
-    """
+Jobs: (source path, kind) pairs. Signal: (source path, kind, file).
+An empty file string means production failed (the UI falls back to an icon)."""
 
     tamam = Signal(str, str, str)
 
@@ -147,7 +144,7 @@ class OnbellekYukleyici(QThread):
             for kaynak, tur in self.isler:
                 if self._dur.is_set():
                     return
-                # "pN": kaynağın N. sayfası (sayfa rayı); diğerleri ilk sayfa.
+                # "pN": page N of the source (page rail); others are the first page.
                 sayfa, piksel = 1, olcu.get(tur, KUCUK)
                 if tur.startswith("p") and tur[1:].isdigit():
                     sayfa, piksel = int(tur[1:]), KUCUK

@@ -1,15 +1,14 @@
-"""Kurtarma anahtarı: şifre unutulduğunde indeksi kaybetmemek için ikinci yol.
+"""Recovery key: the second way in, so the index survives a forgotten password.
 
-Tasarım B (kullanıcı kararı, 15.10.2026):
-- Anahtar kasa klasöründe saklanır + yazdırılabilir belge olarak verilir.
-- Anahtar rastgele üretilir (kullanıcı belirlemez); karışan harfler alfabede yoktur.
+Design B (user decision, 2026-10-15):
+- The key lives in the vault folder + is handed over as a printable document.
+- The key is randomly generated (user never picks it); confusable letters are absent.
 
-Kontrat:
-- Konteyner, kasa yolunu ve açılış sırrını taşıyan ayrı bir şifreli SQLCipher dosyasıdır.
-- Kasa parmak izi konteynere yazılır; kasa değişirse "eşleşmiyor" uyarısı verilir.
-- Kurtarma sonrası kasa YENİ şifreyle açılır; eski şifre ve eski anahtar geçersiz olur.
-- Hiçbir sır loga/log dosyasına yazılmaz.
-"""
+Contract:
+- The container is a separate encrypted SQLCipher file carrying the vault path and unlock secret.
+- The vault fingerprint is written into the container; a changed vault warns "mismatch".
+- After recovery the vault opens with the NEW password; the old password and old key die.
+- No secret is ever written to log/log files."""
 from __future__ import annotations
 
 import base64
@@ -20,7 +19,7 @@ import uuid
 from pathlib import Path
 from .theme import t
 
-# Karışan harfler yok: I, L, O, U ve rakam 0, 1 alfabede bulunmaz.
+# No confusable characters: I, L, O, U and digits 0, 1 are absent from the alphabet.
 ALFABE = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
 PREFIX = "EVKC-"
 ON_EK = "deepfind-kurtarma"
@@ -31,7 +30,7 @@ SURUM = "1"
 ETIKET = "KURTARMA ANAHTARI:"
 
 
-# --- yardımcılar -------------------------------------------------------------
+# --- helpers -------------------------------------------------------------
 
 def _dir(vault_path: str) -> Path:
     return Path(os.path.abspath(vault_path)).parent
@@ -59,7 +58,7 @@ def _con(path: str, anahtar: str):
 
 
 def kasa_parmak_izi(vault_path: str) -> str:
-    """Kasa dosyasının kimliği: boyut + baş + son parça özeti."""
+    """The vault file's identity: size + head + tail chunk digest."""
     h = hashlib.sha256()
     st = os.stat(vault_path)
     h.update(str(st.st_size).encode())
@@ -75,45 +74,44 @@ def kasa_parmak_izi(vault_path: str) -> str:
 # --- anahtar -----------------------------------------------------------------
 
 def new_key() -> str:
-    """Rastgele kurtarma anahtarı (160 bit)."""
+    """Random recovery key (160 bit)."""
     ham = base64.b32encode(os.urandom(20)).decode().rstrip("=")
     govde = "".join(ch if ch in ALFABE else ALFABE[ord(ch) % len(ALFABE)] for ch in ham)
     return PREFIX + "-".join(govde[i:i + 5] for i in range(0, len(govde), 5))
 
 
 def normalize(girilen: str) -> str:
-    """Kullanıcı boşluklu/küçük harfli/öneksiz yazsa da anahtarı tanır.
+    """Recognize the key even when the user types it spaced/lowercase/prefixless.
 
-    Öncelik sırası:
-    1) Belgedeki `KURTARMA ANAHTARI:` satırı,
-    2) `EVKC` geçen herhangi bir satır (yapıştırılan anahtar),
-    3) Tüm metnin alfasayısal dizisi (yalnız anahtar yapıştırıldı).
-    Anahtar gövdesi 32 karakterdir; fazlası yok sayılır.
-    """
+Priority order:
+1) The `KURTARMA ANAHTARI:` line in the document,
+2) any line containing `EVKC` (pasted key),
+3) the alphanumeric run of the whole text (key pasted alone).
+The key body is 32 characters; extras are ignored."""
     if not girilen:
         return ""
     satirlar = girilen.splitlines() or [girilen]
 
     def _govde(metin: str) -> str:
-        """Metinden anahtar gövdesini çıkar: EVKC öneki ve ayraçlar atılır."""
+        """Extract the key body from text: EVKC prefix and separators dropped."""
         buyuk = metin.upper()
         if "EVKC" in buyuk:
             buyuk = buyuk[buyuk.index("EVKC") + len("EVKC"):]
         return "".join(ch for ch in buyuk if ch.isalnum())[:32]
 
-    # 1) Belgedeki etiketli satır
+    # 1) Tagged row in the document
     for satir in satirlar:
         if ETIKET in satir:
             govde = _govde(satir.split(ETIKET, 1)[1])
             if len(govde) >= 20:
                 return PREFIX + "-".join(govde[i:i + 5] for i in range(0, len(govde), 5))
-    # 2) EVKC geçen satır (yapıştırılan anahtar)
+    # 2) Row passing EVKC (pasted key)
     for satir in satirlar:
         if "EVKC" in satir.upper():
             govde = _govde(satir)
             if len(govde) >= 20:
                 return PREFIX + "-".join(govde[i:i + 5] for i in range(0, len(govde), 5))
-    # 3) Yalnız anahtar yapıştırıldı
+    # 3) Only the key was pasted
     govde = _govde(girilen)
     if not govde:
         return ""
@@ -131,7 +129,7 @@ def _dogrula_bicim(anahtar: str) -> str:
 # --- konteyner ---------------------------------------------------------------
 
 def write_container(vault_path: str, password: str, anahtar: str) -> str:
-    """Kurtarma konteynerini yaz (atomik). Dönüş: konteyner yolu."""
+    """Write the recovery container (atomic). Returns: container path."""
     anahtar = _dogrula_bicim(anahtar)
     yol = container_path(vault_path)
     gecici = yol + ".tmp-" + uuid.uuid4().hex
@@ -149,7 +147,7 @@ def write_container(vault_path: str, password: str, anahtar: str) -> str:
         con.commit()
     finally:
         con.close()
-    # yazılan konteyner gerçekten açılıyor mu (atomik finalize öncesi kanıt)
+    # does the written container really open (proof before atomic finalize)
     kontrol = _con(gecici, anahtar)
     try:
         if kontrol.execute("SELECT v FROM recovery WHERE k='acilis'").fetchone() is None:
@@ -165,7 +163,7 @@ def write_container(vault_path: str, password: str, anahtar: str) -> str:
 
 
 def verify_container(yol: str, anahtar: str) -> dict:
-    """Konteyner açılıyor mu; kasa eşleşiyor mu."""
+    """Does the container open; does the vault match."""
     if not os.path.isfile(yol):
         return {"ok": False, "neden": "konteyner yok"}
     try:
@@ -190,7 +188,7 @@ def verify_container(yol: str, anahtar: str) -> dict:
 
 
 def read_container(yol: str, anahtar: str) -> dict:
-    """Konteyner içeriğini oku (kurtarma sırasında kullanılır)."""
+    """Read the container content (used during recovery)."""
     con = _con(yol, anahtar)
     try:
         return dict(con.execute("SELECT k,v FROM recovery").fetchall())
@@ -198,10 +196,10 @@ def read_container(yol: str, anahtar: str) -> dict:
         con.close()
 
 
-# --- anahtar dosyası ---------------------------------------------------------
+# --- key file ---------------------------------------------------------
 
 def write_key_file(vault_path: str, anahtar: str) -> str:
-    """Kullanıcının saklaması için anahtar dosyası (tasarım B)."""
+    """Key file for the user to keep (design B)."""
     yol = key_path(vault_path)
     gecici = yol + ".tmp"
     metin = document_text(vault_path, anahtar, bicimli=True)
@@ -215,7 +213,7 @@ def write_key_file(vault_path: str, anahtar: str) -> str:
 
 
 def load_key(vault_path: str) -> str:
-    """Anahtar dosyasındaki anahtarı oku (belge başlıklarını atlar)."""
+    """Read the key from the key file (document headers skipped)."""
     yol = key_path(vault_path)
     try:
         for satir in Path(yol).read_text(encoding="utf-8").splitlines():
@@ -230,7 +228,7 @@ def load_key(vault_path: str) -> str:
 
 
 def document_text(vault_path: str, anahtar: str, bicimli: bool = False) -> str:
-    """Yazdırılabilir kurtarma belgesi."""
+    """Printable recovery document."""
     anahtar = _dogrula_bicim(anahtar)
     kasa = os.path.abspath(vault_path)
     if not bicimli:
@@ -263,10 +261,9 @@ def document_text(vault_path: str, anahtar: str, bicimli: bool = False) -> str:
 
 def recover(vault_path: str, anahtar: str, yeni_sifre: str,
             backup_dir: str | None = None) -> dict:
-    """Anahtarla kasayı aç, yeni şifre kur, yeni kurtarma anahtarı üret.
+    """Open the vault with the key, set a new password, generate a new recovery key.
 
-    Başarısızlıkta mevcut kasa ve mevcut kurtarma anahtarı korunur.
-    """
+On failure the current vault and current recovery key are preserved."""
     from . import backup, vault
     if len(yeni_sifre) < 12:
         raise ValueError(t("Yeni şifre en az 12 karakter olmalı."))
@@ -282,22 +279,22 @@ def recover(vault_path: str, anahtar: str, yeni_sifre: str,
     if not os.path.isfile(hedef):
         raise FileNotFoundError(t("Kasa dosyası bulunamadı; kurtarma yapılamıyor."))
     if os.path.abspath(hedef) != os.path.abspath(vault_path):
-        # Kasa taşınmış: en azından doğru dosyayı açtığımızdan emin olalım.
+        # Vault moved: at least make sure we open the right file.
         pass
-    # 1) Eski sifre gerçekten çalışıyor mu? (konteyner sırrı bayatlarsa burada durur)
+    # 1) Does the old password really work? (stop here if the container secret went stale)
     kontrol = vault.open_vault(hedef, eski_sifre)
     kontrol.close()
-    # 2) Güvenlik yedeği (kurtarma işlemi de yedeğini alır)
+    # 2) Safety backup (recovery takes its own backup too)
     if backup_dir:
         con = vault.open_vault(hedef, eski_sifre)
         try:
             backup.create_backup(con, hedef, eski_sifre, backup_dir, manual=True)
         finally:
             con.close()
-    # 3) Yeni şifreyle değiştir (change_password kendi yedeğini + iki yönlü doğrulamasını yapar)
+    # 3) Replace with the new password (change_password makes its own backup + two-way verification)
     hedef_yedek = backup_dir or os.path.join(os.path.dirname(os.path.abspath(hedef)), "..", "Backups")
     backup.change_password(hedef, eski_sifre, yeni_sifre, hedef_yedek)
-    # 4) Yeni kurtarma anahtarı üret (eski anahtar artık geçersiz)
+    # 4) Generate a new recovery key (the old key becomes invalid)
     yeni = new_key()
     write_container(hedef, yeni_sifre, yeni)
     write_key_file(hedef, yeni)
@@ -306,7 +303,7 @@ def recover(vault_path: str, anahtar: str, yeni_sifre: str,
 
 
 def refresh(vault_path: str, password: str) -> str:
-    """Yeni kurtarma anahtarı üret; eskisini geçersiz kıl. Dönüş: yeni anahtar."""
+    """Generate a new recovery key; invalidate the old one. Returns: new key."""
     anahtar = new_key()
     write_container(vault_path, password, anahtar)
     write_key_file(vault_path, anahtar)
@@ -314,7 +311,7 @@ def refresh(vault_path: str, password: str) -> str:
 
 
 def remove(vault_path: str) -> dict:
-    """Kurtarma anahtarını kaldır (kasa şifresi tek yol kalır)."""
+    """Remove the recovery key (vault password stays the only way in)."""
     silinen = []
     for yol in (container_path(vault_path), key_path(vault_path)):
         try:
@@ -327,7 +324,7 @@ def remove(vault_path: str) -> dict:
 
 
 def status(vault_path: str) -> dict:
-    """Ayarlar ekranı için durum: var mı, kasa eşleşiyor mu."""
+    """State for the Settings screen: present or not, vault matched or not."""
     yol = container_path(vault_path)
     if not os.path.isfile(yol):
         return {"var": False, "container": yol, "anahtar_dosyasi": key_path(vault_path)}
@@ -350,7 +347,7 @@ def status(vault_path: str) -> dict:
 
 
 def ensure_exists(vault_path: str, password: str) -> str:
-    """Kurtarma anahtarı yoksa üret; varsa mevcut anahtarı döndür."""
+    """Generate a recovery key when missing; return the current one when present."""
     mevcut = load_key(vault_path)
     if mevcut and verify_container(container_path(vault_path), mevcut)["ok"]:
         return mevcut

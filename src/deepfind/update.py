@@ -1,18 +1,17 @@
-"""DeepFind kendi kendini güncelleme: herkese açık DeepFind deposundan.
+"""DeepFind self-update: from the public DeepFind release repo.
 
-Kaynak depo özel kalır; kurulum ve güncelleme paketleri herkese açık ayrı bir
-depoda yayınlanır. Böylece uygulama "en yeni sürüm hangisi?" sorusunu EXE
-içine kimlik bilgisi gömmeden sorabilir. GitHub API herkese açık depolarda
-kimliksiz yanıt verir (IP başına sınırlı); günde bir denetim tek istek
-kullanır ve sınırın çok altında kalır.
+The source repo stays private; install and update packages ship in a separate
+public repo. That way the app can ask "which version is newest?" without baking
+credentials into the EXE. The GitHub API answers unauthenticated on public repos
+(rate-limited per IP); one check a day costs a single request,
+far under the limit.
 
-Bir yayın kendinden öncekini geçersiz kılar: eski sürüm `releases/latest` ile
-doğrudan en yeniye atlar, aradaki adımları indirmez.
+A release invalidates its predecessors: an old version jumps straight to newest via
+`releases/latest`, never downloading the steps in between.
 
-Paket bütünlüğü iki katmanlıdır: yayın varlığının SHA-256 özeti (yalnız ağ
-yoluyla gelir) indirme sonrası doğrulanır, ardından ZIP açılıp manifest
-sürümü denetlenir. Doğrulamayı geçemeyen dosya asla çalıştırılmaz/yerleşmez.
-"""
+Package integrity has two layers: the release's SHA-256 digest (arrives over the network
+only) is verified after download, then the ZIP is opened and the manifest
+version is checked. A file failing verification is never executed/installed."""
 from __future__ import annotations
 
 import hashlib
@@ -43,7 +42,7 @@ _KLASOR_KALIBI = "DeepFind-{s}"
 
 
 class UpdateError(Exception):
-    """Kullanıcıya aynen gösterilecek hata: ağ, biçim, özet, izin."""
+    """Error shown to the user verbatim: network, format, digest, permission."""
 
 
 @dataclass
@@ -51,13 +50,13 @@ class UpdateInfo:
     version: str
     asset_name: str
     download_url: str
-    sha256: str          # beklenen özet; yayın vermiyorsa ""
+    sha256: str          # expected digest; "" when the release provides none
     size: int
     page_url: str
 
 
 def parse_version(text: str) -> tuple:
-    """'v0.7.10' / '0.7.10-beta' -> (0, 7, 10); sayısal olmayan kuyruk durur."""
+    """'v0.7.10' / '0.7.10-beta' -> (0, 7, 10); a non-numeric tail stops."""
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", str(text or ""))
     if not match:
         raise UpdateError(t("Sürüm numarası çözümlenemedi."))
@@ -72,11 +71,11 @@ def parse_release(payload: dict) -> UpdateInfo:
     """Select a verified installer; ZIP assets are only for older clients."""
     tag = str(payload.get("tag_name") or "")
     version = tag[1:] if tag.startswith("v") else tag
-    # Sürüm adı dosya yoluna giriyor (Updates/<ad>-<sürüm>.exe); yalnız
-    # rakam+nokta kabul edilir, aksi halde "../" ile hedef dizin dışına yazılır.
+    # The version name enters the file path (Updates/<name>-<version>.exe); only
+    # digits+dot accepted, otherwise writes outside the target dir via "../".
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise UpdateError(t("Yayın sürüm etiketi beklenen biçimde değil."))
-    parse_version(version)  # karşılaştıramayacağımız etiketleri reddet
+    parse_version(version)  # reject tags we cannot compare
     # Modern clients always use the installer, including portable -> installed
     # migration. ZIP remains a release asset for pre-0.10 clients only.
     adaylar = {f'DeepFind-{version}.exe'}
@@ -138,12 +137,11 @@ def updates_dir() -> Path:
 
 
 def download(info: UpdateInfo, dest: Path, progress=None, cancel=None) -> Path:
-    """Varlığı dest'e indir; boyut ve SHA-256 doğrulanmadan dosya tutulmaz.
+    """Download the asset to dest; the file is never kept unverified in size and SHA-256.
 
-    Yarım inen ya da kurcalanmış paket asla çalışan program olamaz: doğrulama
-    hatasında veya iptalde dosya silinir. `cancel` bir threading.Event'tir;
-    ilerleme geri çağrısı onu yoklar.
-    """
+A half-downloaded or tampered package can never become the running program: on
+verification error or cancel the file is deleted. `cancel` is a threading.Event;
+the progress callback polls it."""
     class Cancelled(Exception):
         pass
 
@@ -186,7 +184,7 @@ def download(info: UpdateInfo, dest: Path, progress=None, cancel=None) -> Path:
 
 
 def _zip_guvenli_mi(archive: zipfile.ZipFile) -> bool:
-    """Zip Slip: hiçbir üye hedef ağacın dışına çıkmamalı."""
+    """Zip Slip: no member may escape the target tree."""
     for uye in archive.infolist():
         ad = Path(uye.filename)
         if ad.is_absolute() or ad.drive or ".." in ad.parts:
@@ -195,11 +193,10 @@ def _zip_guvenli_mi(archive: zipfile.ZipFile) -> bool:
 
 
 def extract_zip(zip_path: Path, hedef_ust: Path, beklenen_surum: str) -> Path:
-    """ZIP'i hedef üst dizine aç; kök klasörü, EXE'yi ve manifest'i doğrula.
+    """Open the ZIP into the target parent; verify the root folder, EXE and manifest.
 
-    Herhangi bir adım başarısız olursa açılmış yarım klasör de silinir:
-    doğrulanmamış paket diskte kalmaz.
-    """
+When any step fails, the half-opened folder dies too:
+no unverified package stays on disk."""
     zip_path = Path(zip_path)
     hedef_ust = Path(hedef_ust)
     kok = hedef_ust / _KLASOR_KALIBI.format(s=beklenen_surum)
@@ -234,11 +231,10 @@ def extract_zip(zip_path: Path, hedef_ust: Path, beklenen_surum: str) -> Path:
 
 
 def prepare(info: UpdateInfo, progress=None, cancel=None) -> Path:
-    """İndir + aç + doğrula; yerleşmeye hazır klasörü döndür.
+    """Download + open + verify; return the folder ready to settle.
 
-    Açma/doğrulama başarısızsa indirilen ZIP de silinir: yarıda kalan ya da
-    bozuk bir paket diskte artık bırakmaz.
-    """
+When opening/verification fails the downloaded ZIP dies too: a halted or
+broken package leaves no residue on disk."""
     klasor = updates_dir()
     if info.asset_name.endswith('.deepfind'):
         return prepare_incremental(info, klasor, progress, cancel)
@@ -292,14 +288,13 @@ def prepare_incremental(info, directory, progress=None, cancel=None):
 
 def spawn_swap(old_pid: int, hazir_klasor: Path, calisan_exe: Path,
                kasa_yolu: str) -> Path:
-    """Çalışan sürümü taze kopyayla değiştirecek bekçi betiği kur.
+    """Install the watcher script that swaps the running version for the fresh copy.
 
-    Windows çalışan bir EXE'nin yerini değiştirmez: betik bu süreç çıkana
-    kadar bekler, hazır klasörü çalışan programın yanına taşır, yeni EXE'yi
-    kasadan bağımsız normal açılışla başlatır ve kendini siler. Taşıma
-    başarısız olursa (salt-okunur klasör) geçici kopyadan başlatır ve bunu
-    `son-guncelleme.txt` ile bildirir.
-    """
+Windows never relocates a running EXE: the script waits until this process exits,
+moves the ready folder next to the running program, launches the new EXE with
+a normal vault-independent launch, and deletes itself. When the move fails
+(read-only folder) it launches from the temp copy and reports it
+via `son-guncelleme.txt`."""
     hazir_klasor = Path(hazir_klasor)
     if hazir_klasor.is_file() and hazir_klasor.suffix.lower() == '.exe':
         return spawn_installer(old_pid, hazir_klasor, Path(calisan_exe), kasa_yolu)
@@ -353,10 +348,9 @@ def spawn_swap(old_pid: int, hazir_klasor: Path, calisan_exe: Path,
 
 
 def son_sonuc(temizle: bool = True) -> str:
-    """Bekçi betiğin bıraktığı sonuç damgasını oku ("ok"/"fallback"/"").
+    """Read the result stamp left by the watcher script ("ok"/"fallback"/"").
 
-    Okunduğunda damga silinir; bildirim bir kez gösterilir.
-    """
+The stamp is deleted once read; the notice shows exactly once."""
     yol = updates_dir() / "son-guncelleme.txt"
     try:
         metin = yol.read_text(encoding="utf-8", errors="replace").strip()
@@ -371,12 +365,11 @@ def son_sonuc(temizle: bool = True) -> str:
 
 
 def temizle(aktif_klasor: Path | None = None, min_yas_sn: float = 6 * 3600) -> None:
-    """Updates alanındaki eski artıkları topla.
+    """Collect the old leftovers in the Updates area.
 
-    İki koruma: içinden çalışılan klasöre dokunulmaz (taşınamamış kopya),
-    ve yeni hazırlanmış öğeler korunur — bekleyen bir değişim betiği henüz
-    taşımamış olabilir; 6 saatlik eşik o yarışı kapatır.
-    """
+Two guards: never touch the folder being run from (an unmoved copy),
+and keep freshly prepared items — a pending swap script may not have
+moved yet; the 6-hour threshold closes that race."""
     import time as _zaman
     try:
         kok = updates_dir()

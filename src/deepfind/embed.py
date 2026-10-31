@@ -1,9 +1,8 @@
 """Public embedding API; llama.cpp runtime, offline GGUF model.
 
-`embed.MODEL_VER`, `embed.close()`, `embed.isit_oturumu()` gibi adlar bu
-modülden kullanılıyor; engine'den yeniden dışa aktarım kasıtlıdır (ruff F401
-bu yüzden yanlış pozitif). Silinmez, `noqa` ile işaretlenir.
-"""
+Names like `embed.MODEL_VER`, `embed.close()`, `embed.isit_oturumu()` are used
+from this module; re-export from engine is deliberate (ruff F401
+is a false positive here). Never deleted, flagged with `noqa`."""
 import numpy as np
 from .engine import (MODEL_VER, DIM, SORGU_ONEKI, BELGE_ONEKI,  # noqa: F401
     VARSAYILAN_TOPLU, VARSAYILAN_UZUNLUK, Oturum,  # noqa: F401

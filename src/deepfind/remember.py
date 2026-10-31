@@ -1,4 +1,4 @@
-"""Windows kullanıcı hesabına bağlı, isteğe bağlı giriş hatırlama."""
+"""Optional login remember, bound to the Windows user account."""
 import ctypes
 import hashlib
 import os

@@ -1,18 +1,17 @@
-"""Arama kutusu sorgu sözdizimi: `alan:değer` çözümleyicisi.
+"""Search-box query syntax: the `alan:değer` parser.
 
-Desen kaynağı (REA): docspell `PowerSearchInput` — yazarken çözümle, hatalı
-girdide konumu (şapka) göster ve geçersiz sorguda aramayı çalıştırma.
+Pattern source (REA): docspell `PowerSearchInput` — parse while typing, show the
+position (caret) on bad input, never run the search on an invalid query.
 
-Alanlar arayüzdeki filtre denetimleriyle aynıdır ve onları besler:
+Fields match the UI filter controls and feed them:
 
-- `yil:` (4 hane) — ör. `yil:2024`
-- `tur:` — ör. `tur:pdf` ya da `tur:.pdf`
-- `etiket:` — ör. `etiket:"vergi 2024"` (tırnak boşluk taşır)
-- `klasor:` — ör. `klasor:ankara`
+- `yil:` (4 digits) — e.g. `yil:2024`
+- `tur:` — e.g. `tur:pdf` or `tur:.pdf`
+- `etiket:` — e.g. `etiket:"vergi 2024"` (quotes carry spaces)
+- `klasor:` — e.g. `klasor:ankara`
 
-Alan adları Türkçe harf katlamasına dayanıklıdır (`yıl` = `yil`). Alan dışı
-sözcükler serbest metin olarak aramaya girer; çözümleyici saf işlevdir.
-"""
+Field names survive Turkish letter folding (`yıl` = `yil`). Out-of-field
+words enter the search as free text; the parser is a pure function."""
 from __future__ import annotations
 
 from typing import NamedTuple
@@ -20,19 +19,19 @@ from .theme import t
 
 ALANLAR = ("yil", "tur", "etiket", "klasor")
 
-# Kullanıcıya gösterilecek alan yardımı
+# Field help shown to the user
 YARDIM = "yil:2024  tur:pdf  etiket:\"vergi 2024\"  klasor:ankara"
 
 
 class Cozum(NamedTuple):
-    serbest: str      # alan dışı serbest metin
+    serbest: str      # free text outside fields
     alanlar: dict     # {alan: değer}
-    hata: str         # "" ise geçerli
+    hata: str         # "" means valid
     imlec: int        # hata konumu (yoksa -1)
 
 
 def katla(metin: str) -> str:
-    """Türkçe harfleri sade ASCII'ye indirir (yıl → yil)."""
+    """Fold Turkish letters down to plain ASCII (yıl → yil)."""
     for a, b in (("ı", "i"), ("İ", "i"), ("ğ", "g"), ("Ğ", "g"), ("ş", "s"), ("Ş", "s"),
                  ("ç", "c"), ("Ç", "c"), ("ö", "o"), ("Ö", "o"), ("ü", "u"), ("Ü", "u")):
         metin = metin.replace(a, b)
@@ -44,7 +43,7 @@ def _alan_karakteri(karakter: str) -> bool:
 
 
 def cozumle(metin: str, turler=()) -> Cozum:
-    """Sorgu metnini serbest metin + alan sözlüğüne çözer; hata varsa konum verir."""
+    """Parse the query text into free text + field dict; give a position on error."""
     serbest: list[str] = []
     alanlar: dict[str, str] = {}
     gecerli_turler = {katla("." + tur.lstrip(".")) for tur in turler if tur and tur != t("tümü")}
@@ -93,7 +92,7 @@ def cozumle(metin: str, turler=()) -> Cozum:
 
 
 def imlec_satiri(metin: str, imlec: int) -> str:
-    """Hata konumunu gösteren şapka satırı (docspell deseni)."""
+    """Caret line marking the error position (docspell pattern)."""
     if imlec < 0:
         return ""
     return " " * max(0, min(imlec, len(metin))) + "^"
