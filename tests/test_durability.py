@@ -85,7 +85,7 @@ def q_pending(con):
 def test_degisen_dosya_yeni_surun(tmp_path):
     kok = str(tmp_path / "arsiv")
     os.makedirs(kok)
-    p = _pdf(kok, "degisen.pdf", "eski icerik Kayseri")
+    _pdf(kok, "degisen.pdf", "eski icerik Kayseri")
     time.sleep(2.5)
     con, db = _kasa(tmp_path)
     coordinator.run_scan(con, db, kok, require_vectors=False)

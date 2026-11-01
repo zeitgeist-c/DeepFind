@@ -184,7 +184,7 @@ def build_manifest(con, root: str) -> tuple:
     return run_id, total
 
 
-def write_revision(con, file_id: int, sig: str, res: "ex.ExtractResult",
+def write_revision(con, file_id: int, sig: str, res: ex.ExtractResult,
                      context: str = "") -> None:
     """Change the file, revision and content sections in one transaction."""
     import unicodedata

@@ -11,7 +11,7 @@ from PySide6.QtCore import QDir, Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFileSystemModel, QHBoxLayout,
                                QLabel, QLineEdit, QListView, QPushButton, QTreeView,
                                QVBoxLayout, QWizard, QWizardPage, QFrame, QSplitter)
-from .theme import LANGUAGES, app_icon, install_language, resolve_language, set_language, t
+from .theme import LANGUAGES, app_icon, install_language, resolve_language, t
 from .ui import brand, bolme, card, label
 from .ui import CardDelegate
 from PySide6.QtGui import QStandardItem, QStandardItemModel

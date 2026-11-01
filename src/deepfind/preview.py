@@ -661,4 +661,4 @@ size change" would loop, because render hides then shows the canvas."""
         if not rows:
             self.metin.setPlainText("Metin yok.")
             return
-        self.metin.setPlainText("\n\n".join(f"[{l}]\n{t}" for l, t in rows))
+        self.metin.setPlainText("\n\n".join(f"[{lbl}]\n{txt}" for lbl, txt in rows))

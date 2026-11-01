@@ -118,7 +118,7 @@ def test_failed_migration_restores_verified_previous_vault(tmp_path,monkeypatch)
     os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
     from PySide6.QtWidgets import QApplication
     from deepfind.app import AnaPencere
-    app=QApplication.instance() or QApplication([])
+    _app=QApplication.instance() or QApplication([])
     db=str(tmp_path/'old.db'); password='synthetic-upgrade-1234'
     con=vault.open_vault(db,password); migrate.ensure_current(con)
     index.index_entry(con,Entry('old.pdf','old.pdf','.pdf',1,1),ExtractResult([Segment('pdf_page',1,'Sayfa 1','tahsilat korunmalı')]))

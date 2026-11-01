@@ -3,7 +3,6 @@
 Each test builds the pre-rename layout, then asserts the new code finds it.
 """
 
-import os
 import shutil
 
 import pytest

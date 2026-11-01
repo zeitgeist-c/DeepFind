@@ -29,7 +29,7 @@ def test_legacy_preparation_stays_responsive_and_reports_backup(tmp_path, monkey
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication, QDialog
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     path = str(tmp_path / 'legacy.db')
     password = 'synthetic-startup-1234'
     con = vault.open_vault(path, password)

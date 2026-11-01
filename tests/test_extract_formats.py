@@ -21,7 +21,7 @@ def test_desteklenen_uzantilar_genisledi():
 
 
 def test_txt_utf8(tmp_path):
-    p = _yaz(tmp_path / "not.txt", "tahsilat makbuzu 54321: 18.750 TL".encode("utf-8"))
+    p = _yaz(tmp_path / "not.txt", b"tahsilat makbuzu 54321: 18.750 TL")
     res = extract.extract(p, ".txt", os.path.getsize(p))
     assert res.status == "ok" and "18.750" in res.segments[0].raw_text
 
@@ -33,7 +33,7 @@ def test_txt_windows1254(tmp_path):
 
 
 def test_csv_satirlari(tmp_path):
-    p = _yaz(tmp_path / "kasa.csv", "tarih;tutar\na.b;1000\n".encode("utf-8"))
+    p = _yaz(tmp_path / "kasa.csv", b"tarih;tutar\na.b;1000\n")
     res = extract.extract(p, ".csv", os.path.getsize(p))
     assert res.status == "ok" and "1000" in res.segments[0].raw_text
 

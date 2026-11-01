@@ -890,7 +890,6 @@ def test_haric_isci_atomik_surucu_koku_temizligi(tmp_path):
                              ("D:\\kept.pdf", "KeepName", "BodyRemove")):
         con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)", (path, name, ".pdf"))
         fid = con.execute("SELECT file_id FROM files WHERE path=?", (path,)).fetchone()[0]
-        folded = body.lower()
         con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,?,?,?,?)",
                     (fid,"text",1,"Sayfa 1",body))
     con.commit(); con.close()

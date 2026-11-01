@@ -3,7 +3,6 @@ import ctypes
 import hashlib
 import os
 from ctypes import wintypes
-from pathlib import Path
 from . import paths
 from .theme import t
 
