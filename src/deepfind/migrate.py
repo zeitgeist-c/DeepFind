@@ -167,7 +167,23 @@ def ensure_current(con, progress=None) -> None:
     ensure_archive(con)
     ensure_v10(con, progress=progress)
     con.execute("DELETE FROM settings WHERE k IN ('gemini_api_key','ai_model')")
+    ensure_schedule_optin(con)
     con.commit()
+
+
+def ensure_schedule_optin(con):
+    """Scheduled scans are opt-in; keep an existing user's active choice.
+
+    A vault that already recorded a scheduled slot was using the feature, so it
+    stays enabled. A brand-new profile starts with scheduled scans off.
+    """
+    row = con.execute("SELECT 1 FROM settings WHERE k='planli_tarama'").fetchone()
+    if row:
+        return None
+    used = con.execute("SELECT v FROM settings WHERE k='son_slot'").fetchone()
+    deger = "1" if used and (used[0] or "").strip() else "0"
+    con.execute("INSERT OR REPLACE INTO settings(k,v) VALUES('planli_tarama',?)", (deger,))
+    return deger
 
 
 def ensure_archive(con):

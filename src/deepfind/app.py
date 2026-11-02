@@ -38,15 +38,27 @@ from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
 from . import archive_ui
 from .theme import t
 
-EKRANLAR = [t("Ara"), t("Kaynaklar"), t("Tarama"), t("Geçmiş"), t("Taranmış Evraklar"), t("Ayarlar")]
-SAYFA_ACIKLAMA = {
-    t("Ara"): t("Aradığınız belgenin içeriğini tarif edin; belgeler bu bilgisayarda kalır."),
-    t("Kaynaklar"): t("Taranacak klasörleri ve kapsam dışında kalan yolları yönetin."),
-    t("Tarama"): t("Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin."),
-    t("Geçmiş"): t("Önceki aramalarınıza tek tıkla dönün."),
-    t("Taranmış Evraklar"): t("Kayıtlı dosyaları, tam yollarını ve içerik durumlarını inceleyin."),
-    t("Ayarlar"): t("Çalışma tercihleri, kasa güvenliği ve yedekler."),
+# Screens are addressed by a stable key; only the visible title is translated,
+# so switching language never breaks navigation or page dispatch.
+EKRAN_ANAHTARLARI = ("arama", "kaynaklar", "tarama", "gecmis", "dosyalar", "ayarlar")
+EKRAN_ADLARI = ("Ara", "Kaynaklar", "Tarama", "Geçmiş", "Taranmış Evraklar", "Ayarlar")
+_SAYFA_ACIKLAMA = {
+    "arama": "Aradığınız belgenin içeriğini tarif edin; belgeler bu bilgisayarda kalır.",
+    "kaynaklar": "Taranacak klasörleri ve kapsam dışında kalan yolları yönetin.",
+    "tarama": "Arşivinizi güncelleyin; güvenli noktada duraklatıp devam edin.",
+    "gecmis": "Önceki aramalarınıza tek tıkla dönün.",
+    "dosyalar": "Kayıtlı dosyaları, tam yollarını ve içerik durumlarını inceleyin.",
+    "ayarlar": "Çalışma tercihleri, kasa güvenliği ve yedekler.",
 }
+
+
+def ekranlar():
+    """Visible screen titles in the current language (never cached)."""
+    return [t(ad) for ad in EKRAN_ADLARI]
+
+
+def sayfa_aciklama(anahtar):
+    return t(_SAYFA_ACIKLAMA.get(anahtar, ""))
 
 
 class RailDelegate(QStyledItemDelegate):
@@ -431,6 +443,7 @@ class AnaPencere(QMainWindow):
         self.sonuclar = []
         self._locked = False
         self._exiting = False
+        self._acilis = dt.datetime.now()
         self._search_thread = None
         self._pending_search = None
         self._kaldir_isci = None
@@ -758,7 +771,7 @@ class AnaPencere(QMainWindow):
         self.nav.setObjectName("navigation")
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.nav.setTextElideMode(Qt.ElideRight)
-        self.nav.addItems(EKRANLAR)
+        self.nav.addItems(ekranlar())
         from PySide6.QtCore import QSize
         self.nav.setIconSize(QSize(18, 18))
         self.nav.setItemDelegate(RailDelegate(self, self.nav))
@@ -931,7 +944,7 @@ so it walks every page on the stack."""
         self.rail_toggle.setIcon(theme.symbol_icon("right" if self._collapsed else "left"))
         self.rail.layout().setContentsMargins(8 if self._collapsed else 18, 24, 8 if self._collapsed else 18, 20)
         self.rail_toggle.setToolTip(t("Menüyü genişlet") if self._collapsed else t("Menüyü daralt"))
-        for i, title in enumerate(EKRANLAR):
+        for i, title in enumerate(ekranlar()):
             self.nav.item(i).setText("" if self._collapsed else title)
             self.nav.item(i).setToolTip(title)
         for button, title in self.rail_actions:
@@ -2313,6 +2326,8 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             QMessageBox.warning(self, t("Kök"), f"Eklenemedi: {e}")
         self._kok_tazele()
         self._durum_yaz()
+        # Watch the new root from now on; adding a folder never starts a scan.
+        self._izleme_baslat()
 
     def _kok_kaldir(self):
         if not self._exclusive_ready():
@@ -2597,6 +2612,31 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self._izleme_saat.timeout.connect(self._izleme_bosalt)
         self._izleme_saat.start(5000)
 
+    def _kapsam_kaydet(self, kokler):
+        """Remember the explicit scope so automatic scans stay inside it."""
+        import json
+        try:
+            migrate.set_setting(self.con, "son_kapsam", json.dumps(list(kokler)))
+        except Exception:
+            pass
+
+    def _otomatik_kapsam(self):
+        """Roots an automatic scan may use: the user's explicit scope, else all."""
+        return self._kayitli_kapsam() or self._kokler()
+
+    def _kayitli_kapsam(self):
+        """Saved explicit scope, still limited to registered+enabled roots."""
+        import json
+        try:
+            secili = [p for p in json.loads(migrate.get_setting(self.con, "son_kapsam", "[]") or "[]")
+                      if isinstance(p, str) and os.path.isdir(p)]
+        except Exception:
+            return []
+        kokler = self._kokler()
+        if not kokler:
+            return []
+        return [p for p in secili if any(self._under(p, kok) for kok in kokler)]
+
     def _kokler(self):
         try:
             return [r[0] for r in self.con.execute(
@@ -2642,6 +2682,10 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
                 self._scan_show()
             return
         kokler = roots if roots is not None else self._kokler()
+        if roots is None and automatic:
+            # Automatic scans never widen the scope: they reuse the roots the
+            # user picked for their last explicit scan.
+            kokler = self._otomatik_kapsam()
         if not automatic and roots is None:
             mode = self.scope_mode.currentIndex()
             if mode == 1:
@@ -2663,6 +2707,8 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
                 unique.append(path)
         kokler = unique
         self._scan_roots = kokler
+        if not automatic and roots is None:
+            self._kapsam_kaydet(kokler)
         self.retry_scan.hide()
         migrate.set_setting(self.con, "tarama_ele_alinan_gun", dt.date.today().isoformat())
         self.isci_thread = QThread(self)
@@ -2929,6 +2975,10 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         with self._izleme_kilit:
             bekleyen = sorted(d for d in self._izleme_bekleyen if os.path.isdir(d))
             self._izleme_bekleyen.clear()
+        if bekleyen:
+            # The watcher must not widen the scope chosen by the user.
+            izinli = self._otomatik_kapsam()
+            bekleyen = [d for d in bekleyen if any(self._under(d, k) for k in izinli)]
         if bekleyen:
             self.scan_log.appendPlainText(
                 f"İzleme: {len(bekleyen)} klasörde değişiklik → tarama başlıyor.")
@@ -3397,6 +3447,51 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             return bolum(text)
 
         from . import ocr_setup
+        k.addWidget(baslik(t("Görünüm ve dil")))
+        self.dil_secici = QComboBox()
+        for kod, ad, _qt, _yerel in theme.LANGUAGES:
+            self.dil_secici.addItem(ad, kod)
+        _metin = self.dil_secici.fontMetrics()
+        self.dil_secici.setMinimumWidth(max(
+            _metin.horizontalAdvance(self.dil_secici.itemText(i))
+            for i in range(self.dil_secici.count())) + 64)
+        self.dil_secici.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.dil_secici.view().setMinimumWidth(self.dil_secici.minimumWidth())
+        self.dil_secici.setAccessibleName(t("Arayüz dili"))
+        from PySide6.QtCore import QSettings as _QSettings
+        _kayitli_dil = theme.resolve_language(
+            _QSettings(identity.APP_IDENTITY, "Appearance").value("language", theme.DEFAULT_LANGUAGE))
+        self.dil_secici.setCurrentIndex(max(0, self.dil_secici.findData(_kayitli_dil)))
+        self.dil_secici.currentIndexChanged.connect(self._dil_kaydet)
+        self.dil_notu = label(t("Dil değişikliği bir sonraki açılışta geçerli olur."), "ikincil")
+        self.dil_notu.setWordWrap(True)
+        _dil_satir = QWidget()
+        _dil_kutu = QVBoxLayout(_dil_satir)
+        _dil_kutu.setContentsMargins(0, 0, 0, 0)
+        _dil_kutu.setSpacing(4)
+        _dil_kutu.addWidget(self.dil_secici)
+        _dil_kutu.addWidget(self.dil_notu)
+        k.addWidget(ayar_satiri(t("Arayüz dili"), t("Menüler, düğmeler ve iletiler bu dilde gösterilir."), _dil_satir))
+        self.motor_secici = QComboBox()
+        from . import engine as _engine
+        _kurulu = {row["key"]: row for row in _engine.motor_secenekleri()}
+        for _anahtar, _baslik, _aciklama in self._motor_secenekleri():
+            _row = _kurulu.get(_anahtar, {})
+            _metin = _baslik if _row.get("installed") else _baslik + " — " + t("kurulu değil")
+            self.motor_secici.addItem(_metin, _anahtar)
+        _kayitli_motor = migrate.get_setting(self.con, "embedding_backend", "auto")
+        self.motor_secici.setCurrentIndex(max(0, self.motor_secici.findData(_kayitli_motor)))
+        self.motor_secici.setAccessibleName(t("Çalışma motoru"))
+        self.motor_notu = label(t("Seçim kaydedilir ve motor yeniden başlatılır."), "ikincil")
+        self.motor_notu.setWordWrap(True)
+        _motor_satir = QWidget()
+        _motor_kutu = QVBoxLayout(_motor_satir)
+        _motor_kutu.setContentsMargins(0, 0, 0, 0)
+        _motor_kutu.setSpacing(4)
+        _motor_kutu.addWidget(self.motor_secici)
+        _motor_kutu.addWidget(self.motor_notu)
+        k.addWidget(ayar_satiri(t("Çalışma motoru"), t("Anlamsal aramanın hangi birimde çalışacağı."), _motor_satir))
+        self.motor_secici.currentIndexChanged.connect(self._motor_degistir)
         k.addWidget(baslik(t("Çalışma")))
         hazir = ocr_setup.ready()[0]
         self.ocr_status = label(t("Hazır") if hazir else t("Eksik"), "basari" if hazir else "hata")
@@ -3412,7 +3507,14 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self.scan_time_edit.setTime(value if value.isValid() else QTime(12, 30))
         except ValueError:
             self.scan_time_edit.setTime(QTime(12, 30))
-        k.addWidget(ayar_satiri(t("Günlük tarama saati"), t("Bilgisayar açıksa bu saatte taranır."), self.scan_time_edit))
+        self.planli_tarama = QCheckBox()
+        self.planli_tarama.setChecked(migrate.get_setting(self.con, "planli_tarama", "0") == "1")
+        self.planli_tarama.setAccessibleName(t("Saatli taramayı etkinleştir"))
+        k.addWidget(ayar_satiri(
+            t("Saatli taramayı etkinleştir"),
+            t("Yalnız uygulama bu saatte açıksa çalışır; kaçırılan taramalar sonradan başlatılmaz."),
+            self.planli_tarama))
+        k.addWidget(ayar_satiri(t("Günlük tarama saati"), t("Saatli tarama etkinken geçerlidir."), self.scan_time_edit))
         self.gecikme = QCheckBox()
         self.gecikme.setChecked(migrate.get_setting(self.con, "gecikme", "0") == "1")
         k.addWidget(ayar_satiri(t("Ağ yükünü azaltmak için taramayı geciktir"), t("Cihaz başına küçük rastgele gecikme ekler."), self.gecikme))
@@ -3536,8 +3638,40 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         remember.forget(self.kasa_yolu)
         QMessageBox.information(self, t("Giriş"), t("Hatırlanan giriş kaldırıldı. Sonraki açılışta şifre istenecek."))
 
+    @staticmethod
+    def _motor_secenekleri():
+        """Engine choices in plain language; installed state comes from disk."""
+        return [
+            ("auto", t("Önerilen: otomatik (ekran kartı, olmazsa işlemci)"),
+             t("Ekran kartını dener; uygun değilse arama işlemciye geçer.")),
+            ("cpu", t("Yalnız işlemci (CPU)"),
+             t("Her bilgisayarda çalışır, ekran kartı olanlarda daha yavaştır.")),
+            ("vulkan", t("Ekran kartı (Vulkan)"),
+             t("Uygun kart ya da sürücü yoksa arama başlamaz.")),
+            ("cuda", t("NVIDIA ekran kartı (CUDA)"),
+             t("İsteğe bağlı bileşen; indirilmeden kullanılamaz.")),
+        ]
+
+    def _dil_kaydet(self):
+        """Store the language choice; it applies on the next start."""
+        from PySide6.QtCore import QSettings
+        kod = self.dil_secici.currentData() or theme.DEFAULT_LANGUAGE
+        QSettings(identity.APP_IDENTITY, "Appearance").setValue("language", kod)
+        self.dil_notu.setText(t("Dil kaydedildi: {language}. Yeni dil bir sonraki açılışta geçerli olur.",
+                                language=self.dil_secici.currentText()))
+
+    def _motor_degistir(self):
+        """Persist the engine choice and restart the model on the new backend."""
+        from . import engine
+        backend = self.motor_secici.currentData() or "auto"
+        migrate.set_setting(self.con, "embedding_backend", backend)
+        engine.set_backend(backend)
+        self.motor_notu.setText(t("Motor seçimi kaydedildi: {motor}. Sonraki aramada yeniden başlatılır.",
+                                  motor=self.motor_secici.currentText()))
+
     def _ayar_kaydet(self):
         migrate.set_setting(self.con, "saat", str(self.scan_time_edit.time().hour()))
+        migrate.set_setting(self.con, "planli_tarama", "1" if self.planli_tarama.isChecked() else "0")
         migrate.set_setting(self.con, "dakika", str(self.scan_time_edit.time().minute()))
         self.tarama_time.setText(f"{self.scan_time_edit.time().hour():02d}:{self.scan_time_edit.time().minute():02d}")
         migrate.set_setting(self.con, "gecikme", "1" if self.gecikme.isChecked() else "0")
@@ -3683,25 +3817,27 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
     # -- ekran/durum/tepsi/kilit --
     def _ekran(self, i):
         started = time.perf_counter()
-        if i == len(EKRANLAR):
+        if i == len(EKRAN_ANAHTARLARI):
             self.kilitle()
             return
         if i < 0 or i >= self.yigin.count():
             return
         self.yigin.setCurrentIndex(i)
-        name = EKRANLAR[i]
-        self.head_bar.baslik.setText(name if i else "Ara")
-        self.head_bar.aciklama.setText(SAYFA_ACIKLAMA.get(name, ""))
-        self.head_bar.aciklama.setVisible(bool(SAYFA_ACIKLAMA.get(name)))
-        if name == 'Tarama' and self.isci_thread is not None:
+        anahtar = EKRAN_ANAHTARLARI[i]
+        baslik = t(EKRAN_ADLARI[i])
+        self.head_bar.baslik.setText(baslik)
+        aciklama = sayfa_aciklama(anahtar)
+        self.head_bar.aciklama.setText(aciklama)
+        self.head_bar.aciklama.setVisible(bool(aciklama))
+        if anahtar == 'tarama' and self.isci_thread is not None:
             self._scan_show()
-        if name == 'Geçmiş':
+        if anahtar == 'gecmis':
             self._gecmis_tazele()
-        elif name == 'Taranmış Evraklar':
+        elif anahtar == 'dosyalar':
             self._files_refresh(reset=True)
-        elif name == 'Kaynaklar':
+        elif anahtar == 'kaynaklar':
             self._kok_tazele()
-        elif name == 'Ayarlar':
+        elif anahtar == 'ayarlar':
             self._yedek_tazele()
             self._kurtarma_tazele()
             from .model_ui import refresh_coverage
@@ -3815,25 +3951,54 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.tepsi.setIcon(self._tray_frames[self._tray_frame])
 
     def _zamanlayici_kontrol(self, ilk=False):
-        if (self._locked or self.con is None or self.isci_thread is not None
-                or self._kaldir_thread is not None or self._haric_thread is not None):
+        """Scheduled scan: only when the window is open at the scheduled time.
+
+        Rules: opt-in, never on install/first run/restart, never a catch-up for a
+        missed slot, never a second job or a queue while a scan is running.
+        """
+        if self._locked or self.con is None:
+            return
+        if not self.isVisible():
+            # Only a visible session counts; a tray-only background process
+            # (window closed) never starts a scheduled scan.
             return
         if not self._kokler():
             return
         try:
+            if migrate.get_setting(self.con, "planli_tarama", "0") != "1":
+                return
             saat = int(migrate.get_setting(self.con, "saat", "12"))
             dakika = int(migrate.get_setting(self.con, "dakika", "30"))
             lag = sched.device_lag_min(os.environ.get("COMPUTERNAME", "pc")) \
                 if migrate.get_setting(self.con, "gecikme", "0") == "1" else 0
             son_txt = migrate.get_setting(self.con, "son_slot", "")
             son = dt.datetime.fromisoformat(son_txt) if son_txt else None
-            kos, neden = sched.should_run(dt.datetime.now(), son, saat, dakika, lag, migrate.get_setting(self.con, "tarama_ele_alinan_gun", ""))
+            kos, neden = sched.should_run(
+                dt.datetime.now(), son, saat, dakika, lag,
+                migrate.get_setting(self.con, "tarama_ele_alinan_gun", ""),
+                baslangic=getattr(self, "_acilis", None))
         except Exception:
             return
-        if kos and not ilk:
-            self._tara_baslat(automatic=True)
-        elif kos and ilk:
-            self.durum.showMessage(t("Planlı tarama henüz yapılmadı. Başlatmak için “Şimdi tara”ya basın."))
+        if neden == "kacirildi-atlandi":
+            # Missed slot: mark the day handled so it is never caught up later.
+            migrate.set_setting(self.con, "tarama_ele_alinan_gun", dt.date.today().isoformat())
+            diagnostics.record("scheduled_scan_skipped")
+            return
+        if not kos:
+            return
+        if ilk:
+            # Startup/restart alone never starts a scan; the next tick may.
+            return
+        busy = (self.isci_thread is not None or self._kaldir_thread is not None
+                or self._haric_thread is not None)
+        if busy:
+            # No queue: today's slot is consumed without a second job.
+            migrate.set_setting(self.con, "tarama_ele_alinan_gun", dt.date.today().isoformat())
+            diagnostics.record("scheduled_scan_busy_skipped")
+            self.durum.showMessage(t("Planlı tarama saati geldi ancak başka bir tarama sürüyor; ikinci tarama başlatılmadı."))
+            return
+        diagnostics.record("scheduled_scan_started")
+        self._tara_baslat(automatic=True)
 
     def kilitle(self):
         if self._locked or self.sifresiz:
@@ -4216,6 +4381,8 @@ def main(kasa_yolu=None, sifre=None):
     from PySide6.QtCore import QSettings
     for _note in identity.migrate_all():
         print(_note, flush=True)
+    theme.seed_language_from_installer(app)
+    theme.restore_saved_language(app)
     theme.apply(app, QSettings(identity.APP_IDENTITY, "Appearance").value("theme", "sistem"))
     if not args.kasa:
         from .cli import DEFAULT_VAULT
@@ -4333,7 +4500,13 @@ def main(kasa_yolu=None, sifre=None):
                 pen._kok_tazele()
                 pen.show()
                 progress.hide()
-                QTimer.singleShot(0, lambda: pen._tara_baslat(automatic=True))
+                # No scan starts on its own: the user begins the first scan
+                # from the Tarama page when ready (stability + schedule rules).
+                diagnostics.record("setup_first_scan_deferred")
+                QTimer.singleShot(0, lambda: (
+                    pen._scan_show(),
+                    pen.tarama_bilgi.setText(t("İlk taramayı başlatmak için “Şimdi tara”ya basın.")),
+                ))
             except Exception as error:
                 diagnostics.record("main_window_failed", type(error).__name__)
                 failed(t("Çalışma alanı açılamadı: {error}", error=error))

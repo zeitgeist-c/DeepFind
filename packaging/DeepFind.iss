@@ -59,7 +59,7 @@ LicenseFile=..\LICENSE
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
+Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"; LicenseFile: "licenses\MIT-tr.txt"
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -73,7 +73,35 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop icon"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:DesktopIcon}"; Flags: unchecked
+
+[CustomMessages]
+english.DesktopIcon=Create a desktop icon
+turkish.DesktopIcon=Masaüstü simgesi oluştur
+german.DesktopIcon=Desktopsymbol erstellen
+spanish.DesktopIcon=Crear un icono en el escritorio
+french.DesktopIcon=Créer une icône sur le bureau
+italian.DesktopIcon=Crea un'icona sul desktop
+brazilianportuguese.DesktopIcon=Criar um ícone na área de trabalho
+russian.DesktopIcon=Создать значок на рабочем столе
+polish.DesktopIcon=Utwórz ikonę na pulpicie
+dutch.DesktopIcon=Een bureaubladpictogram maken
+chinesesimplified.DesktopIcon=创建桌面图标
+japanese.DesktopIcon=デスクトップにアイコンを作成する
+korean.DesktopIcon=바탕 화면 아이콘 만들기
+english.LaunchProgram=Launch %1
+turkish.LaunchProgram=%1'ı başlat
+german.LaunchProgram=%1 starten
+spanish.LaunchProgram=Iniciar %1
+french.LaunchProgram=Lancer %1
+italian.LaunchProgram=Avvia %1
+brazilianportuguese.LaunchProgram=Iniciar %1
+russian.LaunchProgram=Запустить %1
+polish.LaunchProgram=Uruchom %1
+dutch.LaunchProgram=%1 starten
+chinesesimplified.LaunchProgram=启动 %1
+japanese.LaunchProgram=%1 を起動
+korean.LaunchProgram=%1 시작
 
 [Files]
 Source: "..\dist\{#AppName}-{#AppVersion}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -95,7 +123,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}-{#AppVersion}.exe"
 Name: "{group}\{#AppName} kaldır"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{app}\{#AppName}-{#AppVersion}.exe"; Description: "{#AppName}'ı başlat"; Flags: nowait postinstall skipifsilent
+; Launch through the interactive shell instead of Setup's original-user spawn
+; server: the spawn-server handshake ("CallSpawnServer") failed on real
+; installs and surfaced as an internal error. explorer.exe relays the request
+; to the already running (non-elevated) shell, so the app still starts as the
+; normal user while Setup only needs a plain process start.
+Filename: "{sys}\explorer.exe"; Parameters: """{app}\{#AppName}-{#AppVersion}.exe"""; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: files; Name: "{#ModelDir}\embeddinggemma-2-Q8_0.gguf"

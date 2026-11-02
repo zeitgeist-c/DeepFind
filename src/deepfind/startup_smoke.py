@@ -19,8 +19,9 @@ def run(directory):
     wb.save(document)
     old = time.time() - 10
     os.utime(document, (old, old))
-    state = {"setup": False, "scan_started": False, "ok": False, "error": ""}
-    deadline = time.monotonic() + 40
+    state = {"setup": False, "scan_started": False, "ok": False, "error": "",
+             "ilk_gorunum": None, "illa_tarama_yok": False}
+    deadline = time.monotonic() + 90
     timer = QTimer(app)
 
     def tick():
@@ -42,6 +43,19 @@ def run(directory):
                 return
             pen = getattr(app, '_main_window', None)
             if pen is None or not pen.isVisible():
+                return
+            if not state['illa_tarama_yok']:
+                # İlk açılış kendi başına tarama başlatmamalı (kural): ana ekran
+                # göründükten sonra kısa bir pencere boyunca doğrula.
+                if state['ilk_gorunum'] is None:
+                    state['ilk_gorunum'] = time.monotonic()
+                    return
+                assert pen.isci_thread is None, 'ilk açılışta kendiliğinden tarama başladı'
+                if time.monotonic() - state['ilk_gorunum'] < 3:
+                    return
+                state['illa_tarama_yok'] = True
+                pen._scan_show()
+                pen._tara_baslat()          # elle tarama: kullanıcı başlatır
                 return
             if pen.isci_thread is not None:
                 state['scan_started'] = True

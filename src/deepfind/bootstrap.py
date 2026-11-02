@@ -23,6 +23,8 @@ class Bootstrap(QObject):
                             (root, os.path.normpath(root).lower(), self.selection['sirket_kurali']))
             con.commit()
             migrate.set_setting(con, "tema", self.selection['tema'])
+            backend = self.selection.get('embedding_backend') or 'auto'
+            migrate.set_setting(con, "embedding_backend", backend)
             migrate.set_setting(con, "kurulum_tamam", "1")
             migrate.set_setting(con, "kasa_sifresiz",
                                 "1" if self.password == vault.SIFRESIZ_ANAHTAR else "0")

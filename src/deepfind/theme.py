@@ -52,6 +52,47 @@ def resolve_language(code):
     return code if code in CODES else DEFAULT_LANGUAGE
 
 
+def installer_language_file():
+    """install-language.txt written by the installer next to the EXE (frozen only)."""
+    import sys
+    from pathlib import Path
+    if getattr(sys, "frozen", False):
+        aday = Path(sys.executable).resolve().parent / "install-language.txt"
+        if aday.is_file():
+            return aday
+    return None
+
+
+def seed_language_from_installer(app=None):
+    """Adopt the installer's language once; never override a saved user choice.
+
+    Returns the adopted code, or None when there is nothing to adopt (a
+    language is already saved, or no installer file exists).
+    """
+    from PySide6.QtCore import QSettings
+    from . import identity
+    try:
+        if QSettings(identity.APP_IDENTITY, "Appearance").contains("language"):
+            return None
+    except Exception:
+        return None
+    dosya = installer_language_file()
+    if dosya is None:
+        return None
+    try:
+        kod = resolve_language(dosya.read_text(encoding="utf-8").strip().split()[0])
+    except Exception:
+        return None
+    try:
+        QSettings(identity.APP_IDENTITY, "Appearance").setValue("language", kod)
+    except Exception:
+        pass
+    set_language(kod)
+    if app is not None:
+        install_language(app, kod)
+    return kod
+
+
 def install_language(app, code):
     """Install the Qt standard translation + locale from the user choice."""
     from PySide6.QtCore import QLocale, QLibraryInfo, QTranslator
@@ -105,7 +146,9 @@ def _merge(*parts):
     return m
 
 
-TABLES = {"en": _merge(_EN1, _EN2, _EN3, _EN4, _EN5), "tr": {}, "de": _merge(_DE1, _DE2, _DE3, _DE4, _DE5), "es": _merge(_ES1, _ES2, _ES3, _ES4, _ES5), "fr": _merge(_FR1, _FR2, _FR3, _FR4, _FR5), "it": _merge(_IT1, _IT2, _IT3, _IT4, _IT5), "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4, _PB5), "ru": _merge(_RU1, _RU2, _RU3, _RU4, _RU5), "pl": _merge(_PL1, _PL2, _PL3, _PL4, _PL5), "nl": _merge(_NL1, _NL2, _NL3, _NL4, _NL5), "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4, _ZH5), "ja": _merge(_JA1, _JA2, _JA3, _JA4, _JA5), "ko": _merge(_KO1, _KO2, _KO3, _KO4, _KO5)}
+from . import i18n_extra as _extra
+
+TABLES = {"en": _merge(_EN1, _EN2, _EN3, _EN4, _EN5, _extra.EN), "tr": {}, "de": _merge(_DE1, _DE2, _DE3, _DE4, _DE5, _extra.DE), "es": _merge(_ES1, _ES2, _ES3, _ES4, _ES5, _extra.ES), "fr": _merge(_FR1, _FR2, _FR3, _FR4, _FR5, _extra.FR), "it": _merge(_IT1, _IT2, _IT3, _IT4, _IT5, _extra.IT), "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4, _PB5, _extra.PB), "ru": _merge(_RU1, _RU2, _RU3, _RU4, _RU5, _extra.RU), "pl": _merge(_PL1, _PL2, _PL3, _PL4, _PL5, _extra.PL), "nl": _merge(_NL1, _NL2, _NL3, _NL4, _NL5, _extra.NL), "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4, _ZH5, _extra.ZH), "ja": _merge(_JA1, _JA2, _JA3, _JA4, _JA5, _extra.JA), "ko": _merge(_KO1, _KO2, _KO3, _KO4, _KO5, _extra.KO)}
 
 
 def set_language(code):
@@ -402,13 +445,32 @@ QPlainTextEdit#log {{ font-family: 'Cascadia Mono', 'Consolas'; font-size: 12px;
 """
 
 
+def restore_saved_language(app=None):
+    """Apply the language saved in QSettings (startup only).
+
+    Kept separate from `apply`: re-applying the theme must never reload the
+    language from settings, otherwise a language chosen at runtime (or an
+    installer-seeded one) is silently reverted.
+    """
+    from PySide6.QtCore import QSettings
+    from . import identity
+    try:
+        kayitli = QSettings(identity.APP_IDENTITY, "Appearance").value("language")
+    except Exception:
+        kayitli = None
+    kod = resolve_language(kayitli or DEFAULT_LANGUAGE)
+    set_language(kod)
+    if app is not None:
+        install_language(app, kod)
+    return kod
+
+
 def apply(app, mode: str) -> str:
     """Apply the theme, return the resolved name (system->light/dark)."""
     from PySide6.QtGui import QStyleHints
     from PySide6.QtCore import QSettings
     from . import identity
-    install_language(app, resolve_language(
-        QSettings(identity.APP_IDENTITY, "Appearance").value("language", DEFAULT_LANGUAGE)))
+    install_language(app, language())
     QSettings(identity.APP_IDENTITY, "Appearance").setValue("theme", mode)
     app.setProperty("deepfind_theme_mode", mode)
     if not getattr(app, "_deepfind_scheme_connected", False):

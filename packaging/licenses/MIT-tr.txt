@@ -1,0 +1,25 @@
+Bu metin bilgilendirme amaçlı Türkçe çeviridir. Hukuken bağlayıcı olan metin,
+kurulumla birlikte verilen İngilizce LICENSE dosyasıdır. Çelişki hâlinde
+İngilizce metin geçerlidir.
+
+MIT Lisansı
+
+Telif hakkı (c) 2026 zeitgeist-c
+
+İşbu belgeyi edinen herkese, Yazılımın kopyalarıyla ve ilgili belgelendirme
+dosyalarıyla ("Yazılım") kısıtlama olmaksızın ilgilenme izni, bunları
+kullanma, kopyalama, değiştirme, birleştirme, yayımlama, dağıtma, alt lisans
+verme ve/veya satma hakları ile Yazılımın sağlandığı kişilerin de bunu
+yapmasına izin verme hakkı dâhil olmak üzere, aşağıdaki koşullar saklı
+kalmak kaydıyla, ücretsiz olarak verilir:
+
+Yukarıdaki telif hakkı bildirimi ve bu izin bildirimi, Yazılımın tüm
+kopyalarına veya önemli bölümlerine eklenir.
+
+YAZILIM, AÇIK VEYA ZIMNİ HİÇBİR GARANTİ VERİLMEKSİZİN, TİCARİ
+ELVERİŞLİLİK, BELİRLİ BİR AMACA UYGUNLUK VE İHLAL ETMEME GARANTİLERİ DÂHİL
+ANCAK BUNLARLA SINIRLI OLMAMAK ÜZERE "OLDUĞU GİBİ" SAĞLANIR. YAZARLAR VEYA
+TELİF HAKKI SAHİPLERİ, SÖZLEŞMEDEN, HAKSIZ FİİLDEN VEYA BAŞKA ŞEKİLDE,
+YAZILIMDAN VEYA YAZILIMIN KULLANIMINDAN VEYA YAZILIMLA İLGİLİ DİĞER
+İŞLEMLERDEN KAYNAKLANAN HİÇBİR İDDİA, ZARAR VEYA DİĞER YÜKÜMLÜLÜKTEN SORUMLU
+TUTULAMAZ.

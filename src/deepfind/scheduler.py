@@ -1,11 +1,15 @@
-"""Zamanlama: gunluk tarama slotu, cihaz gecikmesi, catch-up, cift-kosma kilidi.
+"""Zamanlama: gunluk tarama slotu, cihaz gecikmesi, cift-kosma kilidi.
 
-Plan bolum 18 sozlesmesi:
+Sozlesme (kullanici kurali):
+- Saatli tarama istege baglidir; yeni profilde kapalidir.
+- Yalnizca uygulama o saatte ACIKSA calisir. Uygulama kapaliysa hicbir sey
+  baslatilmaz (gorev zamanlayicisi/servis yok).
+- Slot kacirilirsa telafi YOK: uygulama sonradan acildiginda o gunku slot
+  atlanmis sayilir, tarama baslamaz.
+- Uyku/saat degisimi sonrasi da telafi yok.
+- Ayni gunku slot bir kez ele alinir; ayni slot iki kez kosmaz.
+- Tarama surerken slot gelirse ikinci is veya sonradan calisacak kuyruk yok.
 - Varsayilan yerel saat 12:30 + cihaz basina sabit kucuk gecikme (NAS yuk dagilimi).
-- Uygulama kapaliyken/kilitliyken is calismaz; kilit acilinca kacirilan gunluk is
-  bir kez baslatilabilir. Ayni slot iki kez kosmaz.
-- Uyku/saat degisimi sonrasi yeniden degerlendirilir.
-- Windows gorev zamanlayicisi/sunucu servisi yok.
 """
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ import os
 DEFAULT_HOUR = 12
 DEFAULT_MINUTE = 30
 MAX_LAG_MIN = 10  # cihaz gecikmesi ust siniri (dk)
+GRACE_MIN = 3  # slot + bu pencere icinde acik olan uygulama taramayi baslatir
 
 
 def device_lag_min(device_id: str, max_lag: int = MAX_LAG_MIN) -> int:
@@ -31,19 +36,28 @@ def slot_for(day: dt.date, hour: int = DEFAULT_HOUR, minute: int = DEFAULT_MINUT
 
 def should_run(now: dt.datetime, last_ok: dt.datetime | None,
                hour: int = DEFAULT_HOUR, minute: int = DEFAULT_MINUTE,
-               lag_min: int = 0, handled_day: str = "") -> tuple:
-    """(calismali_mi, neden). Kilit disi cagrilir; kilitliyse cagiran calistirmaz."""
+               lag_min: int = 0, handled_day: str = "",
+               grace_min: int = GRACE_MIN,
+               baslangic: dt.datetime | None = None) -> tuple:
+    """(calismali_mi, neden). Kilit disi cagrilir; kilitliyse cagiran calistirmaz.
+
+    Sadece slot aninda (slot..slot+grace) acik olan uygulama icin True doner.
+    Kacirilan slot telafi edilmez ("kacirildi-atlandi").
+    """
     today_slot = slot_for(now.date(), hour, minute, lag_min)
     if handled_day >= now.date().isoformat():
         return False, "bugunku-slot-ele-alindi"
     if last_ok is not None and last_ok >= today_slot:
         return False, "bugunku-slot-tamam"
-    if now >= today_slot:
-        if last_ok is None:
-            return True, "ilk-gun-slot-geldi"
-        # kacirilan gunler icin tek catch-up (her gecmis gune ayri tarama yok)
-        return True, "catch-up-tek"
-    return False, "slot-bekliyor"
+    if now < today_slot:
+        return False, "slot-bekliyor"
+    if now > today_slot + dt.timedelta(minutes=grace_min):
+        # Uygulama o saatte acik degildi (veya uyuyordu): telafi yok.
+        return False, "kacirildi-atlandi"
+    if baslangic is not None and baslangic >= today_slot:
+        # Uygulama slot anindan sonra acildi: acilis tarama tetiklemez.
+        return False, "kacirildi-atlandi"
+    return True, "slot-geldi"
 
 
 def mark_done() -> dt.datetime:

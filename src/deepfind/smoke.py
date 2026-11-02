@@ -192,8 +192,8 @@ def run(report_path):
             assert pen.con.execute('SELECT count(*) FROM embeddings WHERE model_ver=? AND dim=?', (MODEL_VER,DIM)).fetchone()[0] > 0
             assert not pen.con.execute("SELECT 1 FROM sqlite_master WHERE name IN ('docs_fts','vocabulary')").fetchone()
             checkpoint('archive-file-list-image-ocr')
-            from .app import EKRANLAR
-            pen.nav.setCurrentRow(EKRANLAR.index(t("Taranmış Evraklar")))
+            from .app import EKRAN_ADLARI, EKRAN_ANAHTARLARI
+            pen.nav.setCurrentRow(EKRAN_ANAHTARLARI.index("dosyalar"))
             deadline=time.monotonic()+30
             while pen._jobs:
                 app.processEvents(); time.sleep(.01); assert time.monotonic()<deadline
@@ -328,7 +328,7 @@ def run(report_path):
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "semantic-only-schema", "async-search",
                                            "excel-preview", "pdf-preview-loading", "dark-theme", "lock-unlock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
-                                           "actual-first-run-to-main-and-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
+                                           "actual-first-run-to-main-no-auto-scan-manual-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "durable-scan-history",
                                            'search-workbench-local-model-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration', 'root-remove-worker', 'exclusion-worker',

@@ -53,6 +53,26 @@ def cuda_root():
     return paths.engines_dir('b11765-cuda12')
 
 
+def motor_secenekleri():
+    """Which engines exist on disk right now (no download, no probing).
+
+    Returns a list of dicts: key, installed, size_mb. 'auto' is always usable.
+    """
+    root = asset_root()
+    rows = [{'key': 'auto', 'installed': True, 'size_mb': 0},
+            {'key': 'cpu', 'installed': (root / 'cpu' / 'llama-server.exe').is_file(), 'size_mb': 0},
+            {'key': 'vulkan', 'installed': (root / 'vulkan' / 'llama-server.exe').is_file(), 'size_mb': 0},
+            {'key': 'cuda', 'installed': (cuda_root() / 'llama-server.exe').is_file(), 'size_mb': 663}]
+    for row in rows:
+        if row['key'] in ('cpu', 'vulkan') and row['installed']:
+            folder = root / row['key']
+            try:
+                row['size_mb'] = int(sum(p.stat().st_size for p in folder.rglob('*') if p.is_file()) / 1048576)
+            except OSError:
+                row['size_mb'] = 0
+    return rows
+
+
 def close():
     global _SESSION, _GENERATION
     with _LOCK:

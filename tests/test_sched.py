@@ -1,4 +1,12 @@
-"""A7 zamanlama testleri: slot, catch-up, cift-kosma, otomatik baslatma."""
+"""Zamanlama testleri: yalnizca slot aninda acik uygulama tarama baslatir.
+
+Kurallar (kullanici sozlesmesi):
+- Saatinde acik -> tek tarama.
+- Saatinde kapali, sonradan acilmis -> tarama yok (telafi yok).
+- Uyku/saat degisimi -> telafi yok.
+- Ayni gun icin yinelenen tarama yok.
+- Tarama surerken slot gelmesi -> ikinci is/kuyruk yok (uygulama katmani).
+"""
 import datetime as dt
 import os
 import sys
@@ -17,26 +25,40 @@ def test_slot_gelmeden_kosmaz():
     assert (kos, neden) == (False, "slot-bekliyor")
 
 
-def test_slot_geldi_kosar():
-    kos, neden = sched.should_run(_dt(27, 13), _dt(26, 12, 35))
-    assert kos and neden == "catch-up-tek"
+def test_slot_aninda_acik_uygulama_kosar():
+    kos, neden = sched.should_run(_dt(27, 12, 30), _dt(26, 12, 35))
+    assert (kos, neden) == (True, "slot-geldi")
+
+
+def test_slot_penceresi_icinde_kosar_sonra_kosmaz():
+    # 12:30 slot + 3 dk pencere: 12:32 acik -> calisir, 12:40 -> kacirildi.
+    assert sched.should_run(_dt(27, 12, 32), _dt(26, 12, 35))[0] is True
+    kos, neden = sched.should_run(_dt(27, 12, 40), _dt(26, 12, 35))
+    assert (kos, neden) == (False, "kacirildi-atlandi")
+
+
+def test_sonradan_acilista_telafi_yok():
+    # Uygulama 12:30'da kapaliydi, 15:00'te acildi: tarama baslamaz.
+    kos, neden = sched.should_run(_dt(27, 15), None)
+    assert (kos, neden) == (False, "kacirildi-atlandi")
+
+
+def test_uyku_sonrasi_telafi_yok():
+    # Cihaz 12:20'de uyudu, 16:00'da uyandi: kacirilan slot telafi edilmez.
+    assert sched.should_run(_dt(27, 12, 20), _dt(26, 12, 35))[0] is False
+    kos, neden = sched.should_run(_dt(27, 16), _dt(26, 12, 35))
+    assert (kos, neden) == (False, "kacirildi-atlandi")
 
 
 def test_ayni_slot_iki_kez_kosmaz():
-    kos, _n = sched.should_run(_dt(27, 13), _dt(27, 12, 35))
-    assert kos is False
-
-
-def test_kacirilan_gun_tek_catchup():
-    kos, neden = sched.should_run(_dt(27, 9), _dt(24, 12, 35))
-    assert not kos and neden == "slot-bekliyor"
-    assert sched.should_run(_dt(27, 13), _dt(24, 12, 35))[0]
+    kos, neden = sched.should_run(_dt(27, 13), _dt(27, 12, 35))
+    assert (kos, neden) == (False, "bugunku-slot-tamam")
 
 
 def test_iptal_edilen_gun_tekrar_baslamaz():
-    assert not sched.should_run(_dt(27, 14), None, handled_day="2026-09-27")[0]
+    assert not sched.should_run(_dt(27, 12, 31), None, handled_day="2026-09-27")[0]
     assert not sched.should_run(_dt(28, 9), None, handled_day="2026-09-27")[0]
-    assert sched.should_run(_dt(28, 13), None, handled_day="2026-09-27")[0]
+    assert sched.should_run(_dt(28, 12, 31), None, handled_day="2026-09-27")[0]
 
 
 def test_cihaz_gecikmesi_deterministik_sinirli():

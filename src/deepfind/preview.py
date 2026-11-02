@@ -27,7 +27,9 @@ from .ui import EmptyState, label
 from .theme import t
 
 # (tag, data) — data is "width"/"page" or a percent multiplier (float)
-KADEMELER = ((t("Genişliğe sığdır"), "genislik"), (t("Sayfaya sığdır"), "sayfa"),
+# Labels stay untranslated here; the menu translates them at build time so a
+# language switch is not frozen into a module-level constant.
+KADEMELER = (("Genişliğe sığdır", "genislik"), ("Sayfaya sığdır", "sayfa"),
              ("%50", 0.5), ("%75", 0.75), ("%100", 1.0),
              ("%125", 1.25), ("%150", 1.5), ("%200", 2.0))
 RAY_ADIM = 12  # thumbnails produced per round on the page rail
@@ -135,7 +137,7 @@ class Onizleme(QWidget):
         self.zoom_sec.setAccessibleName(t("Yakınlaştırma"))
         self.zoom_sec.setToolTip(t("Yakınlaştırma kademesi"))
         for etiket, veri in KADEMELER:
-            self.zoom_sec.addItem(etiket, veri)
+            self.zoom_sec.addItem(t(etiket), veri)
         self.zoom_sec.setCurrentIndex(self.zoom_sec.findData("genislik"))
         self.zoom_sec.currentIndexChanged.connect(lambda _i: self._zoom_uygula())
         self.buyut = QPushButton("+")

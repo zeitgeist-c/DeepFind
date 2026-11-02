@@ -48,22 +48,23 @@ class Sihirbaz(QWizard):
         self.setOption(QWizard.NoBackButtonOnStartPage)
         self.setButtonLayout([QWizard.CancelButton, QWizard.CustomButton1, QWizard.Stretch, QWizard.BackButton,
                               QWizard.NextButton, QWizard.FinishButton])
-        self.setButtonText(QWizard.BackButton, "Geri")
+        self.setButtonText(QWizard.BackButton, t("Geri"))
         self.setButtonText(QWizard.NextButton, t("İleri"))
         self.setButtonText(QWizard.FinishButton, t("Kurulumu tamamla"))
         self.setButtonText(QWizard.CancelButton, t("Vazgeç"))
         self.setButtonText(QWizard.HelpButton, t("Yardım"))
-        self.secim = {"kokler": [], "tema": "sistem", "sirket_kurali": "belirlenemiyor"}
+        self.secim = {"kokler": [], "tema": "sistem", "sirket_kurali": "belirlenemiyor",
+                      "embedding_backend": "auto"}
         self.tema = QComboBox(self)
-        for caption, value in [(t("Sistem teması"), "sistem"), (t("Açık"), "acik"), ("Koyu", "koyu")]:
+        for caption, value in [(t("Sistem teması"), "sistem"), (t("Açık tema"), "acik"), (t("Koyu tema"), "koyu")]:
             self.tema.addItem(caption, value)
         self.setOption(QWizard.HaveCustomButton1)
         from PySide6.QtWidgets import QMenu
         self.tema.hide()
-        self.theme_button = QPushButton("Tema: Sistem")
+        self.theme_button = QPushButton(t("Tema") + ": " + t("Sistem teması"))
         menu = QMenu(self.theme_button)
         self._theme_menu = menu
-        for index, caption in enumerate((t("Sistem teması"), t("Açık"), "Koyu")):
+        for index, caption in enumerate((t("Sistem teması"), t("Açık tema"), t("Koyu tema"))):
             menu.addAction(caption, lambda checked=False, i=index: self.tema.setCurrentIndex(i))
         self.theme_button.setMenu(menu)
         self.setButton(QWizard.CustomButton1, self.theme_button)
@@ -82,7 +83,8 @@ class Sihirbaz(QWizard):
         rail_layout.addWidget(label(t("İlk kurulum"), "eyebrow"))
         rail_layout.addSpacing(6)
         self.steps = []
-        for i, title in enumerate((t("Hoş geldiniz"), t("Kasa şifresi"), t("Klasörler"), t("Düzen"), "Son kontrol")):
+        for i, title in enumerate((t("Hoş geldiniz"), t("Kasa şifresi"), t("Klasörler"),
+                                   t("Çalışma motoru"), t("Son kontrol"))):
             step = label(f"{i + 1:02d}   {title}")
             step.setObjectName("step")
             rail_layout.addWidget(step)
@@ -100,6 +102,14 @@ class Sihirbaz(QWizard):
         self.dil_secici = QComboBox()
         for kod, ad, _qt, _yerel in LANGUAGES:
             self.dil_secici.addItem(ad, kod)
+        # Long names and scaled fonts must not clip the closed combo box.
+        _metin = self.dil_secici.fontMetrics()
+        _genislik = max(_metin.horizontalAdvance(self.dil_secici.itemText(i))
+                        for i in range(self.dil_secici.count()))
+        self.dil_secici.setMinimumWidth(_genislik + 64)
+        self.dil_secici.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.dil_secici.view().setMinimumWidth(self.dil_secici.minimumWidth())
+        self.dil_secici.setAccessibleName(t("Arayüz dili"))
         _kayitli = resolve_language(QSettings(identity.APP_IDENTITY, "Appearance").value("language", "en"))
         self.dil_secici.setCurrentIndex(max(0, self.dil_secici.findData(_kayitli)))
         self.dil_secici.currentIndexChanged.connect(self._dil_degistir)
@@ -124,7 +134,7 @@ class Sihirbaz(QWizard):
         self.s1.setEchoMode(QLineEdit.Password)
         self.s2 = QLineEdit()
         self.s2.setEchoMode(QLineEdit.Password)
-        self.s1.setPlaceholderText("En az 12 karakter")
+        self.s1.setPlaceholderText(t("En az 12 karakter"))
         self.s2.setPlaceholderText(t("Şifrenizi tekrar girin"))
         self.s1.setAccessibleName(t("Yeni şifre"))
         self.s2.setAccessibleName(t("Şifre tekrarı"))
@@ -200,7 +210,7 @@ class Sihirbaz(QWizard):
         available_layout.addWidget(label(t("Bilgisayar ve ağ"), "subheading"))
         available_layout.addWidget(self.agac, 1)
         selected_panel, selected = card()
-        self.kok_baslik = QLabel(t("Eklenen klasörler • 0"))
+        self.kok_baslik = QLabel(t("Eklenen klasörler • {count}", count=0))
         self.kok_baslik.setProperty("subheading", True)
         remove = QPushButton(t("Seçilenleri kaldır"))
         remove.clicked.connect(self._kaldir)
@@ -226,22 +236,52 @@ class Sihirbaz(QWizard):
         k.kutu.addWidget(self.kaynak_mesaj)
         self.addPage(k)
 
-        r = _Sayfa(t("Şirket kuralı"), t("Örnek yolların nasıl yorumlanacağını kaydetmeden görürsünüz."))
-        self.kural = QComboBox()
-        self.kural.addItems(["belirlenemiyor", t("bu kök tek şirket"),
-                             t("şirket alt klasör seviyesinde")])
-        self.kural.currentTextChanged.connect(lambda t: self.secim.update(sirket_kurali=t))
-        self.ornek = QLabel("")
-        self.ornek.setProperty("ikincil", True)
-        self.ornek.setWordWrap(True)
-        r.kutu.addWidget(QLabel(t("Kök başına kural:")))
-        r.kutu.addWidget(self.kural)
-        r.kutu.addWidget(self.ornek)
-        r.kutu.addWidget(label(t("Bu seçim, dosyalarınıza dokunmadan arama sonuçlarının klasör bağlamını belirler."), "ikincil"))
-        r.kutu.addStretch()
-        self.addPage(r)
+        m = _Sayfa(t("Çalışma motoru"),
+                   t("Anlamsal arama bu bilgisayarda çalışır. Önerilen seçenek en hızlı olanı dener, olmazsa güvenli biçimde işlemciye döner."))
+        motor_panel, motor_kutu = card()
+        motor_kutu.addWidget(label(t("Nasıl çalışsın?"), "subheading"))
+        from PySide6.QtWidgets import QButtonGroup, QRadioButton
+        from . import engine
+        self.motor_grup = QButtonGroup(self)
+        self.motor_dugme = {}
+        mevcut = {row["key"]: row for row in engine.motor_secenekleri()}
+        motor_metinleri = [
+            ("auto", t("Önerilen: otomatik (ekran kartı, olmazsa işlemci)"),
+             t("Ekran kartını dener. Ekran kartı uygun değilse arama işlemciye geçer; bunu durum alanında görürsünüz.")),
+            ("cpu", t("Yalnız işlemci (CPU)"),
+             t("Her bilgisayarda çalışır. Ekran kartı olan sistemlerde daha yavaştır.")),
+            ("vulkan", t("Ekran kartı (Vulkan)"),
+             t("Windows'ta ekran kartını kullanır. Uygun kart ya da sürücü yoksa arama başlamaz.")),
+            ("cuda", t("NVIDIA ekran kartı (CUDA)"),
+             t("NVIDIA kartlarda en hızlı seçenek. İsteğe bağlı bileşen indirilmeden kullanılamaz.")),
+        ]
+        for anahtar, baslik, aciklama in motor_metinleri:
+            row = mevcut.get(anahtar, {})
+            kurulu = bool(row.get("installed"))
+            metin = baslik if kurulu else baslik + " — " + t("kurulu değil")
+            secenek = QRadioButton(metin)
+            secenek.setEnabled(kurulu or anahtar == "auto")
+            if anahtar == "cuda" and not kurulu:
+                secenek.setToolTip(t("Yaklaşık 663 MB. Ayarlar bölümünden indirebilirsiniz."))
+            self.motor_grup.addButton(secenek)
+            self.motor_dugme[anahtar] = secenek
+            motor_kutu.addWidget(secenek)
+            ipucu = label(aciklama, "ikincil")
+            ipucu.setWordWrap(True)
+            motor_kutu.addWidget(ipucu)
+        motor_kutu.addWidget(label(t("Seçiminizi sonradan Ayarlar bölümünden değiştirebilirsiniz."), "ikincil"))
+        m.kutu.addWidget(motor_panel)
+        self.motor_durum = QLabel("")
+        self.motor_durum.setWordWrap(True)
+        m.kutu.addWidget(self.motor_durum)
+        m.kutu.addStretch()
+        self.addPage(m)
+        self.motor_dugme["auto"].setChecked(True)
+        for anahtar, secenek in self.motor_dugme.items():
+            secenek.toggled.connect(lambda on, k=anahtar: self._motor_sec(k, on))
+        self._motor_sec("auto", True)
 
-        o = _Sayfa(t("Her şey yerli yerinde."), t("“Kurulumu tamamla” ile ilk taramayı başlatın. Belgelerinizin sayısına göre bu biraz zaman alabilir."))
+        o = _Sayfa(t("Her şey yerli yerinde."), t("“Kurulumu tamamla” ile çalışma alanınızı açın; ilk taramayı Tarama sayfasından siz başlatın."))
         self.ozet = QLabel("")
         self.ozet.setWordWrap(True)
         summary_panel, summary_layout = card()
@@ -304,7 +344,7 @@ class Sihirbaz(QWizard):
         from . import theme
         from PySide6.QtWidgets import QApplication
         self.secim["tema"] = self.tema.currentData()
-        self.theme_button.setText("Tema: " + self.tema.currentText())
+        self.theme_button.setText(t("Tema") + ": " + self.tema.currentText())
         theme.apply(QApplication.instance(), self.tema.currentData())
 
     def _dil_degistir(self):
@@ -340,6 +380,28 @@ class Sihirbaz(QWizard):
         self._tazele()
         self._mesaj(t("Seçilen klasörler arama listesinden kaldırıldı.") if rows else t("Önce kaldırılacak klasörleri seçin."))
 
+    def _motor_sec(self, anahtar, secili):
+        """Record the engine choice and surface any failed-GPU fallback."""
+        from . import engine
+        if not secili:
+            return
+        self.secim["embedding_backend"] = anahtar
+        satirlar = []
+        for row in engine.motor_secenekleri():
+            ad = row["key"].upper() if row["key"] != "auto" else t("Otomatik")
+            if row["installed"]:
+                boyut = f" ({row['size_mb']} MB)" if row["size_mb"] else ""
+                satirlar.append(f"{ad}: " + t("kurulu") + boyut)
+            else:
+                ek = f" — {t('yaklaşık {size} MB, indirilebilir', size=row['size_mb'])}" if row["size_mb"] else ""
+                satirlar.append(f"{ad}: " + t("kurulu değil") + ek)
+        if anahtar == "auto":
+            satirlar.append(t("Ekran kartı denemesi başarısız olursa arama işlemcide sürer; "
+                              "hangi birimin kullanıldığı durum alanında yazar."))
+        elif anahtar == "cuda" and not self.motor_dugme["cuda"].isEnabled():
+            satirlar.append(t("CUDA bileşeni henüz indirilmedi. Kurulumdan sonra Ayarlar bölümünden indirebilirsiniz."))
+        self.motor_durum.setText("\n".join(satirlar))
+
     def _tazele(self):
         self.kok_model.clear()
         for path in self.secim["kokler"]:
@@ -348,19 +410,21 @@ class Sihirbaz(QWizard):
             item.setToolTip(path)
             item.setEditable(False)
             self.kok_model.appendRow(item)
-        self.kok_baslik.setText(f"Eklenen klasörler • {len(self.secim['kokler'])}")
+        self.kok_baslik.setText(t("Eklenen klasörler • {count}", count=len(self.secim["kokler"])))
         if self.secim["kokler"]:
-            ilk = self.secim["kokler"][0]
-            self.ornek.setText(f"Örnek: {ilk} → kural “{self.secim['sirket_kurali']}”")
             if self.sifresiz_kutu.isChecked() or not (self.s1.text() or self.s2.text()):
                 sifre_satiri = (t("Şifre: Yok (açılışta sorulmaz)\n")
                                 + t("Arama bilgileriniz bu bilgisayarda korunur."))
             else:
                 sifre_satiri = (t("Şifre: Belirlendi\n") +
                                 t("Arama bilgileriniz şifreli saklanır."))
-            self.ozet.setText(f"Kök: {len(self.secim['kokler'])} adet\n"
-                              f"Tema: {self.tema.currentText()}\n"
-                              f"{sifre_satiri}")
+            motor_ad = (self.motor_dugme[self.secim['embedding_backend']].text()
+                        if self.secim['embedding_backend'] in self.motor_dugme
+                        else t("Otomatik"))
+            self.ozet.setText(t("Kök: {count} adet\n", count=len(self.secim['kokler']))
+                              + t("Tema") + f": {self.tema.currentText()}\n"
+                              + t("Motor") + f": {motor_ad}\n"
+                              + sifre_satiri)
 
     def _sayfa(self, _i):
         self._tazele()

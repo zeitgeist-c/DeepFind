@@ -4,10 +4,14 @@ from __future__ import annotations
 import re
 import unicodedata
 
-NORMALIZER_VERSION = "a5-1"
+NORMALIZER_VERSION = "a5-2"
 
+# Circumflex letters must fold to their base letter too: dropping them (the old
+# behaviour) split real Turkish words at the accent, e.g. "vekâletname" became
+# the tokens "vek" + "letname", so a plain "vekaletname" query never matched.
 _FOLD = str.maketrans({
     "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c", "ı": "i",
+    "â": "a", "î": "i", "û": "u",
 })
 
 

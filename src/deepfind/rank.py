@@ -3,6 +3,58 @@ from __future__ import annotations
 from . import normalize as nz, snippet as snip
 from .theme import t
 
+def _terim_eslesir(terim, jetonlar):
+    """Fold edilmis jeton kumesinde terim var mi (Turkce ek/circumflex toleransli)."""
+    if terim in jetonlar:
+        return True
+    if len(terim) < 5:
+        return False
+    for jeton in jetonlar:
+        if len(jeton) >= 5 and (jeton.startswith(terim) or terim.startswith(jeton)):
+            return True
+    return False
+
+
+def _kapsam(terimler, metin):
+    """Sorgu terimlerinden metinde gecenlerin orani (0..1)."""
+    if not terimler:
+        return 0.0
+    jetonlar = set(nz.tokens_folded(metin or ""))
+    return sum(1 for t in terimler if _terim_eslesir(t, jetonlar)) / len(terimler)
+
+
+def _kapsam_katmani(con, ordered, terimler, pay):
+    """Sorgu terimlerini en iyi karsilayan belgeleri birak.
+
+    Cok kelimeli sorguda yalniz bir terimi gecen belgeler (ornegin yalniz "Ahmet"
+    ya da yalniz "vekâletname" gecen) sonucu doldurmaz. Anlamsal benzerlik yine
+    siralama olcutudur; yalniz kapsam farki olan kuyruk atilir. Sozluk kaniti
+    yoksa (terimler korpusta hic gecmiyorsa) hicbir sey atilmaz: anlamsal arama
+    eski davranisini korur.
+    """
+    if not terimler or not ordered:
+        return ordered
+    adaylar = ordered[:max(200, pay)]
+    yer = ",".join("?" * len(adaylar))
+    metinler = {r[0]: r[1] for r in con.execute(
+        f"SELECT seg_id, raw_text FROM segments WHERE seg_id IN ({yer})",
+        [data[5] for _fid, (_sim, data) in adaylar])} if adaylar else {}
+    if not metinler:
+        return ordered
+    bilgilendirici = [t for t in terimler
+                      if any(_terim_eslesir(t, set(nz.tokens_folded(m or "")))
+                             for m in metinler.values())]
+    if len(bilgilendirici) < 2:
+        # Tek terimli sorguda "eksik terim" yoktur; anlamsal eslesme korunur.
+        return ordered
+    puanlar = {fid: _kapsam(bilgilendirici, metinler.get(data[5], ""))
+               for fid, (_sim, data) in adaylar}
+    en_iyi = max(puanlar.values())
+    if en_iyi <= 0:
+        return ordered
+    return [oge for oge in adaylar if puanlar.get(oge[0], 0.0) >= en_iyi - 1e-9]
+
+
 def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
                     offset=0, tag=None, kodla=None):
     from . import embed as embed_mod
@@ -59,6 +111,9 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
         best[fid] = (similarity, (path,name,fext,state,error,sid,label,page))
 
     ordered=sorted(best.items(),key=lambda item:(-item[1][0],item[1][1][0],item[0]))
+    # Cok kelimeli sorguda kişi + belge türü birlikte aranır: yalnız bir terimi
+    # geçen belgeler sonucu doldurmaz.
+    ordered=_kapsam_katmani(con, ordered, nz.tokens_folded(query), offset+limit+50)
     selected=ordered[offset:offset+limit]
     # Page summary and years read in one query for the selected records; record
     # two queries per item (N+1) grew to 401 queries at limit=200.

@@ -59,7 +59,7 @@ def test_normalize_tr():
     assert normalize.strict("İSTANBUL IĞDIR") == "istanbul ığdır"
     assert normalize.folded("Ayşe ğüşiöç") == "ayse gusioc"
     assert normalize.extract_years("rapor 2024 ve 1999") == ["2024", "1999"]
-    assert normalize.NORMALIZER_VERSION == "a5-1"
+    assert normalize.NORMALIZER_VERSION == "a5-2"
 
 
 def test_v9_sema_tek_kopya(tmp_path):
