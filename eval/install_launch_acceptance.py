@@ -100,14 +100,14 @@ def _surecleri_temizle():
     Yalniz kabul ortami: kaldirma kilitli dosya birakmasin diye _kaldir'dan
     once cagrilir. Gercek kullanimda Inno CloseApplications ile sorar.
     """
-    for imaj in ("DeepFind-0.10.9.exe", "llama-server.exe"):
+    for imaj in (f"DeepFind-{__version__}.exe", "llama-server.exe"):
         subprocess.run(["taskkill", "/F", "/IM", imaj],
                        capture_output=True, timeout=60)
     bitis = time.monotonic() + 60
     while time.monotonic() < bitis:
         r = subprocess.run(["tasklist"], capture_output=True, text=True, timeout=60)
         kucuk = r.stdout.lower()
-        if "deepfind-0.10.9.exe" not in kucuk and "llama-server.exe" not in kucuk:
+        if f"deepfind-{__version__}.exe" not in kucuk and "llama-server.exe" not in kucuk:
             return True
         time.sleep(2)
     return False
