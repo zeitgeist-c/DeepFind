@@ -8,15 +8,13 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_model_assets(tmp_path, monkeypatch):
-    from deepfind import engine, embed, gom
+    from deepfind import engine, embed
     monkeypatch.setattr(engine, 'asset_root', lambda: tmp_path / 'absent-model-assets')
     monkeypatch.setattr(embed, 'isit_oturumu', lambda *a, **k: None)
     monkeypatch.setattr(embed, 'hazir_oturum', lambda *a, **k: None)
-    # Taramada gom atlama karari makinedeki gercek modele bakmamali: kabul
-    # kosulari sirasinda indirilen kullanici modeli birim testleri etkilemez.
-    monkeypatch.setattr(gom, 'model_var_mi', lambda *a, **k: False)
-    # Ayni gerekceyle guncelleme cozumu de yalitilir: LOCALAPPDATA/PROGRAMDATA
-    # gecici dizine alinir, paylasilan_hazir gercek kullanici modelini goremez.
+    # Makinedeki gercek model (kabulde indirilen kullanici modeli dahil)
+    # birim testleri etkilemez: gom atlama karari ve guncelleme cozumu
+    # yalitilmis gecici dizinlere bakar.
     (tmp_path / 'yerel').mkdir(exist_ok=True)
     (tmp_path / 'ortak').mkdir(exist_ok=True)
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'yerel'))
