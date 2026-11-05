@@ -63,6 +63,10 @@ def _kur(hedef, dil):
 def _kaldir(hedef):
     un = hedef / "unins000.exe"
     if not un.is_file():
+        try:
+            _kayit(f"kaldirici yok; hedef icerigi: {sorted(p.name for p in hedef.iterdir())}")
+        except Exception:
+            pass
         return None
     return subprocess.run([str(un), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
                           capture_output=True, timeout=900)
@@ -115,9 +119,13 @@ def main():
     assert SETUP.is_file(), f"kurulum paketi yok: {SETUP}"
     reg = ROOT / "build" / f"reg-{uuid.uuid4().hex}.reg"
     assert _reg_yedek(reg), "kayit defteri yedegi alinamadi"
-    hedef = (ROOT / "build" / ("installed-" + uuid.uuid4().hex)).resolve()
+    hedefler = []
     try:
         for dil, beklenen in (("turkish", "tr"), ("german", "de")):
+            # Her dil kendi izole hedefine kurulur: donguler arasi kalinti
+            # tasiyamaz; ayni-dizin yukseltme installer_acceptance'ta kapsanir.
+            hedef = (ROOT / "build" / ("installed-" + uuid.uuid4().hex)).resolve()
+            hedefler.append(hedef)
             r = _kur(hedef, dil)
             _kayit(f"kurulum({dil}) cikis={r.returncode}")
             assert r.returncode == 0, r.returncode
@@ -166,8 +174,9 @@ def main():
             assert not (hedef / f"DeepFind-{__version__}.exe").exists(), "kaldirma dosya birakti"
     finally:
         _reg_geri(reg)
-        if hedef.exists():
-            shutil.rmtree(hedef, ignore_errors=True)
+        for hedef in hedefler:
+            if hedef.exists():
+                shutil.rmtree(hedef, ignore_errors=True)
     sonuc["ok"] = True
     (ROOT / "build" / "install-launch-acceptance.json").write_text(
         json.dumps(sonuc, indent=2, ensure_ascii=False), encoding="utf-8")
