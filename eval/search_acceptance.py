@@ -46,6 +46,19 @@ BELGELER = [
     ("hedef_varyant", "oz-insaat-vekalet-belgesi.txt",
      "Öz İnşaat adına işlem yapabilmesi için Ahmet Öz tarafından düzenlenmiş vekâlet "
      "belgesi; yetki kapsamı tapu ve banka işlemlerini kapsar."),
+    ("fabrika_hedef", "fabrika-tasinma-duyuru.txt",
+     "Yönetim duyurusu: fabrikanın taşınacağı, çalışanların başka tesise "
+     "aktarılacağı yazıyordu. Taşınma gelecek ay tamamlanacak."),
+    ("fabrika_parafraz", "personel-bilgilendirme.txt",
+     "Üretim sahası şehir dışındaki yeni yerleşkeye naklediliyor; kadro mevcut "
+     "personelle birlikte orada görev yapacak. Süreç önümüzdeki ay bitecek."),
+    ("fabrika_celdirici", "fabrika-bakım-raporu.txt",
+     "Tesis bakım raporu: taşıma arabasının periyodik kontrolü yapıldı, "
+     "ekipman sağlam. Birkaç kelime ortak, olay farklı."),
+    ("cok_parcali", "proje-degerlendirme.txt",
+     "PROJE DEĞERLENDİRME. Birinci bölüm: bütçe onayı ve takvim."),
+    ("cok_parcali", "proje-degerlendirme.txt",
+     "PROJE DEĞERLENDİRME. İkinci bölüm: risk analizi ve satınalma kararları."),
 ]
 
 SORULAR = [
@@ -55,6 +68,9 @@ SORULAR = [
     ("ahmet oz vekaletname", {"hedef"}),          # diakritiksiz / küçük harf
     ("AHMET ÖZ VEKÂLETNAME", {"hedef"}),          # büyük harf
     ("Öz İnşaat vekâlet belgesi", {"hedef_varyant"}),
+    ("fabrikanın taşınacağı çalışanların başka tesise aktarılacağı", {"fabrika_hedef"}),
+    ("üretim sahası yeni yerleşkeye naklediliyor personel görev", {"fabrika_parafraz"}),
+    ("proje değerlendirme bütçe risk satınalma", {"cok_parcali"}),
 ]
 
 
@@ -65,19 +81,29 @@ def _kasa(klasor):
     return con
 
 
-def _doldur(con, kodla):
-    metinler = [metin for _k, _n, metin in BELGELER]
-    vektorler = kodla(metinler)
-    for i, (anahtar, ad, metin) in enumerate(BELGELER):
+def _doldur(con, kodla_belge):
+    # Uretimle ayni: belgeler BELGE_ONEKI ile, sorgular SORGU_ONEKI ile kodlanir.
+    # Ayni anahtari paylasan girdiler ayni dosyanin ayri metin parcalaridir.
+    from collections import OrderedDict
+    gruplar = OrderedDict()
+    for anahtar, ad, metin in BELGELER:
+        gruplar.setdefault(anahtar, []).append((ad, metin))
+    parcalar = [metin for girdiler in gruplar.values() for _ad, metin in girdiler]
+    vektorler = kodla_belge(parcalar)
+    i = 0
+    for anahtar, girdiler in gruplar.items():
+        ad = girdiler[0][0]
         con.execute("INSERT INTO files(path, name, ext, source_status, index_status) VALUES (?,?,?, 'ok','indexed')",
                     (f"C:/sentetik/{ad}", ad, ".txt"))
         fid = con.execute("SELECT file_id FROM files WHERE name=?", (ad,)).fetchone()[0]
-        con.execute("INSERT INTO segments(file_id, kind, page, label, raw_text) VALUES (?,?,?,?,?)",
-                    (fid, "body", 1, "gövde", metin))
-        sid = con.execute("SELECT last_insert_rowid()").fetchone()[0]
-        con.execute("INSERT INTO embeddings(seg_id, model_ver, dim, vec) VALUES (?,?,?,?)",
-                    (sid, embed.MODEL_VER, embed.DIM,
-                     np.asarray(vektorler[i], dtype=np.float32).tobytes()))
+        for sayfa, (_ad, metin) in enumerate(girdiler, start=1):
+            con.execute("INSERT INTO segments(file_id, kind, page, label, raw_text) VALUES (?,?,?,?,?)",
+                        (fid, "body", sayfa, "gövde", metin))
+            sid = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+            con.execute("INSERT INTO embeddings(seg_id, model_ver, dim, vec) VALUES (?,?,?,?)",
+                        (sid, embed.MODEL_VER, embed.DIM,
+                         np.asarray(vektorler[i], dtype=np.float32).tobytes()))
+            i += 1
     con.commit()
 
 
@@ -103,14 +129,27 @@ def kos(kodla, con):
     # Tek kelime, sonuc bulunmama ve sayfalama davranisi
     tek = rank.search_semantic(con, "vekâletname", limit=10, kodla=kodla)
     bos = rank.search_semantic(con, "kuantum bilgisayar kriyojenik soğutucu", limit=10, kodla=kodla)
-    sayfa1 = rank.search_semantic(con, "vekâletname", limit=2, offset=0, kodla=kodla)
-    sayfa2 = rank.search_semantic(con, "vekâletname", limit=2, offset=2, kodla=kodla)
+    # Sayfalama tutarliligi: farkli sayfa boyutlarinda ayni goreli sira, tekrarsiz.
+    s2a = rank.search_semantic(con, "vekâletname", limit=2, offset=0, kodla=kodla)
+    s2b = rank.search_semantic(con, "vekâletname", limit=2, offset=2, kodla=kodla)
+    s2c = rank.search_semantic(con, "vekâletname", limit=2, offset=4, kodla=kodla)
+    s3a = rank.search_semantic(con, "vekâletname", limit=3, offset=0, kodla=kodla)
+    s3b = rank.search_semantic(con, "vekâletname", limit=3, offset=3, kodla=kodla)
+    birlesik2 = [_ad(con, r["file_id"]) for r in s2a["results"] + s2b["results"] + s2c["results"]]
+    birlesik3 = [_ad(con, r["file_id"]) for r in s3a["results"] + s3b["results"]]
     ozel = dict(
         tek_kelime=[_ad(con, r["file_id"]) for r in tek["results"]],
         ilgisiz_sorgu=[_ad(con, r["file_id"]) for r in bos["results"]],
-        sayfalama=dict(sayfa1=[_ad(con, r["file_id"]) for r in sayfa1["results"]],
-                       sayfa2=[_ad(con, r["file_id"]) for r in sayfa2["results"]],
-                       has_more1=sayfa1["has_more"]),
+        sayfalama=dict(
+            limit2=birlesik2, limit3=birlesik3,
+            tekrar2=len(birlesik2) != len(set(birlesik2)),
+            tekrar3=len(birlesik3) != len(set(birlesik3)),
+            sira_tutarli=[a for a in birlesik2 if a in birlesik3] == [a for a in birlesik3 if a in birlesik2],
+            has_more1=s2a["has_more"]),
+        parafraz=dict(
+            fabrika=[_ad(con, r["file_id"]) for r in
+                     rank.search_semantic(con, "fabrikanın taşınacağı çalışanların başka tesise aktarılacağı",
+                                          limit=10, kodla=kodla)["results"]]),
     )
     return rapor, ozel
 
@@ -126,15 +165,18 @@ def main():
     engine.asset_root = lambda: Path(args.varlik)
     oturum = engine.Oturum(args.model, backend="cpu")
     try:
-        kodla = lambda texts: oturum.encode(texts, gorev="sorgu")  # noqa: E731
+        kodla_belge = lambda texts: oturum.encode(texts, gorev="belge")  # noqa: E731
+        kodla_sorgu = lambda texts: oturum.encode(texts, gorev="sorgu")  # noqa: E731
         with tempfile.TemporaryDirectory() as klasor:
             con = _kasa(klasor)
-            _doldur(con, kodla)
-            rapor, ozel = kos(kodla, con)
+            _doldur(con, kodla_belge)
+            rapor, ozel = kos(kodla_sorgu, con)
             con.close()
     finally:
         oturum.close()
-    sonuc = dict(model=str(Path(args.model).name), backend="cpu", sorgular=rapor, ozel=ozel,
+    sonuc = dict(model=str(Path(args.model).name), backend="cpu",
+                 roller={"belge": "belge", "sorgu": "sorgu"},
+                 sorgular=rapor, ozel=ozel,
                  dogru=sum(1 for r in rapor if r["dogru"]), toplam=len(rapor))
     Path(args.cikti).parent.mkdir(parents=True, exist_ok=True)
     Path(args.cikti).write_text(json.dumps(sonuc, indent=2, ensure_ascii=False), encoding="utf-8")
