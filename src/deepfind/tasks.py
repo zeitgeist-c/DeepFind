@@ -7,7 +7,7 @@ class DatabaseTask(QThread):
     ready = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, path, password, operation, parent=None, writable=False):
+    def __init__(self, path, password=None, operation=None, parent=None, writable=False):
         super().__init__(parent)
         self.path, self.password, self.operation = path, password, operation
         self.stop = threading.Event()
@@ -16,7 +16,7 @@ class DatabaseTask(QThread):
     def run(self):
         con = None
         try:
-            con = vault.open_vault(self.path, self.password)
+            con = vault.open_vault(self.path)
             con.execute('PRAGMA busy_timeout=500')
             if not self.writable:
                 con.execute('PRAGMA query_only=ON')

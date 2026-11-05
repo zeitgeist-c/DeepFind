@@ -1,36 +1,61 @@
-"""Kasa: SQLCipher baglantisi. Anahtar diske/loga yazilmaz, burada tutulmaz."""
+"""Kasa: normal kullanimda sifresiz SQLite.
+
+Sifreleme kaldirildi. Bu modul `sqlcipher3` ice aktarmaz; normal veri yolu
+saf `sqlite3` kullanir. Eski sifreli kasalar icin bk. `vault_convert`.
+"""
 from __future__ import annotations
 
-import sqlcipher3
+import os
+import sqlite3
 
 from . import normalize as nz
 
 BUSY_TIMEOUT_MS = 5000
 
-# Sifresiz kasa ic anahtari: kullanici sifre belirlemezse kasa bununla acilir.
-# Kullaniciya gosterilmez/sorulmaz; koruma Windows hesabi ve disk sifrelemesine
-# dayanir. SQLCipher bos anahtar kabul etmedigi icin sabit bir ic anahtar gerekir.
+# Geriye uyumluluk: eski cagrilar `vault.SIFRESIZ_ANAHTAR` gecirir; yok sayilir.
 SIFRESIZ_ANAHTAR = "DEEPFIND-SIFRESIZ-KASA-v1"
 
-
-def _escape_key(password: str) -> str:
-    return password.replace("'", "''")
+_SQLITE_HEADER = b"SQLite format 3\x00"
 
 
-def open_vault(path: str, password: str) -> sqlcipher3.Connection:
-    con = sqlcipher3.connect(path, timeout=10)
+class EncryptedVaultError(RuntimeError):
+    """Dosya sifreli eski format; `vault_convert` ile donusturulmeli."""
+
+
+def is_encrypted(path: str) -> bool:
+    """Sifreli/bozuk dosyayi baslik + acilis denemesiyle ayirt et."""
     try:
-        con.execute(f"PRAGMA key='{_escape_key(password)}'")
+        with open(path, "rb") as fh:
+            if fh.read(len(_SQLITE_HEADER)) == _SQLITE_HEADER:
+                return False
+    except OSError:
+        return False
+    try:
+        con = sqlite3.connect(path, timeout=10)
+        try:
+            con.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            return False
+        finally:
+            con.close()
+    except Exception:
+        return True
+    return True
+
+
+def open_vault(path: str, password: str | None = None) -> sqlite3.Connection:
+    """Sifresiz kasayi ac. `password` yalniz eski cagrilar icin yok sayilir."""
+    if path and os.path.isfile(path) and is_encrypted(path):
+        raise EncryptedVaultError(
+            "Bu kasa eski sifreli bicimde. Lutfen once 'kasa-donustur' "
+            "ile sifresiz bicime donusturun; mevcut parola yalniz donusumde istenir."
+        )
+    con = sqlite3.connect(path, timeout=10)
+    try:
         con.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
         con.execute("PRAGMA temp_store=MEMORY")
         con.execute("PRAGMA foreign_keys=ON")
-        # Anahtar dogrulama: yanlis anahtarda DatabaseError verir.
         con.execute("SELECT count(*) FROM sqlite_master").fetchone()
-        row = con.execute("PRAGMA cipher_version").fetchone()
-        if not row or not str(row[0]).startswith("4."):
-            raise RuntimeError(f"beklenmeyen cipher_version: {row}")
         con.execute("PRAGMA journal_mode=WAL")
-        # Legacy snapshots may still contain fold() triggers before migration.
         nz.install(con)
         return con
     except Exception:
@@ -39,21 +64,13 @@ def open_vault(path: str, password: str) -> sqlcipher3.Connection:
 
 
 def sifresiz_mi(path: str) -> bool:
-    """Kasa sifresiz modda mi: ic anahtar aciyor ve kasa isareti '1' mi.
-
-    Isaret `settings.kasa_sifresiz`; kurulumda sifre bos birakildiysa 1 olur.
-    Boylece kullanicinin sifresi tesadufen ic anahtarla ayni olsa bile
-    sifresiz sayilmaz (isaret yoksa sifreli kasa varsayilir).
-    """
+    """Yeni dunyada: duz SQLite aciliyorsa sifresiz sayilir."""
     try:
-        con = open_vault(path, SIFRESIZ_ANAHTAR)
+        con = open_vault(path)
     except Exception:
         return False
     try:
-        row = con.execute("SELECT v FROM settings WHERE k='kasa_sifresiz'").fetchone()
-        return bool(row) and row[0] == "1"
-    except Exception:
-        return False
+        return True
     finally:
         con.close()
 

@@ -1,10 +1,9 @@
 [project]
 name = "deepfind"
 dynamic = ["version"]
-description = "Yerel sifreli belge bulma araci (V1)"
+description = "Yerel sifresiz belge bulma araci (V1)"
 requires-python = ">=3.12"
 dependencies = [
-  "sqlcipher3==0.6.4",
   "pypdfium2==5.14.0",
   "openpyxl==3.1.5",
   "xlrd==2.0.2",
@@ -19,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1", "reportlab==5.1.0"]
+test = ["pytest==9.1.1", "reportlab==5.1.0", "sqlcipher3==0.6.4"]
 
 [build-system]
 requires = ["setuptools>=61"]

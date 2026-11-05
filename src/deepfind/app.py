@@ -27,11 +27,10 @@ from PySide6.QtWidgets import (QApplication, QAbstractItemView, QCheckBox, QComb
 
 from . import backup as backup_mod
 from . import coordinator, exclusions, history as hist_mod
-from . import identity, migrate, rank, scheduler as sched, theme, vault, remember, diagnostics, recovery, thumbs, sorgu
+from . import identity, migrate, rank, scheduler as sched, theme, vault, diagnostics, thumbs, sorgu
 from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
-from .auth import ParolaDialog, MOD_KURTARMA
 from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
                  sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate, GorselKutusu,
                  Cip, GridDelegate)
@@ -97,7 +96,7 @@ class AramaIsci(QThread):
     def run(self):
         con = None
         try:
-            con = vault.open_vault(self.path, self.password)
+            con = vault.open_vault(self.path)
             con.execute("PRAGMA query_only=ON")
             con.set_progress_handler(lambda: int(self.stop.is_set()), 1000)
             req = self.request
@@ -115,39 +114,6 @@ class AramaIsci(QThread):
             if con is not None:
                 con.close()
             self.password = ""
-
-
-class OturumKilitFiltresi(QAbstractNativeEventFilter):
-    """Windows: uyku/oturum kilidinde kasayi kilitle (plan bolum 15).
-
-    PBT_APMSUSPEND kayitsiz gelir; WTS_SESSION_LOCK icin pencere kaydi denenir,
-    basarisizsa sessiz gecilir (kilit yine de elle/zamanlayiciyla olur).
-    """
-    PBT_APMSUSPEND = 0x0004
-    WM_POWERBROADCAST = 0x0218
-    WM_WTSSESSION_CHANGE = 0x02B1
-    WTS_SESSION_LOCK = 0x7
-    WTS_SESSION_LOGOFF = 0x5
-
-    def __init__(self, kilitle_fn):
-        super().__init__()
-        self._kilitle = kilitle_fn
-
-    def nativeEventFilter(self, _event_type, message):
-        try:
-            import ctypes
-            from ctypes import wintypes
-            msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG)).contents
-            if msg.message == self.WM_POWERBROADCAST and msg.wParam == self.PBT_APMSUSPEND:
-                self._kilitle()
-                return True, 0
-            if msg.message == self.WM_WTSSESSION_CHANGE and \
-                    msg.wParam in (self.WTS_SESSION_LOCK, self.WTS_SESSION_LOGOFF):
-                self._kilitle()
-                return True, 0
-        except Exception:
-            pass
-        return False, 0
 
 
 class TaramaIsci(QObject):
@@ -220,7 +186,7 @@ class TaramaIsci(QObject):
     def kos(self):
         try:
             from .migrate import ensure_current
-            con = vault.open_vault(self.kasa_yolu, self._sifre)
+            con = vault.open_vault(self.kasa_yolu)
             inventories = []
             try:
                 ensure_current(con)
@@ -296,7 +262,7 @@ class KokKaldirIsci(QObject):
             from . import vault as v
             scan_lock = coordinator.ScanLock(self.kasa_yolu)
             scan_lock.__enter__()
-            con = v.open_vault(self.kasa_yolu, self._sifre)
+            con = v.open_vault(self.kasa_yolu)
             con.execute("BEGIN IMMEDIATE")
             con.execute("DELETE FROM roots WHERE display_path=?", (self.kok,))
             remaining = [r[0] for r in con.execute(
@@ -364,7 +330,7 @@ class HaricIsci(QObject):
         try:
             scan_lock = coordinator.ScanLock(self.kasa_yolu)
             scan_lock.__enter__()
-            con = vault.open_vault(self.kasa_yolu, self._sifre)
+            con = vault.open_vault(self.kasa_yolu)
             rule, count = exclusions.add_and_purge(con, self.rule)
             self.bitti.emit(rule, count)
         except Exception as error:  # noqa: BLE001
@@ -437,8 +403,8 @@ class AnaPencere(QMainWindow):
     def __init__(self, kasa_yolu, sifre, prepared=False):
         super().__init__()
         self.kasa_yolu = kasa_yolu
-        self._sifre = sifre
-        self.sifresiz = sifre == vault.SIFRESIZ_ANAHTAR
+        self._sifre = None
+        self.sifresiz = True
         self.con = None
         self.sonuclar = []
         self._locked = False
@@ -448,7 +414,6 @@ class AnaPencere(QMainWindow):
         self._pending_search = None
         self._kaldir_isci = None
         self._kaldir_thread = None
-        self._kaldir_lock_pending = False
         self._kaldir_yol = None
         self._haric_isci = None
         self._haric_thread = None
@@ -470,7 +435,7 @@ class AnaPencere(QMainWindow):
         self._geometry_timer.timeout.connect(self._save_window_geometry)
 
         if prepared:
-            self.con = vault.open_vault(self.kasa_yolu, self._sifre)
+            self.con = vault.open_vault(self.kasa_yolu)
         else:
             self._kasa_ac()
         from . import ocr_setup
@@ -485,18 +450,6 @@ class AnaPencere(QMainWindow):
         self._load_window_geometry()
         self._tepsi()
         diagnostics.record("ui_ready")
-        try:
-            if QApplication.platformName() == "windows":
-                self._oturum_filtresi = OturumKilitFiltresi(self._otomatik_kilitle)
-                QApplication.instance().installNativeEventFilter(self._oturum_filtresi)
-                import ctypes
-                from ctypes import wintypes
-                register = ctypes.windll.wtsapi32.WTSRegisterSessionNotification
-                register.argtypes = [wintypes.HWND, wintypes.DWORD]
-                register.restype = wintypes.BOOL
-                self._wts_registered = bool(register(int(self.winId()), 0))
-        except Exception:
-            pass
         self._zamanlayici_kontrol(ilk=True)
         self._kisaltmalar()
         try:
@@ -511,13 +464,6 @@ class AnaPencere(QMainWindow):
         theme.apply(QApplication.instance(), self.tema_sec.currentData())
         self._sayfa_kartlari()
         self._tema_yenile()
-        # When no recovery key exists at first launch, generate one quietly (the user's password
-        # so the index stays recoverable if forgotten). Shown to the user in Settings.
-        try:
-            self._kurtarma_ilk_kurulum()
-        except Exception as error:  # noqa: BLE001
-            diagnostics.record("recovery_setup_failed", type(error).__name__)
-        QTimer.singleShot(1500, self._kurtarma_bildirim_goster)
         # Collect update leftovers (except the working folder) and the first silent
         # run the check after 30 s: never delay program launch.
         try:
@@ -545,26 +491,6 @@ class AnaPencere(QMainWindow):
             self._toast_goster(t("Güncelleme taşınamadı; geçici klasörden çalışıyorsunuz."))
         elif sonuc == "install_failed":
             self._toast_goster(t("Güncelleme kurulamadı veya yönetici onayı iptal edildi. Ayarlar → Güncellemeler'den yeniden deneyin."))
-
-    def _kurtarma_ilk_kurulum(self):
-        """Generate a recovery key when none exists; stage the result for a one-shot notice."""
-        if self.con is None or self._locked or not self._sifre or self.sifresiz:
-            return
-        durum = recovery.status(self.kasa_yolu)
-        if durum.get("var") and recovery.load_key(self.kasa_yolu):
-            return
-        anahtar = recovery.refresh(self.kasa_yolu, self._sifre)
-        self._kurtarma_yeni_bildirim = anahtar
-
-    def _kurtarma_bildirim_goster(self):
-        """Announce the freshly generated recovery key without blocking (once)."""
-        anahtar = getattr(self, "_kurtarma_yeni_bildirim", "")
-        self._kurtarma_yeni_bildirim = ""
-        if not anahtar:
-            return
-        self._toast_goster(t("Kurtarma anahtarı hazır: Ayarlar → Kurtarma anahtarı."))
-        self.durum.showMessage(
-            t("Şifrenizi unutursanız kurtarma anahtarınızla kasayı açabilirsiniz."), 10000)
 
     # -- updates: from the public release repo, under user control --
     def _guncelleme_yapilabilir(self):
@@ -743,7 +669,7 @@ class AnaPencere(QMainWindow):
     # -- kurulum --
     def _kasa_ac(self):
         from .startup import prepare_connection
-        self.con = prepare_connection(self.kasa_yolu, self._sifre, self._yedek_dizin())
+        self.con = prepare_connection(self.kasa_yolu, self._yedek_dizin())
 
     def _arayuz(self):
         kok = QWidget()
@@ -785,10 +711,7 @@ class AnaPencere(QMainWindow):
         self.rail_toggle.clicked.connect(self._nav_toggle)
         side.addWidget(self.rail_toggle)
         self.rail_actions = []
-        for text, kind, callback in ((t("Kasayı kilitle"), "lock", self.kilitle),
-                                     (t("Çıkış"), "exit", self._cikis)):
-            if self.sifresiz and kind == "lock":
-                continue  # No lock screen on a passwordless vault.
+        for text, kind, callback in ((t("Çıkış"), "exit", self._cikis),):
             button = QPushButton(text)
             button.setIcon(theme.symbol_icon(kind))
             button.setIconSize(QSize(17, 17))
@@ -897,8 +820,7 @@ class AnaPencere(QMainWindow):
         self._nav_ikonlari()
         self.rail_toggle.setIcon(theme.symbol_icon("right" if self._collapsed else "left"))
         for button, title in self.rail_actions:
-            kind = "lock" if title == t("Kasayı kilitle") else "exit"
-            button.setIcon(theme.symbol_icon(kind))
+            button.setIcon(theme.symbol_icon("exit"))
         if hasattr(self, "onizleme"):
             self.onizleme.yenile()
         if hasattr(self, "csv_btn"):
@@ -981,10 +903,6 @@ so it walks every page on the stack."""
     def _save_window_geometry(self):
         if self._geometry_ready and not self.isMaximized() and not self.isMinimized():
             QSettings(identity.APP_IDENTITY, "Appearance").setValue("main_geometry", self.geometry())
-
-    def _otomatik_kilitle(self):
-        if not remember.enabled(self.kasa_yolu):
-            self.kilitle()
 
     def _open_preview(self,result):
         if self.con is None or self._locked: return
@@ -1120,12 +1038,8 @@ so it walks every page on the stack."""
         return super().eventFilter(_o, ev)
 
     def _hareket_kontrol(self):
-        try:
-            dk = int(migrate.get_setting(self.con, "kilit_suresi", "0"))
-        except Exception:
-            return
-        if not self._locked and dk > 0 and (dt.datetime.now() - self._son_hareket).total_seconds() > dk * 60:
-            self._otomatik_kilitle()
+        # Kilit kaldirildi: hareketsizlik izlenir ama kasa acik kalir.
+        return
 
     # -- arama ekrani: tek yuzey uzerinde uc bolme (filtreler | sonuclar | secili evrak) --
     def _ekran_ara(self):
@@ -2394,9 +2308,6 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         if hasattr(self, "source_remove") and self.source_remove.text() == t("Kaldırılıyor…"):
             self.source_remove.setText(t("Kaldır"))
             self.source_remove.setEnabled(self.kok_liste.currentIndex().isValid())
-        if self._kaldir_lock_pending and not self._exiting:
-            self._kaldir_lock_pending = False
-            QTimer.singleShot(0, self.kilitle)
 
     def _haric_ekle(self):
         if not self._exclusive_ready():
@@ -2445,9 +2356,6 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self.centralWidget().setEnabled(True)
         self.haric_uygula.setText(t("Dışla"))
         self.haric_uygula.setEnabled(True)
-        if self._kaldir_lock_pending and not self._exiting:
-            self._kaldir_lock_pending = False
-            QTimer.singleShot(0, self.kilitle)
 
     # -- tarama --
     def _ekran_tarama(self):
@@ -3127,180 +3035,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             hist_mod.clear(self.con)
             self._gecmis_tazele()
 
-    # -- recovery key: section inside Settings --
-    def _kurtarma_bolumu(self, k):
-        """Recovery key state, creation, refresh, removal and docs."""
-        k.addWidget(bolum(t("Kurtarma anahtarı")))
-        self.kurtarma_durum = label("", "ikincil")
-        self.kurtarma_durum.setWordWrap(True)
-        self.kurtarma_olustur = QPushButton(t("Anahtar oluştur"))
-        self.kurtarma_olustur.setProperty("kucuk", True)
-        self.kurtarma_olustur.clicked.connect(self._kurtarma_olustur_tiklandi)
-        self.kurtarma_goster = QPushButton(t("Anahtarı göster"))
-        self.kurtarma_goster.setProperty("kucuk", True)
-        self.kurtarma_goster.clicked.connect(self._kurtarma_goster)
-        self.kurtarma_yazdir = QPushButton(t("Yazdır / kaydet"))
-        self.kurtarma_yazdir.setProperty("kucuk", True)
-        self.kurtarma_yazdir.clicked.connect(self._kurtarma_yazdir)
-        self.kurtarma_kaldir = QPushButton(t("Kaldır"))
-        self.kurtarma_kaldir.setProperty("kucuk", True)
-        self.kurtarma_kaldir.setProperty("tehlike", True)
-        self.kurtarma_kaldir.clicked.connect(self._kurtarma_kaldir)
-        self.kurtarma_denetim = QWidget()
-        kd = QHBoxLayout(self.kurtarma_denetim)
-        kd.setContentsMargins(0, 0, 0, 0)
-        kd.setSpacing(8)
-        for b in (self.kurtarma_olustur, self.kurtarma_goster, self.kurtarma_yazdir,
-                  self.kurtarma_kaldir):
-            kd.addWidget(b)
-        k.addWidget(ayar_satiri(
-            t("Şifre unutulursa kurtarma"),
-            t("Anahtar kasa klasöründe saklanır; belgeyle birlikte güvenli bir yerde tutun."),
-            self.kurtarma_denetim))
-
-    def _kurtarma_tazele(self):
-        if not hasattr(self, "kurtarma_durum"):
-            return
-        if self.sifresiz:
-            self.kurtarma_durum.setText(
-                t("Şifre kullanmıyorsunuz; kurtarma anahtarı gerekmez. Şifre eklediğinizde ") +
-                t("anahtar kendiliğinden oluşturulur."))
-            for b in (self.kurtarma_olustur, self.kurtarma_goster,
-                      self.kurtarma_yazdir, self.kurtarma_kaldir):
-                b.setEnabled(False)
-            return
-        self.kurtarma_olustur.setEnabled(True)
-        durum = recovery.status(self.kasa_yolu)
-        if not durum.get("var"):
-            self.kurtarma_durum.setText(t("Henüz kurtarma anahtarı yok."))
-            self.kurtarma_goster.setEnabled(False)
-            self.kurtarma_yazdir.setEnabled(False)
-            self.kurtarma_kaldir.setEnabled(False)
-            self.kurtarma_olustur.setText(t("Anahtar oluştur"))
-            return
-        parcalar = []
-        anahtar = recovery.load_key(self.kasa_yolu)
-        parcalar.append(t("Kurtarma anahtarı hazır.") if anahtar else
-                        t("Anahtar dosyası bulunamadı; yeniden oluşturun."))
-        if durum.get("kasa_eslesmiyor"):
-            parcalar.append(t("Kasa değişmiş görünüyor; anahtarı yenilemeniz önerilir."))
-        self.kurtarma_durum.setText(" ".join(parcalar))
-        self.kurtarma_goster.setEnabled(bool(anahtar))
-        self.kurtarma_yazdir.setEnabled(bool(anahtar))
-        self.kurtarma_kaldir.setEnabled(True)
-        self.kurtarma_olustur.setText(t("Anahtarı yenile"))
-
-    def _kurtarma_olustur_tiklandi(self):
-        if self.con is None or self._locked:
-            return
-        var = recovery.status(self.kasa_yolu).get("var")
-        if var:
-            cevap = QMessageBox.question(
-                self, t("Kurtarma anahtarı"),
-                t("Yeni bir kurtarma anahtarı üretilecek ve eskisi geçersiz olacak.\n")
-                + t("Devam edilsin mi?"))
-            if cevap != QMessageBox.Yes:
-                return
-        try:
-            anahtar = recovery.refresh(self.kasa_yolu, self._sifre)
-        except Exception as error:  # noqa: BLE001
-            QMessageBox.warning(self, "Kurtarma", t("Anahtar oluşturulamadı: {error}", error=error))
-            return
-        self._kurtarma_tazele()
-        self._kurtarma_goster(anahtar)
-
-    def _kurtarma_goster(self, anahtar=None):
-        if self.con is None or self._locked:
-            return
-        if not anahtar:
-            anahtar = recovery.load_key(self.kasa_yolu)
-        if not anahtar:
-            return
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("DeepFind • Kurtarma anahtarı"))
-        dialog.setMinimumWidth(560)
-        yerlesim = QVBoxLayout(dialog)
-        yerlesim.setContentsMargins(20, 20, 20, 20)
-        yerlesim.setSpacing(12)
-        yerlesim.addWidget(label(t("Kurtarma anahtarınız"), "baslik"))
-        uyari = label(t("Bu anahtarı şimdi kaydedin. Anahtar şifrenizi açabilir; ") +
-                      t("şifrenizi unuttuğunuzda indeksinizi kurtarır."), "uyari")
-        yerlesim.addWidget(uyari)
-        gosterim = QLineEdit(anahtar)
-        gosterim.setReadOnly(True)
-        gosterim.setAlignment(Qt.AlignCenter)
-        gosterim.setStyleSheet("font-family: Consolas, monospace; font-size: 14px; letter-spacing: 1px;")
-        gosterim.setCursorPosition(0)
-        yerlesim.addWidget(gosterim)
-        satir = QHBoxLayout()
-        satir.setSpacing(8)
-        kopyala = QPushButton("Kopyala")
-        kopyala.clicked.connect(lambda: QApplication.clipboard().setText(anahtar))
-        satir.addWidget(kopyala)
-        yazdir = QPushButton(t("Yazdır / kaydet"))
-        yazdir.clicked.connect(lambda: self._kurtarma_yazdir(anahtar))
-        satir.addWidget(yazdir)
-        satir.addStretch(1)
-        kapat = QPushButton("Kapat")
-        kapat.setProperty("birincil", True)
-        kapat.clicked.connect(dialog.accept)
-        satir.addWidget(kapat)
-        yerlesim.addLayout(satir)
-        dosya = recovery.key_path(self.kasa_yolu)
-        yol_notu = QLabel(t("Anahtar ayrıca şu dosyada durur:\n{dosya}", dosya=dosya))
-        yol_notu.setProperty("ikincil", True)
-        yol_notu.setWordWrap(True)
-        yol_notu.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        yerlesim.addWidget(yol_notu)
-        dialog.exec()
-
-    def _kurtarma_yazdir(self, anahtar=None):
-        if self.con is None or self._locked:
-            return
-        if not anahtar:
-            anahtar = recovery.load_key(self.kasa_yolu)
-        if not anahtar:
-            return
-        from PySide6.QtGui import QTextDocument
-        from PySide6.QtPrintSupport import QPrinter, QPrintDialog
-        belge = QTextDocument()
-        belge.setPlainText(recovery.document_text(self.kasa_yolu, anahtar, bicimli=True))
-        yazici = QPrinter(QPrinter.HighResolution)
-        secim = QPrintDialog(yazici, self)
-        secim.setWindowTitle(t("Kurtarma belgesini yazdır"))
-        var = None
-        if secim.exec() == QDialog.Accepted:
-            belge.print_(yazici)
-        else:
-            # When printing is cancelled, offer saving to file.
-            var = QFileDialog.getSaveFileName(
-                self, "Kurtarma belgesini kaydet",
-                os.path.join(os.path.dirname(self.kasa_yolu), "deepfind-kurtarma-belgesi.txt"),
-                "Metin (*.txt)")[0]
-            if var:
-                try:
-                    from pathlib import Path
-                    Path(var).write_text(
-                        recovery.document_text(self.kasa_yolu, anahtar, bicimli=True),
-                        encoding="utf-8")
-                    self._toast_goster("Kurtarma belgesi kaydedildi.")
-                except OSError as error:
-                    QMessageBox.warning(self, "Kurtarma", f"Kaydedilemedi: {error}")
-
-    def _kurtarma_kaldir(self):
-        if self.con is None or self._locked:
-            return
-        cevap = QMessageBox.question(
-            self, t("Kurtarma anahtarını kaldır"),
-            t("Kurtarma anahtarı silinecek. Şifrenizi unutursanız indeksinizi kurtaramazsınız.\n") +
-            "Devam edilsin mi?")
-        if cevap != QMessageBox.Yes:
-            return
-        recovery.remove(self.kasa_yolu)
-        self._kurtarma_tazele()
-        self._toast_goster(t("Kurtarma anahtarı kaldırıldı."))
-
-    # -- yedekler: Ayarlar icinde bolum; ayri sekme degil --
+    # -- yedekler: liste + geri yukleme --
     def _yedek_bolumu(self, k):
         """Backup list and actions; appended at the end of the Settings page."""
         bas = QHBoxLayout()
@@ -3377,17 +3112,17 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
 
     def _yedek_al(self):
         if self.con is None: return
-        path=self.kasa_yolu; password=self._sifre; directory=self._yedek_dizin(); roots=self._kokler()
+        path=self.kasa_yolu; directory=self._yedek_dizin(); roots=self._kokler()
         self.durum.showMessage(t('Yedek oluşturuluyor…'))
         def ready(path):
             self.durum.showMessage(t('Yedek oluşturuldu ve doğrulandı: {path}', path=path))
             self._yedek_tazele()
-        archive_ui.job(self,'backup_create',lambda con:backup_mod.create_backup(con,path,password,directory,manual=True,forbid_under=roots),ready,writable=True)
+        archive_ui.job(self,'backup_create',lambda con:backup_mod.create_backup(con,path,None,directory,manual=True,forbid_under=roots),ready,writable=True)
 
-    def _yedek_acilir(self, yol, sifre):
-        """Can the backup open and verify with the given password (silent probe)."""
+    def _yedek_acilir(self, yol, _sifre=None):
+        """Can the backup open and verify (legacy backups may need a password)."""
         try:
-            return backup_mod.verify_backup(yol, sifre)["ok"]
+            return backup_mod.verify_backup(yol, _sifre)["ok"]
         except Exception:
             return False
 
@@ -3398,29 +3133,27 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         if not idx.isValid():
             return
         yol = self.yedek_model.item(idx.row()).data()
-        if self.sifresiz:
-            # On a passwordless vault backups are protected by the inner key too; no password asked.
-            backup_password = vault.SIFRESIZ_ANAHTAR
-        else:
-            password_dialog = ParolaDialog(self, verify=lambda pw: None)
-            password_dialog.setWindowTitle(t("Yedek şifresini doğrulayın"))
-            if password_dialog.exec() != QDialog.Accepted:
+        from . import vault as _v
+        if _v.is_encrypted(yol):
+            # Eski sifreli yedek: yalniz bu geri yukleme icin parola sorulur.
+            from PySide6.QtWidgets import QInputDialog
+            parola, kabul = QInputDialog.getText(
+                self, t("Geri yükle"), t("Bu yedek eski şifreli biçimde; yedek parolasını girin:"),
+                echo=QLineEdit.Password)
+            if not kabul or not parola:
                 return
-            backup_password = password_dialog.old.text()
-            password_dialog.old.clear()
-            # Backups taken in the passwordless era open with the inner key (user never knows).
-            if not self._yedek_acilir(yol, backup_password or self._sifre) \
-                    and self._yedek_acilir(yol, vault.SIFRESIZ_ANAHTAR):
-                backup_password = vault.SIFRESIZ_ANAHTAR
+            backup_password = parola
+        else:
+            backup_password = None
         if QMessageBox.question(
                 self, t("Geri yükle"),
                 t("Mevcut kasa rollback'e alınacak ve seçili yedek açılacak.\nDevam edilsin mi?")) \
                 != QMessageBox.Yes:
             return
-        path=self.kasa_yolu; password=self._sifre
+        path=self.kasa_yolu
         def restore(con):
             con.close()
-            return backup_mod.restore_replace(path,password,yol,os.path.join(os.path.dirname(path),'staging'),backup_password=backup_password)
+            return backup_mod.restore_replace(path,None,yol,os.path.join(os.path.dirname(path),'staging'),backup_password=backup_password)
         def reopen(message):
             self.centralWidget().setEnabled(True)
             self._kasa_ac(); self._yedek_tazele(); self._durum_yaz()
@@ -3580,25 +3313,13 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         k.addWidget(ayar_satiri("Yeni kural", t("Kelime eşleşince etiket kendiliğinden eklenir."), kural_satir))
 
         k.addWidget(baslik(t("Kasa güvenliği")))
-        self.kilit_sure = QComboBox()
-        self.kilit_sure.addItems([t("kapalı"), "5", "15", "30"])
-        cur = migrate.get_setting(self.con, "kilit_suresi", "15")
-        self.kilit_sure.setCurrentText(cur if cur in ("5", "15", "30") else t("kapalı"))
-        k.addWidget(ayar_satiri("Hareketsizlikte kilitle", t("“Beni hatırla” açıkken otomatik kilit kapanır."), self.kilit_sure))
-        self.sifre_btn = QPushButton(t("Şifre ekle") if self.sifresiz else t("Parolayı değiştir"))
-        self.sifre_btn.clicked.connect(self._sifre_islemi)
-        self.forget_btn = QPushButton(t("Hatırlanan girişi kaldır"))
-        self.forget_btn.clicked.connect(self._forget_login)
-        self.forget_btn.setVisible(not self.sifresiz)
-        k.addWidget(ayar_satiri(t("Şifre"), t("Şifresiz kasaya şifre ekleyin; mevcut şifreyi değiştirirken doğrulama istenir."),
-                                self._denetim_satiri(self.sifre_btn, self.forget_btn)))
-        self._kurtarma_bolumu(k)
+        k.addWidget(ayar_satiri(t("Kasa"), t("Bu bilgisayardaki kasa şifresiz açılır; giriş, kilit ve kurtarma anahtarı yoktur."),
+                                label(t("Şifresiz kasa"), "ikincil")))
         self._yedek_bolumu(k)
         from .model_ui import install
         install(self, k)
         self._guncelleme_bolumu(k)
-        alt = t("Yerel ve şifreli çalışır") if not self.sifresiz else t("Yerel çalışır; şifre eklenebilir")
-        self.surum_bilgi = QLabel(f"DeepFind {__version__} · {alt}")
+        self.surum_bilgi = QLabel(f"DeepFind {__version__} · " + t("Yerel çalışır; kasa şifresizdir"))
         self.surum_bilgi.setProperty("ikincil", True)
         k.addWidget(self.surum_bilgi)
         k.addStretch(1)
@@ -3633,10 +3354,6 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
 
 
 
-
-    def _forget_login(self):
-        remember.forget(self.kasa_yolu)
-        QMessageBox.information(self, t("Giriş"), t("Hatırlanan giriş kaldırıldı. Sonraki açılışta şifre istenecek."))
 
     @staticmethod
     def _motor_secenekleri():
@@ -3736,90 +3453,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             return False
         return True
 
-    def _sifre_islemi(self):
-        """Add a password on a passwordless vault; change the passphrase on an encrypted one."""
-        if self.sifresiz:
-            self._sifre_ekle()
-        else:
-            self._parola_degistir()
-
-    def _sifre_ekle(self):
-        """Add a password to a passwordless vault; the recovery key is prepared on the spot."""
-        if not self._exclusive_ready():
-            return
-        d = ParolaDialog(self, mode="ekle")
-        sonuc = d.exec()
-        yeni = d.new.text()
-        d.new.clear()
-        d.confirm.clear()
-        if sonuc != QDialog.Accepted:
-            return
-        self.con.close()
-        self.con = None
-        hata = None
-        try:
-            backup_mod.change_password(self.kasa_yolu, vault.SIFRESIZ_ANAHTAR, yeni, self._yedek_dizin())
-            self._sifre = yeni
-            self.sifresiz = False
-            remember.forget(self.kasa_yolu)
-        except Exception as ex:  # noqa: BLE001
-            hata = ex
-        try:
-            self._kasa_ac()
-        except Exception as ex:  # noqa: BLE001
-            QMessageBox.critical(self, t("Şifre"), t("Kasa yeniden açılamadı: {ex}", ex=ex))
-            return
-        if hata is not None:
-            QMessageBox.critical(self, t("Şifre"), t("Şifre eklenemedi: {hata}", hata=hata))
-            return
-        try:
-            migrate.set_setting(self.con, "kasa_sifresiz", "0")
-        except Exception:
-            pass
-        try:
-            recovery.ensure_exists(self.kasa_yolu, self._sifre)
-        except Exception as error:  # noqa: BLE001
-            diagnostics.record("recovery_setup_failed", type(error).__name__)
-        self.sifre_btn.setText(t("Parolayı değiştir"))
-        self.forget_btn.setVisible(True)
-        self.surum_bilgi.setText(t("DeepFind {__version__} · Yerel ve şifreli çalışır", __version__=__version__))
-        self._kurtarma_tazele()
-        QMessageBox.information(
-            self, t("Şifre"),
-            t("Şifre eklendi. Sonraki açılışta kasa bu şifreyle açılır. Kurtarma anahtarı ") +
-            t("oluşturuldu; Ayarlar bölümündeki “Kurtarma anahtarı” satırından görüntüleyebilirsiniz."))
-
-    def _parola_degistir(self):
-        if not self._exclusive_ready():
-            return
-        def verify(password):
-            check = vault.open_vault(self.kasa_yolu, password)
-            check.close()
-        d = ParolaDialog(self, change=True, verify=verify)
-        if d.exec() != QDialog.Accepted:
-            return
-        old, new = d.old.text(), d.new.text()
-        self.con.close()
-        self.con = None
-        try:
-            backup_mod.change_password(self.kasa_yolu, old, new, self._yedek_dizin())
-            self._sifre = new
-            remember.forget(self.kasa_yolu)
-            QMessageBox.information(self, t("Şifre"), t("Şifreniz değiştirildi. Önceki yedekler eski şifreyle açılır."))
-        except Exception as ex:
-            QMessageBox.critical(self, t("Şifre"), t("İşlem tamamlanamadı: {ex}", ex=ex))
-        finally:
-            d.old.clear()
-            d.new.clear()
-            d.confirm.clear()
-            self._kasa_ac()
-
     # -- ekran/durum/tepsi/kilit --
     def _ekran(self, i):
         started = time.perf_counter()
-        if i == len(EKRAN_ANAHTARLARI):
-            self.kilitle()
-            return
         if i < 0 or i >= self.yigin.count():
             return
         self.yigin.setCurrentIndex(i)
@@ -3880,9 +3516,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         m = QMenu(self)
         self._tray_menu = m
         for ad, fn in ((t("Aç"), self._bring_forward), (t("Şimdi tara"), self._tara_baslat),
-                       (t("Kasayı kilitle"), self.kilitle), (t("Çıkış"), self._cikis)):
-            if self.sifresiz and ad == t("Kasayı kilitle"):
-                continue  # No lock on a passwordless vault.
+                       (t("Çıkış"), self._cikis)):
             a = QAction(ad, self)
             a.triggered.connect(fn)
             m.addAction(a)
@@ -3897,12 +3531,6 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self._bring_forward()
 
     def _bring_forward(self):
-        if self._locked:
-            if hasattr(self, "_unlock_dialog"):
-                self._unlock_dialog.show()
-                self._unlock_dialog.raise_()
-                self._unlock_dialog.activateWindow()
-            return
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -3999,214 +3627,6 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             return
         diagnostics.record("scheduled_scan_started")
         self._tara_baslat(automatic=True)
-
-    def kilitle(self):
-        if self._locked or self.sifresiz:
-            return
-        if self._kaldir_thread is not None or self._haric_thread is not None:
-            self._kaldir_lock_pending = True
-            self.durum.showMessage(t("Arka plan işlemi bitince kasa kilitlenecek."))
-            return
-        diagnostics.record("lock")
-        self._job_generation+=1
-        self._job_pending.clear()
-        self._list_cache.clear()
-        for worker in self._jobs: worker.stop.set()
-        self._thumblari_durdur()
-        self._buyuk_gorsel_yukle(None)
-        self.preview_dialog.hide()
-        self.preview_path.clear(); self.file_rows=[]; self.file_model.clear(); self.file_filter.clear()
-        self.file_notice.clear(); self.file_notice.hide(); self.search_progress.hide()
-        if getattr(self,'_connection_reply',None): self._connection_reply.abort()
-
-        remember.forget(self.kasa_yolu)
-        self._locked = True
-        from . import embed
-        embed.close()
-        self._debounce.stop()
-        self._pending_search = None
-        if self._search_thread is not None:
-            self._search_thread.stop.set()
-        self.hide()
-        self.sonuclar = []
-        self.arama_kutu.clear()
-        self.kayitli_liste.clear()
-        self.etiket_filtre.clear()
-        self.etiket_yaz.clear()
-        self.kural_liste.clear()
-        self.kural_etiket.clear()
-        self.kural_kelimeler.clear()
-        self.tuketim_klasoru.clear()
-        self.tuketim_hedefi.clear()
-        self.sonuc_model.clear()
-        self.sonuc_liste.selectionModel().clearSelection()
-        self.sonuc_izgara.selectionModel().clearSelection()
-        self.toplu_bar.hide()
-        self.secim_sayac.clear()
-        self.gecmis_model.clear()
-        self.gecmis_sayi.clear()
-        self.kok_model.clear()
-        self.kaynak_sayi.clear()
-        self.yedek_model.clear()
-        self.onizleme.temizle()
-        self.scan_timer.stop()
-        self._izleme_durdur()
-        with self._izleme_kilit:
-            self._izleme_bekleyen.clear()
-        self.scan_dialog.hide()
-        self.popup_scope.clear()
-        self.popup_status.setText("Kasa kilitli.")
-        if self._guncelleme_isci is not None:
-            self._guncelleme_isci.iptal_et()
-            if self._guncelleme_thread is not None:
-                self._guncelleme_thread.quit()
-        self._guncelleme_sifirla()
-        self.source_title.clear()
-        self.source_path.clear()
-        self.source_status.clear()
-        self._scan_state("idle")
-        self.scan_log.clear()
-        self.scan_history.clear()
-        self.scan_current.setText("Kasa kilitli.")
-        self.scan_counts.clear()
-        for value in self.scan_metrics.values():
-            value.clear()
-        self.scan_progress_detail.clear()
-        self.tarama_bar.hide()
-        self.tarama_bar.setValue(0)
-        self.scan_phase_bar.hide()
-        self.scan_clock.clear()
-        self.scope_path.clear()
-        self.scope_sources.clear()
-        self.retry_scan.hide()
-        self.haric_kutu.clear()
-        self._filtre_cipleri()  # M3: active filter chips and the counter are cleared
-        self.oneri.clear()
-        self.sonuc_sayi.clear()
-        self.secim_ad.setText(t("Henüz seçim yok"))
-        self.secim_yol.clear()
-        self.secim_tur.clear()
-        self.secim_etiket.clear()
-        self.secim_onizle.setEnabled(False)
-        self.secim_kopyala.setEnabled(False)
-        self.gecmis_sorgu.setText(t("Bir arama seçin"))
-        self.gecmis_filtre.clear()
-        self.gecmis_calistir.setEnabled(False)
-        self.gecmis_sil_btn.setEnabled(False)
-        self.dosya_ad.setText(t("Bir kayıt seçin"))
-        self.dosya_yol.clear()
-        self.dosya_bilgi.clear()
-        self.dosya_onizle.setEnabled(False)
-        if self.isci:
-            self.isci.durdur()
-        if self.con is not None:
-            self.con.close()
-            self.con = None
-        self._sifre = ""
-        self._kilit_ekrani()
-        self._lock_poll = QTimer(self)
-        self._lock_poll.timeout.connect(self._kilit_hazir)
-        self._lock_poll.start(100)
-        self._kilit_hazir()
-
-    def _kilit_ekrani(self):
-        """Set up the lock screen: unlock with password or (optionally) recovery key."""
-        self._unlock_dialog = ParolaDialog(self, verify=self._unlock, allow_remember=False,
-                                           kasa_yolu=self.kasa_yolu)
-        self._unlock_dialog.accepted.connect(self._unlocked)
-        self._unlock_dialog.rejected.connect(self._cikis)
-        self._kurtarma_kopru()
-
-    def _kurtarma_kopru(self):
-        """When 'I forgot my password' is pressed, jump to the recovery screen (rebuild the lock dialog)."""
-        pencere = self._unlock_dialog
-        def gecis():
-            if pencere.result() != MOD_KURTARMA:
-                return
-            if not os.path.isfile(recovery.container_path(self.kasa_yolu)):
-                QMessageBox.information(
-                    self, "Kurtarma",
-                    t("Bu kasada kurtarma anahtarı yok. Şifrenizi unuttuysanız kasa açılamaz; ") +
-                    t("varsa eski yedeklerinizden geri dönebilir veya kaynak belgelerinizi ") +
-                    "yeniden taratabilirsiniz.")
-                if not self._locked:
-                    return
-                pencere.show()
-                return
-            yeni = ParolaDialog(self, mode="kurtarma", verify=self._kurtarma_yap,
-                                kasa_yolu=self.kasa_yolu)
-            self._unlock_dialog = yeni
-            yeni.finished.connect(self._kurtarma_bitti)
-            yeni.show()
-        pencere.finished.connect(gecis)
-
-    def _kurtarma_bitti(self, kod):
-        """Recovery window closed: continue when unlocked, back to the lock screen otherwise."""
-        if self._locked and self.con is None:
-            self._kilit_ekrani()
-            self._kilit_hazir()
-
-    def _kurtarma_yap(self, paket):
-        """('kurtarma', key, new_password) -> recover the vault and open the connection."""
-        _etiket, anahtar, yeni_sifre = paket
-        sonuc = recovery.recover(self.kasa_yolu, anahtar, yeni_sifre,
-                                 backup_dir=self._yedek_dizin())
-        self._sifre = yeni_sifre
-        remember.forget(self.kasa_yolu)
-        try:
-            self.con = vault.open_vault(self.kasa_yolu, yeni_sifre)
-        except Exception as error:
-            self._sifre = ""
-            raise RuntimeError(t("Kurtarma sonrası kasa açılamadı: {error}", error=error)) from error
-        self._kurtarma_sonucu = sonuc
-        # run _unlocked once the recovery window closes
-        QTimer.singleShot(0, self._unlocked)
-
-    def _kilit_hazir(self):
-        if self.isci_thread is None and self._search_thread is None and not self.onizleme.busy() and not self._jobs:
-            self._lock_poll.stop()
-            from .ocr import clean_stale
-            clean_stale(os.path.dirname(os.path.abspath(self.kasa_yolu)), max_age_sec=0)
-            self._unlock_dialog.show()
-
-    def _unlock(self, password):
-        self._sifre = password
-        try:
-            self._kasa_ac()
-        except Exception:
-            self._sifre = ""
-            raise
-
-    def _unlocked(self):
-        diagnostics.record("unlock")
-        self._locked = False
-        from . import embed
-        threading.Thread(target=lambda: embed.isit_oturumu(cancel=lambda: self._locked or self._exiting), daemon=True).start()
-        self.centralWidget().setEnabled(True)
-        self._unlock_dialog.old.clear()
-        self._son_hareket = dt.datetime.now()
-        kurtarma_sonucu = getattr(self, "_kurtarma_sonucu", None)
-        self._kurtarma_sonucu = None
-        self._kok_tazele()
-        self._yedek_tazele()
-        self._kurtarma_tazele()
-        self._kurtarma_bildirim_goster()
-        self._kayitli_tazele()
-        self._kural_tazele()
-        self._scan_history_refresh()
-        self._scope_changed()
-        self._gorunum_yukle()
-        self.show()
-        self._durum_yaz()
-        self._scan_state("idle")
-        self._zamanlayici_kontrol()
-        self._izleme_baslat()
-        if kurtarma_sonucu:
-            yeni = kurtarma_sonucu.get("yeni_anahtar", "")
-            self._toast_goster(t("Kasa yeni şifreyle açıldı; kurtarma anahtarı yenilendi."))
-            self.durum.showMessage(t("Kurtarma tamamlandı. Kaynak belgeleriniz değişmedi."))
-            if yeni:
-                self._kurtarma_goster(yeni)
 
     def _cikis(self):
         diagnostics.record("exit")
@@ -4416,12 +3836,9 @@ def main(kasa_yolu=None, sifre=None):
             diagnostics.record("setup_cancelled")
             return 1
         diagnostics.record("setup_accepted")
-        sifre = setup.s1.text()
+        sifre = None
         os.makedirs(os.path.dirname(os.path.abspath(args.kasa)), exist_ok=True)
-        if not sifre:
-            # Password left blank: the vault opens with the inner key, no password asked at launch.
-            sifre = vault.SIFRESIZ_ANAHTAR
-            diagnostics.record("setup_passwordless")
+        diagnostics.record("setup_passwordless")
     if setup is not None:
         from .ocr_setup_ui import prepare_ocr
         diagnostics.record("ocr_prepare")
@@ -4432,8 +3849,6 @@ def main(kasa_yolu=None, sifre=None):
         from .bootstrap import Bootstrap
         selection = dict(setup.secim)
         selection.pop("sifre", None)
-        setup.s1.clear()
-        setup.s2.clear()
         setup.secim.pop("sifre", None)
         setup.deleteLater()
         class StartupDialog(QDialog):
@@ -4470,7 +3885,7 @@ def main(kasa_yolu=None, sifre=None):
         content.setContentsMargins(28, 28, 28, 28)
         status = label(t("Çalışma alanınız hazırlanıyor…"), "subheading")
         content.addWidget(status)
-        content.addWidget(label(t("Şifreli kasa kuruluyor. Tamamlandığında DeepFind kendiliğinden açılacak."), "ikincil"))
+        content.addWidget(label(t("Şifresiz kasa kuruluyor. Tamamlandığında DeepFind kendiliğinden açılacak."), "ikincil"))
         bar = QProgressBar()
         bar.setRange(0, 0)
         content.addWidget(bar)
@@ -4542,66 +3957,26 @@ def main(kasa_yolu=None, sifre=None):
             if server is not None:
                 server.close()
 
+    # Sifre kaldirildi: kasa dogrudan sifresiz acilir.
     if sifre is None:
-        sifre = remember.load(args.kasa)
-        if sifre:
-            try:
-                check = vault.open_vault(args.kasa, sifre)
-                check.close()
-            except Exception:
-                remember.forget(args.kasa)
-                sifre = None
-    if sifre is None and vault.sifresiz_mi(args.kasa):
-        # Passwordless vault: opens without asking when the inner key works.
-        sifre = vault.SIFRESIZ_ANAHTAR
-        diagnostics.record("passwordless_open")
-    while sifre is None:
-        diagnostics.record("login_dialog")
-        def verify(password):
-            con = vault.open_vault(args.kasa, password)
-            con.close()
-        login = ParolaDialog(verify=verify, kasa_yolu=args.kasa)
-        app._login = login
-        sonuc = login.exec()
-        if sonuc == MOD_KURTARMA:
-            # "I forgot my password": unlock with the recovery key, set a new password.
-            if not os.path.isfile(recovery.container_path(args.kasa)):
-                QMessageBox.information(
-                    None, "Kurtarma",
-                    t("Bu kasada kurtarma anahtarı yok. Şifrenizi unuttuysanız kasa açılamaz; ") +
-                    t("varsa eski yedeklerinizden geri dönebilir veya kaynak belgelerinizi ") +
-                    "yeniden taratabilirsiniz.")
-                diagnostics.record("login_recovery_missing")
-                continue
-            def kurtar(paket):
-                _etiket, anahtar, yeni_sifre = paket
-                recovery.recover(args.kasa, anahtar, yeni_sifre,
-                                 backup_dir=os.path.abspath(os.path.join(
-                                     os.path.dirname(args.kasa), '..', 'Backups')))
-            kurtarma = ParolaDialog(mode="kurtarma", verify=kurtar, kasa_yolu=args.kasa)
-            app._login = kurtarma
-            if kurtarma.exec() != QDialog.Accepted:
-                # "I know my password" or close: back to the login screen.
-                diagnostics.record("login_recovery_cancelled")
-                continue
-            remember.forget(args.kasa)
-            sifre = kurtarma.new.text()
-            kurtarma.old.clear()
-            kurtarma.new.clear()
-            kurtarma.confirm.clear()
-            diagnostics.record("login_recovered")
-        elif sonuc != QDialog.Accepted:
-            diagnostics.record("login_cancelled")
+        sifre = None
+    try:
+        vault.open_vault(args.kasa).close()
+    except vault.EncryptedVaultError:
+        from PySide6.QtWidgets import QInputDialog as _QID, QLineEdit as _QLE
+        parola, kabul = _QID.getText(
+            None, t("Eski şifreli kasa"),
+            t("Bu kasa eski şifreli biçimde. Dönüştürmek için mevcut parolayı girin:"),
+            echo=_QLE.Password)
+        if not kabul or not parola:
             return 1
-        else:
-            diagnostics.record("login_accepted")
-            sifre = login.old.text()
-            if login.remember.isChecked():
-                try:
-                    remember.save(args.kasa, sifre)
-                except OSError as error:
-                    QMessageBox.warning(login, t("Beni hatırla"), str(error))
-            login.old.clear()
+        from . import vault_convert as _vc
+        try:
+            _vc.convert(args.kasa, parola)
+        except Exception as error:
+            QMessageBox.critical(None, 'Kasa', f'Dönüşüm yapılamadı: {error}')
+            return 2
+        diagnostics.record("vault_converted_at_open")
     from .ocr_setup_ui import prepare_ocr
     diagnostics.record("ocr_prepare")
     if not prepare_ocr():
@@ -4609,7 +3984,7 @@ def main(kasa_yolu=None, sifre=None):
         return 1
     diagnostics.record("ocr_ready")
     from .startup import OpeningDialog
-    opening = OpeningDialog(args.kasa, sifre,
+    opening = OpeningDialog(args.kasa,
                             os.path.abspath(os.path.join(os.path.dirname(args.kasa), '..', 'Backups')))
     opening.setWindowIcon(theme.app_icon())
     app._startup_dialog = opening

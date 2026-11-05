@@ -10,7 +10,7 @@ def test_acilis_yuzde_ve_sayac_gosterir(tmp_path):
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     dialog = startup.OpeningDialog(
-        str(tmp_path / 'yok.db'), 'sifre', str(tmp_path / 'yedek'))
+        str(tmp_path / 'yok.db'), str(tmp_path / 'yedek'))
     dialog._baslangic = time.monotonic() - 10
     dialog.update_progress('backup', 3, 10)
     assert dialog.bar.value() == 30
@@ -48,20 +48,20 @@ def test_legacy_preparation_stays_responsive_and_reports_backup(tmp_path, monkey
     timer = QTimer()
     timer.timeout.connect(lambda: ticks.append(time.monotonic()))
     timer.start(10)
-    dialog = startup.OpeningDialog(path, password, str(tmp_path / 'backups'))
+    dialog = startup.OpeningDialog(path, str(tmp_path / 'backups'))
     stages = []
     dialog.worker.progress.connect(lambda stage, *_: stages.append(stage))
     assert dialog.prepare() == QDialog.Accepted
     timer.stop()
     assert len(ticks) >= 10
     assert {'backup', 'verify', 'schema'} <= set(stages)
-    assert dialog.worker.password == ''
+
     con = vault.open_vault(path, password)
     assert con.execute("SELECT v FROM schema_meta WHERE k='archive_version'").fetchone()[0] == '034'
     con.close()
     assert len(list((tmp_path / 'backups').glob('deepfind-*.db'))) == 1
     # A successful upgrade is recorded; ordinary subsequent opens never repeat it.
-    con = startup.prepare_connection(path, password, str(tmp_path / 'backups'))
+    con = startup.prepare_connection(path, str(tmp_path / 'backups'))
     con.close()
     assert len(list((tmp_path / 'backups').glob('deepfind-*.db'))) == 1
 
@@ -75,7 +75,7 @@ def test_cancel_before_migration_preserves_legacy_marker(tmp_path):
     con.execute("CREATE VIRTUAL TABLE docs_fts USING fts5(raw_text)")
     con.commit()
     con.close()
-    worker = startup.PreparationWorker(path, password, str(tmp_path / 'backups'))
+    worker = startup.PreparationWorker(path, str(tmp_path / 'backups'))
     worker.stop.set()
     worker.run()
     assert worker.error

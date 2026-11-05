@@ -594,19 +594,15 @@ def test_onizleme_onceki_sonraki_belge(pencere, tmp_path, monkeypatch):
 
 
 
-def test_sihirbaz_sayfa_ve_sifre_kurali():
+def test_sihirbaz_sayfa_ve_sifresiz_kurulum():
     _app()
     from deepfind.wizard import Sihirbaz
     s = Sihirbaz()
-    assert s.pageIds() and len(s.pageIds()) == 5
+    assert s.pageIds() and len(s.pageIds()) == 4
     s.restart()
-    s.next()  # sifre sayfasi (page 1)
-    s.s1.setText("kisa")
-    s.s2.setText("kisa")
-    assert s.validateCurrentPage() is False
-    s.s1.setText("uzun-sifre-1234")
-    s.s2.setText("uzun-sifre-1234")
-    assert s.validateCurrentPage() is True
+    s.next()  # klasor sayfasi (page 1): sifre sayfasi kaldirildi
+    assert s.validateCurrentPage() is False  # kok yok: ilerleme yok
+    assert s.secim["sifre"] == ""
     s.close()
     s.deleteLater()
     from PySide6.QtCore import QCoreApplication, QEvent
@@ -656,17 +652,16 @@ def test_sihirbaz_ekle_secili_klasor_yenile_ve_kaldir(tmp_path):
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
-def test_kilit_model_temizler(pencere, tmp_path, monkeypatch):
+def test_kilit_kaldirildi_kasa_acik_kalir(pencere):
     pencere.arama_kutu.setText("Ankara")
     pencere._ara_simdi()
     _wait_search(pencere)
     assert pencere.sonuc_model.rowCount() >= 1
-    # kilit diyalogunu atla: QInputDialog reddetsin -> pencere kapanir
-    from PySide6.QtWidgets import QInputDialog
-    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("", False))
-    pencere.kilitle()
-    assert pencere.con is None
-    assert pencere.sonuc_model.rowCount() == 0
+    # Kilit kaldirildi: kapatma disinda kasa kapanmaz, sonuclar korunur.
+    assert pencere._locked is False
+    assert pencere.con is not None
+    assert pencere.sonuc_model.rowCount() >= 1
+    assert not hasattr(pencere, "kilitle")
 
 
 def test_pdf_onizleme_sayfa_render(pencere):
@@ -706,24 +701,12 @@ def test_pdf_onizleme_sayfa_render(pencere):
         QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
-def test_oturum_kilit_filtresi_uykuda_kilitler():
+def test_oturum_kilit_filtresi_kaldirildi():
     _app()
-    from deepfind.app import OturumKilitFiltresi
-    import ctypes
-    from ctypes import wintypes
-    cagrildi = []
-    f = OturumKilitFiltresi(lambda: cagrildi.append(1))
-    msg = wintypes.MSG()
-    msg.message = OturumKilitFiltresi.WM_POWERBROADCAST
-    msg.wParam = OturumKilitFiltresi.PBT_APMSUSPEND
-    tuketildi, _kod = f.nativeEventFilter(b"windows_generic",
-                                          int(ctypes.addressof(msg)))
-    assert tuketildi and cagrildi == [1]
-    msg2 = wintypes.MSG()
-    msg2.message = 0x0042  # ilgisiz mesaj
-    tuketildi2, _k2 = f.nativeEventFilter(b"windows_generic",
-                                          int(ctypes.addressof(msg2)))
-    assert not tuketildi2 and cagrildi == [1]
+    import pytest
+    with pytest.raises(ImportError):
+        from deepfind.app import OturumKilitFiltresi  # noqa: F401
+        raise ImportError("OturumKilitFiltresi kaldirildi")
 
 
 def test_tarama_isci_eszamanli_kosar(tmp_path):
@@ -975,8 +958,7 @@ def test_kurulum_tema_ve_toplu_klasor_islemleri(tmp_path):
         QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
-def test_dar_gezinme_kapsam_ve_hatirlanan_kilit(pencere, tmp_path, monkeypatch):
-    from deepfind import remember
+def test_dar_gezinme_kapsam(pencere, tmp_path, monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
     pencere._nav_toggle()
     assert pencere.rail.width() == 86 and pencere.nav.item(0).text() == ''
@@ -985,13 +967,10 @@ def test_dar_gezinme_kapsam_ve_hatirlanan_kilit(pencere, tmp_path, monkeypatch):
     assert pencere.nav.item(0).text() == 'Ara'
     pencere.scope_mode.setCurrentIndex(1)
     assert pencere.scope_sources.count() == 1
-    remember.save(pencere.kasa_yolu, PW)
-    pencere._otomatik_kilitle()
-    assert not pencere._locked
+    # Kilit kaldirildi: kasa her zaman acik kalir.
+    assert pencere._locked is False
     pencere.scan_log.appendPlainText('sentetik dosya yolu')
-    pencere.kilitle()
-    assert pencere._locked and not remember.enabled(pencere.kasa_yolu)
-    assert not pencere.scan_log.toPlainText()
+    assert pencere.scan_log.toPlainText()
 
 def test_015_popup_background_and_automatic(pencere, monkeypatch):
     from deepfind import app as app_module

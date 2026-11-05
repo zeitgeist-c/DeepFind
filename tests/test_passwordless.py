@@ -1,175 +1,121 @@
-"""Şifresiz kasa testleri: kurulum işareti, algılama, şifre ekleme, arayüz."""
+"""Sifresiz kasa testleri: yeni profil, eski sifreli donusum, CLI.
+
+Sifre/isaret/kilit/kurtarma ozellikleri kaldirildi. Eski sifreli kasa
+`vault_convert` ile tek yonlu donusur; yanlis parola veya bozuk kaynakta
+eski kasa korunur.
+"""
 import os
 import sys
-import time
 
 import pytest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from deepfind import backup, bootstrap, migrate, recovery, schema, vault  # noqa: E402
-
-PW = "yeni-sifre-123456789"
+from deepfind import backup, migrate, schema, vault, vault_convert  # noqa: E402
 
 
-def _bos_kasa(tmp_path, sentinel=True, ad="k.db"):
+def _yeni_kasa(tmp_path, ad="k.db"):
     db = str(tmp_path / ad)
-    pw = vault.SIFRESIZ_ANAHTAR if sentinel else PW
-    con = vault.open_vault(db, pw)
+    con = vault.open_vault(db)
     schema.ensure_schema(con)
     migrate.ensure_current(con)
     con.close()
     return db
 
 
-def _bekle(pen, app):
-    deadline = time.monotonic() + 20
-    while pen._search_thread is not None or pen.isci_thread is not None \
-            or pen.onizleme.busy() or pen._jobs:
-        app.processEvents()
-        time.sleep(0.01)
-        assert time.monotonic() < deadline
-
-
-def test_pw01_kurulum_sifresiz_isaretler(tmp_path):
-    """Bootstrap, iç anahtarla kurulan kasaya şifresiz işaretini yazar."""
-    db = str(tmp_path / "Data" / "k.db")
-    os.makedirs(os.path.dirname(db), exist_ok=True)
-    isci = bootstrap.Bootstrap(db, vault.SIFRESIZ_ANAHTAR,
-                               {"kokler": [], "tema": "sistem",
-                                "sirket_kurali": "belirlenemiyor"})
-    isci.run()
-    con = vault.open_vault(db, vault.SIFRESIZ_ANAHTAR)
+def _eski_kasa(tmp_path, ad="eski.db", pw="eski-parola-12345678"):
+    """Gercekci eski kasa: tam sema + ornek icerik, sonra sqlcipher ile sifrele."""
+    import sqlcipher3
+    duz = str(tmp_path / (ad + ".duz.db"))
+    from deepfind import embed as _embed
+    con = vault.open_vault(duz)
+    schema.ensure_schema(con)
+    migrate.ensure_current(con)
+    con.execute("INSERT INTO files(path,name,ext,source_status,index_status) VALUES (?,?,?, 'ok','indexed')",
+                ("/x/ahmet.txt", "ahmet.txt", ".txt"))
+    fid = con.execute("SELECT file_id FROM files").fetchone()[0]
+    con.execute("INSERT INTO segments(file_id,kind,page,label,raw_text) VALUES (?,?,?,?,?)",
+                (fid, "body", 1, "g\u00f6vde", "VEK\u00c2LETNAME Ahmet \u00d6z"))
+    sid = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+    con.execute("INSERT INTO embeddings(seg_id,model_ver,dim,vec) VALUES (?,?,?,?)",
+                (sid, _embed.MODEL_VER, _embed.DIM, b"\x00" * (_embed.DIM * 4)))
+    con.commit()
+    con.close()
+    db = str(tmp_path / ad)
+    ham = sqlcipher3.connect(duz)
     try:
-        assert migrate.get_setting(con, "kasa_sifresiz") == "1"
-        assert migrate.get_setting(con, "kurulum_tamam") == "1"
+        ham.execute("ATTACH DATABASE '" + db.replace("'", "''") + "' AS enc KEY '" + pw.replace("'", "''") + "'")
+        ham.execute("SELECT sqlcipher_export('enc')")
+        ham.execute("DETACH DATABASE enc")
+    finally:
+        ham.close()
+    os.remove(duz)
+    return db
+
+
+def test_yeni_profil_parolasiz_acilir(tmp_path):
+    db = _yeni_kasa(tmp_path)
+    assert vault.is_encrypted(db) is False
+    assert vault.sifresiz_mi(db) is True
+    con = vault.open_vault(db)
+    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == 0
+    con.close()
+
+
+def test_eski_kasa_parolasiz_acilmaz(tmp_path):
+    eski = _eski_kasa(tmp_path)
+    assert vault.is_encrypted(eski) is True
+    assert vault.sifresiz_mi(eski) is False
+    with pytest.raises(vault.EncryptedVaultError):
+        vault.open_vault(eski)
+
+
+def test_yanlis_parola_eskisini_korur(tmp_path):
+    eski = _eski_kasa(tmp_path)
+    with pytest.raises(ValueError):
+        vault_convert.convert(eski, "yanlis-parola-0000")
+    assert vault.is_encrypted(eski) is True
+
+
+def test_donusum_icerigi_korur(tmp_path):
+    eski = _eski_kasa(tmp_path)
+    rapor = vault_convert.convert(eski, "eski-parola-12345678",
+                                  dest=str(tmp_path / "yeni.db"))
+    assert rapor["eski"]["files"] == rapor["yeni"]["files"] == 1
+    assert rapor["yeni"]["integrity"] is True
+    con = vault.open_vault(str(tmp_path / "yeni.db"))
+    try:
+        assert con.execute("SELECT raw_text FROM segments").fetchone()[0] == "VEKÂLETNAME Ahmet Öz"
+        from deepfind import embed as _embed2
+        assert len(bytes(con.execute("SELECT vec FROM embeddings").fetchone()[0])) == _embed2.DIM * 4
     finally:
         con.close()
-    assert vault.sifresiz_mi(db) is True
+    assert vault.is_encrypted(eski) is True
 
 
-def test_pw02_sifresiz_mi_ayrimi(tmp_path):
-    """İşaret yoksa ya da kasa şifreliyse şifresiz sayılmaz."""
-    sifresiz = _bos_kasa(tmp_path, sentinel=True)
-    assert vault.sifresiz_mi(sifresiz) is False  # inner key opens but no mark
-    con = vault.open_vault(sifresiz, vault.SIFRESIZ_ANAHTAR)
-    migrate.set_setting(con, "kasa_sifresiz", "1")
+def test_donusmus_kasa_yeniden_acilista_sormaz(tmp_path):
+    eski = _eski_kasa(tmp_path)
+    yeni = str(tmp_path / "yeni.db")
+    vault_convert.convert(eski, "eski-parola-12345678", dest=yeni)
+    con = vault.open_vault(yeni)
+    migrate.ensure_current(con)
     con.close()
-    assert vault.sifresiz_mi(sifresiz) is True
-    normal = _bos_kasa(tmp_path, sentinel=False, ad="n.db")
-    assert vault.sifresiz_mi(normal) is False
+    assert vault.sifresiz_mi(yeni) is True
 
 
-def test_pw03_sifre_eklenince_ic_anahtar_gecersiz(tmp_path):
-    """Şifre eklenince (rekey) eski iç anahtar açmaz; işaret 0 olur."""
-    db = _bos_kasa(tmp_path, sentinel=True)
-    con = vault.open_vault(db, vault.SIFRESIZ_ANAHTAR)
-    migrate.set_setting(con, "kasa_sifresiz", "1")
-    con.close()
-    backup.change_password(db, vault.SIFRESIZ_ANAHTAR, PW, str(tmp_path / "Backups"))
-    with pytest.raises(Exception):
-        vault.open_vault(db, vault.SIFRESIZ_ANAHTAR)
-    con = vault.open_vault(db, PW)
-    migrate.set_setting(con, "kasa_sifresiz", "0")
-    con.close()
-    assert vault.sifresiz_mi(db) is False
+def test_eski_yedek_parolayla_okunur(tmp_path):
+    eski = _eski_kasa(tmp_path)
+    assert backup.verify_backup(eski)["ok"] is False
+    assert backup.verify_backup(eski, "yanlis")["ok"] is False
+    assert vault_convert.verify_encrypted(eski, "eski-parola-12345678")["ok"] is True
 
 
-def test_pw04_sifre_eklenince_kurtarma_anahtari(tmp_path):
-    """Şifre eklenen kasada kurtarma anahtarı hazırlanabilir (ensure_exists)."""
-    db = _bos_kasa(tmp_path, sentinel=True)
-    anahtar = recovery.ensure_exists(db, vault.SIFRESIZ_ANAHTAR)
-    assert anahtar.startswith("EVKC-")
-    durum = recovery.status(db)
-    assert durum.get("var") is True
-    assert recovery.load_key(db) == anahtar
-
-
-def test_pw05_sihirbaz_sifresiz_secenegi():
-    """Sihirbazda boş şifre ve 'kullanmayacağım' kutusu kabul edilir."""
-    from PySide6.QtWidgets import QApplication
-    QApplication.instance() or QApplication([])
-    from deepfind.wizard import Sihirbaz
-    s = Sihirbaz()
-    s.restart()
-    s.next()  # password page
-    assert s.validateCurrentPage() is True  # blank fields: accepted passwordless
-    assert s.secim["sifre"] == ""
-    s.s1.setText("kisa")
-    s.s2.setText("kisa")
-    assert s.validateCurrentPage() is False
-    s.s1.clear()
-    s.s2.clear()
-    s.sifresiz_kutu.setChecked(True)
-    assert s.s1.isEnabled() is False and s.s2.isEnabled() is False
-    assert s.validateCurrentPage() is True
-    assert s.secim["sifre"] == ""
-    s.sifresiz_kutu.setChecked(False)
-    assert s.s1.isEnabled() is True
-    s.close()
-    s.deleteLater()
-    from PySide6.QtCore import QCoreApplication, QEvent
-    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
-
-
-def test_pw06_pencere_kilit_yok_ve_sifre_ekle(tmp_path, monkeypatch):
-    """Şifresiz pencerede kilit yok; 'Şifre ekle' akışı rekey + kurtarma yapar."""
-    from PySide6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication([])
-    db = _bos_kasa(tmp_path, sentinel=True)
-    con = vault.open_vault(db, vault.SIFRESIZ_ANAHTAR)
-    migrate.set_setting(con, "kasa_sifresiz", "1")
-    con.close()
-    from deepfind import app as app_mod
-    pen = app_mod.AnaPencere(db, vault.SIFRESIZ_ANAHTAR)
-    try:
-        assert pen.sifresiz is True
-        assert all(title != "Kasayı kilitle" for _b, title in pen.rail_actions)
-        pen.kilitle()  # locking is treated as absent on a passwordless vault
-        assert pen._locked is False and pen.con is not None
-        pen._kurtarma_tazele()
-        assert "gerekmez" in pen.kurtarma_durum.text()
-        assert pen.kurtarma_olustur.isEnabled() is False
-        assert pen.sifre_btn.text() == "Şifre ekle"
-        _bekle(pen, app)  # let the launch jobs (OCR) finish; needed for the dialog flow
-
-        class _Sahte:
-            """Kabul eden sahte şifre diyaloğu."""
-
-            def __init__(self, *a, **k):
-                class _T:
-                    def __init__(self, s):
-                        self._s = s
-
-                    def text(self):
-                        return self._s
-
-                    def clear(self):
-                        pass
-                self.new = _T(PW)
-                self.confirm = _T(PW)
-
-            def exec(self):
-                return 1  # QDialog.Accepted
-
-        monkeypatch.setattr(app_mod, "ParolaDialog", _Sahte)
-        monkeypatch.setattr(app_mod.QMessageBox, "information", lambda *a, **k: None)
-        monkeypatch.setattr(app_mod.QMessageBox, "critical", lambda *a, **k: None)
-        pen._sifre_ekle()
-        assert pen.sifresiz is False
-        assert pen.sifre_btn.text() == "Parolayı değiştir"
-        assert pen._sifre == PW
-        assert recovery.load_key(db).startswith("EVKC-")
-        assert vault.sifresiz_mi(db) is False
-        acik = vault.open_vault(db, PW)
-        acik.close()
-        with pytest.raises(Exception):
-            vault.open_vault(db, vault.SIFRESIZ_ANAHTAR)
-    finally:
-        pen._exiting = True
-        pen.close()
-        _bekle(pen, app)
-        pen.deleteLater()
-        from PySide6.QtCore import QCoreApplication, QEvent
-        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+def test_cli_donustur_ve_tani(tmp_path, capsys, monkeypatch):
+    from deepfind import cli as _cli
+    eski = _eski_kasa(tmp_path, ad="k.db")
+    monkeypatch.setattr("getpass.getpass", lambda *_a, **_k: "eski-parola-12345678")
+    assert _cli.main(["--kasa", eski, "kasa-donustur"]) == 0
+    assert vault.is_encrypted(eski) is False
+    assert _cli.main(["--kasa", eski, "kasa-donustur"]) == 0
+    out = capsys.readouterr().out
+    assert "gerekmedi" in out

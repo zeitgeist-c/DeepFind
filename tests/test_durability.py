@@ -153,7 +153,7 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
     src = pathlib.Path(os.path.dirname(__file__), "..", "src", "deepfind")
     yazan = []
     for f in src.glob("*.py"):
-        if f.name in ("cli.py", "backup.py", "recovery.py", "update.py", "model_indir.py", "installer.py", "paths.py"):
+        if f.name in ("cli.py", "backup.py", "vault_convert.py", "recovery.py", "update.py", "model_indir.py", "installer.py", "paths.py"):
             # paths.py: uygulama veri kokunu yonetir; tek yazma noktasi
             # data_root() icindeki shutil.move, eski Evrakci klasorunu DeepFind'e
             # tasiyan tek seferlik gecistir (kaynak dizine degil %LOCALAPPDATA%
@@ -167,6 +167,9 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
             # test_update.py::AcmaTestleri + temizle testleri (runtime).
             # installer.py: writes the watcher only next to a verified Updates install;
             # test_local_model.py::test_installer_handoff_uses_managed_path proves it.
+            # vault_convert.py: yalniz donusum hedefi / yedek / kasa klasorune yazar
+            # (gecici dosya + atomik replace); kaynak-dizin kaniti
+            # test_backup.py::test_bak_kaynaga_dokunmaz (runtime).
             # model_indir.py: yalniz %LOCALAPPDATA%/DeepFind/models (ya da
             # cagrida verilen acik yol) altina yazar; kaynak-dizin kaniti
             # test_model_indir.py::test_varsayilan_hedef_yonetilen_alan (runtime).

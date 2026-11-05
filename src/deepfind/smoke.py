@@ -259,7 +259,7 @@ def run(report_path):
             assert pen.nav.horizontalScrollBar().maximum() == 0
             pen._nav_toggle()
             assert pen.scan_time_edit.displayFormat() == "HH:mm"
-            checkpoint("lock")
+            checkpoint("no-lock")
             checkpoint('real-semantic-search')
             from . import embed as model, gom as embedding_jobs
             session = model.isit_oturumu()
@@ -276,12 +276,11 @@ def run(report_path):
             report['embedding_backend'] = model.status()
             model_process = session.proc
             assert theme.apply(app, "koyu") == "koyu"
-            pen.kilitle()
-            assert model_process.poll() is not None
-            assert pen.con is None and pen.sonuc_model.rowCount() == 0
-            pen._unlock_dialog.old.setText(password)
-            pen._unlock_dialog._submit()
-            assert pen.con is not None and not pen._locked
+            # Kilit kaldirildi: kasa acik kalir, model sureci calisir.
+            assert not hasattr(pen, "kilitle")
+            assert pen.con is not None and pen._locked is False
+            assert model_process.poll() is None
+            assert pen.sonuc_model.rowCount() >= 1
             pen._exiting = True
             pen._cikis()
             while pen._jobs or pen.onizleme.busy():
@@ -294,7 +293,7 @@ def run(report_path):
             from .startup import OpeningDialog
             from .migrate import ensure_current
             old_db = str(Path(temp) / 'startup-legacy.db')
-            old_con = vault.open_vault(old_db, password)
+            old_con = vault.open_vault(old_db)
             ensure_current(old_con)
             old_fid = old_con.execute("INSERT INTO files(path,name,ext) VALUES ('c:/synthetic/startup.txt','startup.txt','.txt')").lastrowid
             old_con.executemany("INSERT INTO segments(file_id,kind,label,raw_text) VALUES (?,'body','Sayfa','Şırnak sözleşme')", [(old_fid,)] * 601)
@@ -303,7 +302,7 @@ def run(report_path):
             old_con.execute("INSERT INTO docs_fts(raw_text) VALUES ('legacy synthetic')")
             old_con.execute("UPDATE schema_meta SET v='8' WHERE k='schema_version'")
             old_con.commit(); old_con.close()
-            opening = OpeningDialog(old_db, password, str(Path(temp) / 'startup-backups'))
+            opening = OpeningDialog(old_db, str(Path(temp) / 'startup-backups'))
             phases = []
             counts = []
             opening.worker.progress.connect(lambda phase, *_: phases.append(phase))
@@ -313,12 +312,12 @@ def run(report_path):
             assert 'fts' not in phases
             checkpoint('startup-index-once')
             for _ in range(3):
-                repeated = OpeningDialog(old_db, password, str(Path(temp) / 'startup-backups'))
+                repeated = OpeningDialog(old_db, str(Path(temp) / 'startup-backups'))
                 repeated_phases = []
                 repeated.worker.progress.connect(lambda phase, *_: repeated_phases.append(phase))
                 assert repeated.prepare() == QDialog.Accepted
                 assert not {'fts', 'backup', 'verify'} & set(repeated_phases)
-            verified = vault.open_vault(old_db, password)
+            verified = vault.open_vault(old_db)
             assert verified.execute("SELECT count(*) FROM segments").fetchone()[0] == 601
             assert not verified.execute("SELECT 1 FROM sqlite_master WHERE name='docs_fts'").fetchone()
             verified.close()
@@ -326,13 +325,13 @@ def run(report_path):
             report["vektor_model"] = bool(_gom.model_var_mi())
             checkpoint('vektor-model-durumu')
             report.update(ok=True, checks=["frozen-spawn-extraction", "vault", "semantic-only-schema", "async-search",
-                                           "excel-preview", "pdf-preview-loading", "dark-theme", "lock-unlock",
+                                           "excel-preview", "pdf-preview-loading", "dark-theme", "no-lock",
                                            "setup-folder-add-refresh", "turkish-buttons-logo", "svg-assets",
                                            "actual-first-run-to-main-no-auto-scan-manual-scan", "scan-popup-background-reopen", "compact-time-and-navigation",
                                            "packaged-turkish-ocr", "durable-scan-history",
                                            'search-workbench-local-model-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration', 'root-remove-worker', 'exclusion-worker',
-                                           'vektor-model-durumu', 'real-semantic-search', 'model-process-closed-on-lock',
+                                           'vektor-model-durumu', 'real-semantic-search', 'model-stays-open-without-lock',
                                            'startup-index-once', 'startup-counted-progress',
                                            'scan-inventory-and-percentages', 'scan-pause-resume',
                                            'legacy-embedding-schema-repair', 'no-dictionary-maintenance'])

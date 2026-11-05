@@ -52,7 +52,7 @@ def main():
         encoding="utf-8")
     licenses = package / "licenses"
     licenses.mkdir(exist_ok=True)
-    deps = ["sqlcipher3", "pypdfium2", "openpyxl", "xlrd", "python-docx", "defusedxml",
+    deps = ["pypdfium2", "openpyxl", "xlrd", "python-docx", "defusedxml",
             "pillow", "pyside6-essentials", "shiboken6",
             "rapidocr", "onnxruntime-directml", "opencv-python-headless", "numpy", "pyclipper",
             "shapely", "omegaconf", "pyyaml", "six", "requests", "tqdm", "colorlog",

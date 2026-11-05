@@ -16,7 +16,7 @@ class Bootstrap(QObject):
     def run(self):
         con = None
         try:
-            con = vault.open_vault(self.path, self.password)
+            con = vault.open_vault(self.path)
             migrate.ensure_current(con)
             for root in self.selection['kokler']:
                 con.execute("INSERT OR IGNORE INTO roots(display_path, canonical_path, company_rule) VALUES (?,?,?)",
@@ -26,8 +26,7 @@ class Bootstrap(QObject):
             backend = self.selection.get('embedding_backend') or 'auto'
             migrate.set_setting(con, "embedding_backend", backend)
             migrate.set_setting(con, "kurulum_tamam", "1")
-            migrate.set_setting(con, "kasa_sifresiz",
-                                "1" if self.password == vault.SIFRESIZ_ANAHTAR else "0")
+            # Sifre kaldirildi: yeni kasalar dogrudan sifresiz acilir.
             self.done.emit()
         except Exception as error:
             self.error.emit(t("Kurulum tamamlanamadı: {error}", error=error))

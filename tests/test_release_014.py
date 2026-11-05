@@ -6,7 +6,7 @@ from pathlib import Path
 import threading
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-from deepfind import coordinator, vault, schema, migrate, job_queue as queue, remember
+from deepfind import coordinator, vault, schema, migrate, job_queue as queue
 from deepfind.migrate import ensure_v5
 
 PW = "sentetik-surum-test-1234"
@@ -86,14 +86,10 @@ def test_cancel_preserves_completed_files_and_pending_work(tmp_path, monkeypatch
         con.close()
 
 
-def test_remember_encrypted_revocable(tmp_path, monkeypatch):
-    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
-    db = str(tmp_path / 'sample.db')
-    remember.save(db, PW)
-    assert PW.encode() not in remember._path(db).read_bytes()
-    assert remember.load(db) == PW
-    remember.forget(db)
-    assert remember.load(db) is None and not remember.enabled(db)
+def test_remember_modulu_kaldirildi():
+    import pytest
+    with pytest.raises(ImportError):
+        import deepfind.remember  # noqa: F401
 
 
 def test_worker_pause_resume_and_cancel():

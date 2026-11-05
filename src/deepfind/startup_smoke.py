@@ -31,11 +31,9 @@ def run(directory):
             if not state["setup"]:
                 for widget in app.topLevelWidgets():
                     if isinstance(widget, Sihirbaz) and widget.isVisible():
-                        widget.s1.setText("sentetik-startup-123456")
-                        widget.s2.setText(widget.s1.text())
                         widget._ekle_yol(str(source))
                         widget.tema.setCurrentIndex(2)
-                        for _ in range(4):
+                        for _ in range(3):
                             widget.next()
                         state["setup"] = True
                         widget.button(QWizard.FinishButton).click()

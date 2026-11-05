@@ -143,32 +143,57 @@ def test_drive_root_removal_empties_index(tmp_path):
     con.close()
 
 
-def test_old_backup_restores_with_current_password(tmp_path):
+def test_old_backup_restores_with_backup_password(tmp_path):
+    """Eski sifreli yedek backup_password ile geri yuklenir (sessizce olum yok)."""
+    import sqlcipher3
+    from deepfind import vault_convert as _vc
     con, db = make_vault(tmp_path)
-    dest = str(tmp_path / "backups")
-    old = backup.create_backup(con, db, PW, dest, manual=True)
+    con.execute("INSERT INTO files(path,name,ext,source_status,index_status) VALUES (?,?,?, 'ok','indexed')",
+                ("eski/belge.pdf", "belge.pdf", ".pdf"))
+    con.commit()
     con.close()
-    new = "yeni-denetim-sifresi-1234"
-    backup.change_password(db, PW, new, dest)
-    backup.restore_replace(db, new, old, str(tmp_path / "staging"), backup_password=PW)
-    con = vault.open_vault(db, new)
+    # Eski bicimi taklit et: duz kasayi sifrele.
+    eski = str(tmp_path / "eski-sifreli.db")
+    ham = sqlcipher3.connect(db)
+    try:
+        ham.execute("ATTACH DATABASE '" + eski.replace("'", "''") + "' AS enc KEY 'eski-yedek-1234'")
+        ham.execute("SELECT sqlcipher_export('enc')")
+        ham.execute("DETACH DATABASE enc")
+    finally:
+        ham.close()
+    assert backup.verify_backup(eski)["ok"] is False
+    assert _vc.verify_encrypted(eski, "eski-yedek-1234")["ok"] is True
+    con = vault.open_vault(db)
+    con.execute("DELETE FROM files")
+    con.commit()
     con.close()
-    with pytest.raises(Exception):
-        vault.open_vault(db, PW)
+    rap = backup.restore_replace(db, None, eski, str(tmp_path / "staging"),
+                                 backup_password="eski-yedek-1234")
+    assert rap["kasa_counts"]["files"] == 1, rap
+    con = vault.open_vault(db)
+    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == 1
+    con.close()
 
 
-def test_failed_password_verification_keeps_original(tmp_path, monkeypatch):
+def test_failed_staging_verification_keeps_original(tmp_path, monkeypatch):
     con, db = make_vault(tmp_path)
+    con.execute("INSERT INTO files(path,name,ext) VALUES ('a.pdf','a.pdf','.pdf')")
+    con.commit()
     con.close()
+    yb = str(tmp_path / "backups")
+    os.makedirs(yb, exist_ok=True)
+    y = backup.create_backup(vault.open_vault(db), db, None, yb, manual=True)
+    vault.open_vault(db).close()
     original = backup.verify_backup
-    def fail_staging(path, password):
-        if ".rekey-" in path:
+    def fail_staging(path, password=None):
+        if ".restore-" in path:
             return {"ok": False}
         return original(path, password)
     monkeypatch.setattr(backup, "verify_backup", fail_staging)
     with pytest.raises(RuntimeError):
-        backup.change_password(db, PW, "yeni-denetim-12345", str(tmp_path / "backups"))
-    con = vault.open_vault(db, PW)
+        backup.restore_replace(db, None, y, str(tmp_path / "staging"))
+    con = vault.open_vault(db)
+    assert con.execute("SELECT count(*) FROM files").fetchone()[0] == 1
     con.close()
 
 
@@ -198,32 +223,11 @@ def test_utf8_budget_removes_excess_segments_and_future_schema_stops(tmp_path, m
     con.close()
 
 
-def test_password_confirmation_and_wrong_login_stay_open():
-    global APP
-    from PySide6.QtWidgets import QApplication, QDialog
-    from deepfind.auth import ParolaDialog
-    app = QApplication.instance() or QApplication([])
-    APP = app
-    d = ParolaDialog(change=True)
-    d.old.setText(PW)
-    d.new.setText("yeni-denetim-12345")
-    d.confirm.setText("farkli-denetim-1234")
-    d._submit()
-    assert "eşleşmiyor" in d.error.text()
-    assert d.result() != QDialog.Accepted
-    d.confirm.setText(d.new.text())
-    d._submit()
-    assert d.result() == QDialog.Accepted
-    def wrong(_):
-        raise ValueError()
-    login = ParolaDialog(verify=wrong)
-    login.old.setText("yanlis")
-    login._submit()
-    assert login.result() != QDialog.Accepted
-    assert login.error.text()
-    login.close()
-    d.close()
-    login.deleteLater()
-    d.deleteLater()
-    from PySide6.QtCore import QCoreApplication, QEvent
-    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+def test_password_dialog_removed_passwordless_open():
+    """Parola diyaloğu kaldırıldı: kasa şifresiz açılır, parola istenmez."""
+    import pytest
+    with pytest.raises(ImportError):
+        from deepfind import auth  # noqa: F401
+        raise ImportError("auth modülü kaldırıldı")
+    from deepfind import vault
+    assert not hasattr(vault, "open_vault_encrypted")

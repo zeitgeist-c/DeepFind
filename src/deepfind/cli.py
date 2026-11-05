@@ -22,17 +22,15 @@ def _load():
 
 
 def _open_db(args):
-    """Kasa ac + sema zincirini uygula (v3 -> v7, idempotent)."""
+    """Kasa ac + sema zincirini uygula (idempotent). Sifresiz SQLite."""
     vault, schema, _s, _e, _i, _se, _r, _h, _v, _c, _x, _m = _load()
     from deepfind.migrate import ensure_current
-    pw = args.sifre
-    if not pw:
-        # Sifresiz kasa: ic anahtar acar, sormadan devam edilir.
-        if os.path.exists(args.kasa) and vault.sifresiz_mi(args.kasa):
-            pw = vault.SIFRESIZ_ANAHTAR
-        else:
-            pw = getpass.getpass("Kasa sifresi: ")
-    con = vault.open_vault(args.kasa, pw)
+    try:
+        con = vault.open_vault(args.kasa)
+    except vault.EncryptedVaultError:
+        print("HATA: kasa eski sifreli bicimde; once 'kasa-donustur' ile donusturun.",
+              flush=True)
+        raise SystemExit(3)
     ensure_current(con)
     return con
 
@@ -80,15 +78,30 @@ def cmd_tani(args) -> int:
 
 def cmd_init(args) -> int:
     vault, schema, *_ = _load()
-    pw = args.sifre or getpass.getpass("Kasa sifresi (en az 12 karakter): ")
-    if len(pw) < 12:
-        print("HATA: sifre en az 12 karakter olmali.", flush=True)
-        return 2
     os.makedirs(os.path.dirname(args.kasa), exist_ok=True)
-    args.sifre = pw
     con = _open_db(args)
     con.close()
     print(f"Kasa hazir: {args.kasa}", flush=True)
+    return 0
+
+
+def cmd_donustur(args) -> int:
+    """Eski sifreli kasayi sifresiz bicime donustur (sentetik kopyada denendi)."""
+    from deepfind import vault as _v, vault_convert as _vc
+    if not os.path.isfile(args.kasa):
+        print(f"HATA: kasa bulunamadi: {args.kasa}", flush=True)
+        return 2
+    if not _v.is_encrypted(args.kasa):
+        print("Kasa zaten sifresiz bicimde; islem gerekmedi.", flush=True)
+        return 0
+    pw = getpass.getpass("Mevcut kasa parolasi (yalniz donusum icin istenir): ")
+    try:
+        rapor = _vc.convert(args.kasa, pw)
+    except ValueError as e:
+        print(f"HATA: {e}", flush=True)
+        return 3
+    print(f"Donustu: {rapor['kasa']} (eski sifreli yedek: {rapor['rollback']})",
+          flush=True)
     return 0
 
 
@@ -97,7 +110,7 @@ def cmd_tara(args) -> int:
     try:
         con = _open_db(args)
     except Exception:
-        print("HATA: kasa acilmadi (sifre/surum).", flush=True)
+        print("HATA: kasa acilmadi (surum/butunluk).", flush=True)
         return 3
     try:
         stats = coordinator.run_scan(con, args.kasa, args.kok, limit=getattr(args, "limit", None))
@@ -160,7 +173,7 @@ def cmd_yedek(args) -> int:
     from deepfind import backup as _yb
     con = _open_db(args)
     try:
-        y = _yb.create_backup(con, args.kasa, args.sifre or "", args.hedef,
+        y = _yb.create_backup(con, args.kasa, None, args.hedef,
                               manual=args.manuel, forbid_under=[args.kok] if args.kok else None)
     except ValueError as e:
         print(f"HATA: {e}", flush=True)
@@ -183,9 +196,9 @@ def cmd_yedek_liste(args) -> int:
 def cmd_geri_yukle(args) -> int:
     _vault, _schema, *_rest, _m4 = _load()
     from deepfind import backup as _yb
-    con = _open_db(args)  # mevcut sifre dogrulamasi
+    con = _open_db(args)
     con.close()
-    rap = _yb.restore_replace(args.kasa, args.sifre or "", args.yedek, args.staging,
+    rap = _yb.restore_replace(args.kasa, None, args.yedek, args.staging,
                               backup_password=args.yedek_sifre)
     print(f"Geri yuklendi: {rap['kasa_counts']} (korunan kural: "
           f"{len(rap.get('korunan_kurallar', []))})", flush=True)
@@ -193,15 +206,8 @@ def cmd_geri_yukle(args) -> int:
 
 
 def cmd_parola(args) -> int:
-    _vault, _schema, *_rest, _m4 = _load()
-    from deepfind import backup as _yb
-    try:
-        rap = _yb.change_password(args.kasa, args.sifre or "", args.yeni, args.hedef)
-    except ValueError as e:
-        print(f"HATA: {e}", flush=True)
-        return 2
-    print(f"Parola degisti. Yedek: {rap['yedek']}", flush=True)
-    return 0
+    print("HATA: parola ozelligi kaldirildi; kasa sifresiz kullanilir.", flush=True)
+    return 2
 
 
 def cmd_sikistir(args) -> int:
@@ -227,9 +233,9 @@ on a large vault it takes minutes and needs temp disk equal to the vault size.""
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="deepfind")
     ap.add_argument("--kasa", default=DEFAULT_VAULT)
-    ap.add_argument("--sifre")
+    ap.add_argument("--sifre", help="(yok sayilir) eski cagrilarla uyumluluk")
     sub = ap.add_subparsers(dest="komut", required=True)
-    sub.add_parser("init", help="Yeni sifreli kasa kur")
+    sub.add_parser("init", help="Yeni sifresiz kasa kur")
     p_t = sub.add_parser("tara", help="Kok dizini tara ve indeksle")
     p_t.add_argument("kok")
     p_t.add_argument("--limit", type=int, default=None,
@@ -251,7 +257,8 @@ def main(argv=None) -> int:
     p_g.add_argument("yedek")
     p_g.add_argument("--staging", required=True)
     p_g.add_argument("--yedek-sifre", default=None)
-    p_p = sub.add_parser("parola-degistir", help="Kasa parolasini degistir (once yedek)")
+    sub.add_parser("kasa-donustur", help="Eski sifreli kasayi sifresiz bicime donustur")
+    p_p = sub.add_parser("parola-degistir", help="(kaldirildi) Kasa parolasini degistir (once yedek)")
     p_p.add_argument("yeni")
     p_p.add_argument("--hedef", required=True)
     sub.add_parser("tani", help="Tani ciktisi: surumler, sayilar, OCR durumu")
@@ -272,6 +279,8 @@ def main(argv=None) -> int:
         return cmd_geri_yukle(args)
     if args.komut == "parola-degistir":
         return cmd_parola(args)
+    if args.komut == "kasa-donustur":
+        return cmd_donustur(args)
     if args.komut == "tani":
         return cmd_tani(args)
     if args.komut == "sikistir":

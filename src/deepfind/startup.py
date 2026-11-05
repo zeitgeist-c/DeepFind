@@ -10,9 +10,9 @@ from . import backup, diagnostics, migrate, vault
 from .theme import t
 
 
-def prepare_connection(path, password, backup_dir, progress=None):
+def prepare_connection(path, backup_dir, progress=None, password=None):
     diagnostics.record('vault_open_begin')
-    con = vault.open_vault(path, password)
+    con = vault.open_vault(path)
     diagnostics.record('vault_open_ready')
     snapshot = None
     try:
@@ -21,7 +21,7 @@ def prepare_connection(path, password, backup_dir, progress=None):
         if fts:
             diagnostics.record('migration_backup_begin')
             try:
-                snapshot = backup.create_backup(con, path, password, backup_dir,
+                snapshot = backup.create_backup(con, path, None, backup_dir,
                                                 manual=True, progress=progress)
             except Exception as error:
                 raise RuntimeError('Geçiş öncesi indeks yedeği tamamlanamadı; mevcut kasa korunuyor.') from error
@@ -37,7 +37,7 @@ def prepare_connection(path, password, backup_dir, progress=None):
             if snapshot:
                 if progress:
                     progress('restore', 0, 0)
-                backup.restore_replace(path, password, snapshot, os.path.join(os.path.dirname(path), 'staging'))
+                backup.restore_replace(path, None, snapshot, os.path.join(os.path.dirname(path), 'staging'))
             raise
         diagnostics.record('schema_ready')
         migrate.recover_scan_runs(con)
@@ -52,9 +52,9 @@ def prepare_connection(path, password, backup_dir, progress=None):
 class PreparationWorker(QThread):
     progress = Signal(str, int, int)
 
-    def __init__(self, path, password, backup_dir, parent=None):
+    def __init__(self, path, backup_dir, parent=None, password=None):
         super().__init__(parent)
-        self.path, self.password, self.backup_dir = path, password, backup_dir
+        self.path, self.backup_dir = path, backup_dir
         self.stop = threading.Event()
         self.error = None
         self._last = 0
@@ -70,23 +70,23 @@ class PreparationWorker(QThread):
 
     def run(self):
         try:
-            con = prepare_connection(self.path, self.password, self.backup_dir, self.report)
+            con = prepare_connection(self.path, self.backup_dir, self.report)
             con.close()
         except Exception as error:
             self.error = error
             diagnostics.record('vault_preparation_failed', type(error).__name__)
         finally:
-            self.password = ''
+            pass  # parola kaldirildi
 
 
 class OpeningDialog(QDialog):
-    def __init__(self, path, password, backup_dir, parent=None):
+    def __init__(self, path, backup_dir=None, parent=None, password=None):
         super().__init__(parent)
         self.setWindowTitle(t('DeepFind • Açılıyor'))
         self.setMinimumWidth(480)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         layout = QVBoxLayout(self)
-        self.status = QLabel(t('Şifreli kasa açılıyor…'))
+        self.status = QLabel(t('Kasa açılıyor…'))
         self.status.setWordWrap(True)
         self.detail = QLabel(t('Büyük arşiv hazırlanırken lütfen bekleyin.'))
         self.detail.setWordWrap(True)
@@ -104,7 +104,7 @@ class OpeningDialog(QDialog):
         self._saat = QTimer(self)
         self._saat.setInterval(500)
         self._saat.timeout.connect(self._suren_guncelle)
-        self.worker = PreparationWorker(path, password, backup_dir, self)
+        self.worker = PreparationWorker(path, backup_dir, self)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.complete)
 
@@ -119,7 +119,7 @@ class OpeningDialog(QDialog):
                  'commit': 'İndeks değişiklikleri diske kaydediliyor…',
                  'ready': 'Kasa hazır.',
                  'restore': 'Önceki kasa geri yükleniyor…'}
-        self.status.setText(texts.get(stage, 'Şifreli kasa açılıyor…'))
+        self.status.setText(texts.get(stage, 'Kasa açılıyor…'))
         if total:
             self.bar.setRange(0, 100)
             oran = max(0, min(100, int(done * 100 / total)))

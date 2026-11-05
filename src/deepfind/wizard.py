@@ -83,7 +83,7 @@ class Sihirbaz(QWizard):
         rail_layout.addWidget(label(t("İlk kurulum"), "eyebrow"))
         rail_layout.addSpacing(6)
         self.steps = []
-        for i, title in enumerate((t("Hoş geldiniz"), t("Kasa şifresi"), t("Klasörler"),
+        for i, title in enumerate((t("Hoş geldiniz"), t("Klasörler"),
                                    t("Çalışma motoru"), t("Son kontrol"))):
             step = label(f"{i + 1:02d}   {title}")
             step.setObjectName("step")
@@ -92,7 +92,7 @@ class Sihirbaz(QWizard):
         rail_layout.addStretch()
         rail_layout.addWidget(bolme())
         rail_layout.addSpacing(14)
-        rail_layout.addWidget(label(t("Kaynak belgeleriniz korunur.\nArama bilgileri şifreli saklanır."), "ikincil"))
+        rail_layout.addWidget(label(t("Kaynak belgeleriniz korunur.\nArama bilgileri bu bilgisayarda saklanır."), "ikincil"))
         self._rail = rail
         self.setSideWidget(rail)
 
@@ -120,49 +120,13 @@ class Sihirbaz(QWizard):
         for title, text in [
             (t("Adıyla ya da içeriğiyle bulun"), t("Bir dosya adı, birkaç kelime veya bir yıl yazmanız yeterli.")),
             (t("Klasörler sizden, düzen DeepFind’dan"), t("Bilgisayarınızdaki ve ağdaki belge klasörlerini seçin.")),
-            (t("Size özel bir çalışma alanı"), t("İsterseniz şifre belirleyin; arama bilgileriniz bu bilgisayarda korunur."))]:
+            (t("Size özel bir çalışma alanı"), t("Arama bilgileriniz bu bilgisayarda saklanır; giriş şifresi yoktur."))]:
             panel, content = card()
             content.addWidget(label(title, "subheading"))
             content.addWidget(label(text, "ikincil"))
             g.kutu.addWidget(panel)
         g.kutu.addStretch()
         self.addPage(g)
-
-        s = _Sayfa(t("Şifrenizi belirleyin"), t("Şifre isteğe bağlıdır. Belirlerseniz en az 12 karakter olmalı ve iki kez girilmeli."))
-        password_panel, f = card()
-        self.s1 = QLineEdit()
-        self.s1.setEchoMode(QLineEdit.Password)
-        self.s2 = QLineEdit()
-        self.s2.setEchoMode(QLineEdit.Password)
-        self.s1.setPlaceholderText(t("En az 12 karakter"))
-        self.s2.setPlaceholderText(t("Şifrenizi tekrar girin"))
-        self.s1.setAccessibleName(t("Yeni şifre"))
-        self.s2.setAccessibleName(t("Şifre tekrarı"))
-        self.sifre_hata = QLabel("")
-        self.sifre_hata.setProperty("hata", True)
-        f.addWidget(label(t("Kasa şifresi"), "subheading"))
-        f.addWidget(self.s1)
-        f.addWidget(label(t("Şifreyi tekrar girin"), "ikincil"))
-        f.addWidget(self.s2)
-        s.kutu.addWidget(password_panel)
-        s.kutu.addWidget(self.sifre_hata)
-        self.sifresiz_kutu = QCheckBox(t("Şifre kullanmayacağım — uygulama açılışta şifre sormaz"))
-        self.sifresiz_kutu.toggled.connect(self._sifresiz_degistir)
-        s.kutu.addWidget(self.sifresiz_kutu)
-        show = QCheckBox(t("Şifreyi göster"))
-        show.toggled.connect(lambda on: [field.setEchoMode(QLineEdit.Normal if on else QLineEdit.Password)
-                                         for field in (self.s1, self.s2)])
-        s.kutu.addWidget(show)
-        note = QLabel(t("Bu şifreyi uygulamayı açarken kullanacaksınız; sonradan Ayarlar bölümünden ") +
-                      t("ekleyebilir veya değiştirebilirsiniz. Şifre belirlemezseniz uygulama her ") +
-                      t("açılışta şifre sormaz; koruma Windows hesabınıza bağlı kalır. Şifrenizi ") +
-                      t("unutursanız kurtarma anahtarıyla kasayı açabilirsiniz; asıl belgeleriniz ") +
-                      "her durumda korunur.")
-        note.setWordWrap(True)
-        note.setProperty("ikincil", True)
-        s.kutu.addWidget(note)
-        s.kutu.addStretch()
-        self.addPage(s)
 
         k = _Sayfa(t("Aranacak klasörleri seçin"), t("Aşağıdan bir klasör seçip Ekle’ye basın veya klasör yolunu yazın."))
         ust = QHBoxLayout()
@@ -364,15 +328,6 @@ class Sihirbaz(QWizard):
         self._tazele()
         self._mesaj(t("Arama listesi temizlendi. Asıl klasörler korunuyor."))
 
-    def _sifresiz_degistir(self, on):
-        """When 'I will not use a password' is ticked, fields close and clear."""
-        for field in (self.s1, self.s2):
-            field.setEnabled(not on)
-            if on:
-                field.clear()
-        if on:
-            self.sifre_hata.setText("")
-
     def _kaldir(self):
         rows = sorted({i.row() for i in self.kok_liste.selectionModel().selectedRows()}, reverse=True)
         for row in rows:
@@ -412,19 +367,14 @@ class Sihirbaz(QWizard):
             self.kok_model.appendRow(item)
         self.kok_baslik.setText(t("Eklenen klasörler • {count}", count=len(self.secim["kokler"])))
         if self.secim["kokler"]:
-            if self.sifresiz_kutu.isChecked() or not (self.s1.text() or self.s2.text()):
-                sifre_satiri = (t("Şifre: Yok (açılışta sorulmaz)\n")
-                                + t("Arama bilgileriniz bu bilgisayarda korunur."))
-            else:
-                sifre_satiri = (t("Şifre: Belirlendi\n") +
-                                t("Arama bilgileriniz şifreli saklanır."))
             motor_ad = (self.motor_dugme[self.secim['embedding_backend']].text()
                         if self.secim['embedding_backend'] in self.motor_dugme
                         else t("Otomatik"))
             self.ozet.setText(t("Kök: {count} adet\n", count=len(self.secim['kokler']))
                               + t("Tema") + f": {self.tema.currentText()}\n"
                               + t("Motor") + f": {motor_ad}\n"
-                              + sifre_satiri)
+                              + t("Kasa: şifresiz\n")
+                              + t("Arama bilgileriniz bu bilgisayarda saklanır."))
 
     def _sayfa(self, _i):
         self._tazele()
@@ -435,23 +385,9 @@ class Sihirbaz(QWizard):
             step.style().polish(step)
 
     def validateCurrentPage(self):
-        if self.currentPage() is self.page(1):
-            a, b = self.s1.text(), self.s2.text()
-            if self.sifresiz_kutu.isChecked() or not (a or b):
-                # Password optional: blank means the vault is created passwordless.
-                self.sifre_hata.setText("")
-                self.secim["sifre"] = ""
-                return super().validateCurrentPage()
-            if len(a) < 12:
-                self.sifre_hata.setText(t("Şifre en az 12 karakter olmalı. Şifre kullanmayacaksanız ") +
-                                        t("“Şifre kullanmayacağım” seçeneğini işaretleyin."))
-                return False
-            if a != b:
-                self.sifre_hata.setText(t("Şifreler eşleşmiyor."))
-                return False
-            self.sifre_hata.setText("")
-            self.secim["sifre"] = a
-        if self.currentPage() is self.page(2) and not self.secim["kokler"]:
+        # Sifre kaldirildi: kasa her zaman sifresiz kurulur.
+        self.secim["sifre"] = ""
+        if self.currentPage() is self.page(1) and not self.secim["kokler"]:
             self._mesaj(t("Devam etmek için en az bir klasör ekleyin."))
             return False
         return super().validateCurrentPage()

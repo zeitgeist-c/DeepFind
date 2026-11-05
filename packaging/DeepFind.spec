@@ -12,7 +12,7 @@ stem = "DeepFind-" + version_values["__version__"]
 # RapidOCR motoru: ONNX DLL'leri + paket içi model/config verileri pakete girer.
 ocr_datas = [entry for entry in collect_data_files("rapidocr")
              if entry[0].endswith((".onnx", ".yaml"))]
-binaries = (collect_dynamic_libs("pypdfium2") + collect_dynamic_libs("sqlcipher3")
+binaries = (collect_dynamic_libs("pypdfium2")
             + collect_dynamic_libs("onnxruntime"))
 numbers = tuple(int(x) for x in version_values["__version__"].split(".")) + (0,)
 metadata = VSVersionInfo(ffi=FixedFileInfo(filevers=numbers, prodvers=numbers, mask=0x3f,

@@ -161,17 +161,6 @@ def main():
             app.processEvents()
             time.sleep(0.01)
         app.processEvents()
-        from deepfind.auth import ParolaDialog
-        login = ParolaDialog()
-        login.show()
-        app.processEvents()
-        login.grab().save(os.path.join(output, f"kilit-{mod}.png"))
-        login.close()
-        change = ParolaDialog(change=True)
-        change.show()
-        app.processEvents()
-        change.grab().save(os.path.join(output, f"sifre-degistir-{mod}.png"))
-        change.close()
         for index, name in enumerate(("ara", "kaynaklar", "tarama", "gecmis", "yedekler", "ayarlar")):
             pen.nav.setCurrentRow(index)
             app.processEvents()
