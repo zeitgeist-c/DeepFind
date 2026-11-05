@@ -192,7 +192,11 @@ def test_saf01_kaynaga_yazma_yok(tmp_path):
             if s.startswith("#") or s.startswith('"'):
                 continue
             if ("shutil.which(" in ln or "_rmtree_tmp" in ln
-                    or "self.path" in ln or "TemporaryDirectory" in ln):
+                    or "self.path" in ln or "TemporaryDirectory" in ln
+                    or "os.remove(bayrak_dosya)" in ln):
+                # bayrak_dosya: kurulum dizinindeki tek seferlik model bayragi
+                # ({app}/model-indir-iste.txt); kaynak arsive degil, kurulum
+                # dizinine dokunur ve ilk acilista bir kez silinir.
                 continue
             if ("open(" in ln and (", \"w" in ln or ", 'w" in ln or 'mode="w' in ln
                     or "mode='w" in ln or '"a"' in ln or "'a'" in ln)) \

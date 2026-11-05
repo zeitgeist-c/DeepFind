@@ -1024,8 +1024,8 @@ def test_015_time_source_and_layout(pencere, monkeypatch):
     pencere.show()
     _app().processEvents()
     buttons = [b for b, _ in pencere.rail_actions]
-    # New rail layout: actions stacked, under the collapse button.
-    assert buttons[1].y() > buttons[0].y()
+    # Kilit kaldirildi: rayda yalniz Cikis dugmesi, daralt dugmesinin altinda.
+    assert len(buttons) == 1
     assert pencere.rail_toggle.y() < buttons[0].y()
     assert all(b.width() >= b.fontMetrics().horizontalAdvance(b.text()) + 20 for b in buttons)
     pencere._nav_toggle()
@@ -1056,15 +1056,15 @@ def test_015_pause_ack_and_tray_reset(pencere):
     assert len({icon.cacheKey() for icon in theme.scan_icons()}) == 8
 
 def test_015_lock_clears_dialog(pencere, monkeypatch):
+    # Kilit ozelligi kaldirildi: kasa sifresiz acik kalir, kilitleme yoktur.
+    assert not hasattr(pencere, 'kilitle')
+    assert not hasattr(pencere, 'kilit_sure')
     pencere._scan_show()
     pencere.popup_scope.setText('sentetik yol')
     pencere.scan_current.setText('sentetik dosya')
     pencere._scan_metrics_update({'found':100})
-    pencere.kilitle()
-    assert not pencere.scan_dialog.isVisible()
-    assert not pencere.popup_scope.text()
-    assert all(not v.text() for v in pencere.scan_metrics.values())
-    assert not pencere.scan_log.toPlainText()
+    assert pencere.scan_dialog.isVisible()
+    assert pencere.popup_scope.text() == 'sentetik yol'
 
 
 def test_scan_has_known_total_two_percentages_and_phase_eta(pencere):

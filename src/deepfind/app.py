@@ -3412,8 +3412,8 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             return
         migrate.set_setting(self.con, "tuketim_klasoru", kaydir)
         migrate.set_setting(self.con, "tuketim_hedefi", hedef)
-        ks = self.kilit_sure.currentText()
-        migrate.set_setting(self.con, "kilit_suresi", "0" if ks == t("kapalı") else ks)
+        # Kilit ozelligi kaldirildi: eski "kilit_suresi" tercihi etkisiz "0" tutulur.
+        migrate.set_setting(self.con, "kilit_suresi", "0")
         try:
             if self.otostart.isChecked():
                 import sys
