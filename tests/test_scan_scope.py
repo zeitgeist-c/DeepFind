@@ -106,12 +106,62 @@ def test_saatli_tarama_yeni_profilde_kapali(tmp_path):
     con.close()
 
 
-def test_saatli_tarama_mevcut_kullanicida_korunur(tmp_path):
+def test_saatli_tarama_son_slot_tek_basina_etkinlestirmez(tmp_path):
+    # son_slot yalniz gecmiste islem yapildigini gosterir; onay degildir.
     con = _profil(tmp_path)
-    # Onceki surumde saatli tarama kullanilmis: son_slot kayitli.
     migrate.set_setting(con, "son_slot", "2026-09-26T12:30:00")
     con.execute("DELETE FROM settings WHERE k='planli_tarama'")
     con.commit()
-    assert migrate.ensure_schedule_optin(con) == "1"
+    assert migrate.ensure_schedule_optin(con) == "0"
+    assert migrate.get_setting(con, "planli_tarama", "0") == "0"
+    con.close()
+
+
+def test_saatli_tarama_acik_tercihi_korunur(tmp_path):
+    con = _profil(tmp_path)
+    migrate.set_setting(con, "planli_tarama", "1")
+    con.commit()
+    assert migrate.ensure_schedule_optin(con) is None
     assert migrate.get_setting(con, "planli_tarama", "0") == "1"
     con.close()
+
+
+
+def test_junction_secili_kok_disina_tasmaz(tmp_path):
+    """Kok icindeki junction taramada izlenmez; disaridaki belge islenmez."""
+    import subprocess
+    import time
+    from deepfind import coordinator, schema
+    a = tmp_path / "A"
+    b = tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    dis_belge = b / "gizli.txt"
+    dis_belge.write_text("gizli icerik Ankara", encoding="utf-8")
+    ic_belge = a / "acik.txt"
+    ic_belge.write_text("acik icerik Ankara", encoding="utf-8")
+    bag = a / "baglanti"
+    r = subprocess.run(["cmd", "/c", "mklink", "/J", str(bag), str(b)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        import pytest
+        pytest.skip("junction kurulamadi: " + (r.stderr or "")[:120])
+    eski = time.time() - 30
+    os.utime(dis_belge, (eski, eski))
+    os.utime(ic_belge, (eski, eski))
+    con = vault.open_vault(str(tmp_path / "kasa.db"))
+    schema.ensure_schema(con)
+    migrate.ensure_current(con)
+    try:
+        con.execute("INSERT INTO roots(display_path, canonical_path) VALUES (?,?)",
+                    (str(a), os.path.normpath(str(a)).lower()))
+        con.commit()
+        stats = coordinator.run_scan(con, str(tmp_path / "kasa.db"), str(a),
+                                     require_vectors=False)
+        assert stats["result"] in ("complete", "partial"), stats
+        yollar = {r[0] for r in con.execute("SELECT path FROM files").fetchall()}
+        assert str(ic_belge) in yollar
+        assert str(dis_belge) not in yollar
+        assert not any(str(baglanti) in (y or "") for y in yollar for baglanti in [str(bag)])
+    finally:
+        con.close()

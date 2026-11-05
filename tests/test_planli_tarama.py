@@ -24,12 +24,25 @@ class _Durum:
         self.mesajlar.append(metin)
 
 
+class _Gunluk:
+    def __init__(self, liste):
+        self._liste = liste
+
+    def appendPlainText(self, metin):
+        self._liste.append(metin)
+
+
 class _Pencere:
-    """_zamanlayici_kontrol icin gereken en kucuk pencere yuzeyi."""
+    """_zamanlayici_kontrol/_izleme_bosalt icin en kucuk pencere yuzeyi."""
 
     _zamanlayici_kontrol = None  # testte AnaPencere'den baglanir
+    _izleme_bosalt = None
+    _tuketim_tara = None
+    _otomatik_kapsam = None
+    _kayitli_kapsam = None
 
     def __init__(self, con, kok, gorunur=True, acilis=None):
+        import threading
         self.con = con
         # Uygulama slot anindan once acilmis sayilir (acilis tarama tetiklemez).
         self._acilis = acilis or (dt.datetime.now() - dt.timedelta(hours=1))
@@ -41,6 +54,13 @@ class _Pencere:
         self._haric_thread = None
         self.durum = _Durum()
         self.baslatilan = []
+        self.kayitlar = []
+        self.scan_log = _Gunluk(self.kayitlar)
+        self._izleme_kilit = threading.Lock()
+        self._izleme_bekleyen = set()
+
+    def _gunluk(self, metin):
+        self.kayitlar.append(metin)
 
     def isVisible(self):
         return self._gorunur
@@ -70,6 +90,11 @@ def _hazirla(tmp_path, planli="1", saat_ver=None):
     if _Pencere._zamanlayici_kontrol is None:
         from deepfind.app import AnaPencere
         _Pencere._zamanlayici_kontrol = AnaPencere._zamanlayici_kontrol
+        _Pencere._izleme_bosalt = AnaPencere._izleme_bosalt
+        _Pencere._tuketim_tara = AnaPencere._tuketim_tara
+        _Pencere._otomatik_kapsam = AnaPencere._otomatik_kapsam
+        _Pencere._kayitli_kapsam = AnaPencere._kayitli_kapsam
+        _Pencere._under = staticmethod(AnaPencere._under)
     return con, str(kok)
 
 
@@ -126,4 +151,37 @@ def test_yalniz_tray_arka_plan_saatli_tarama_sayilmaz(tmp_path):
     p = _Pencere(con, kok, gorunur=False)
     p._zamanlayici_kontrol()
     assert p.baslatilan == []
+    con.close()
+
+
+def _izleyici_hazirla(p, kok):
+    import os
+    alt = os.path.join(kok, "alt")
+    os.makedirs(alt, exist_ok=True)
+    with p._izleme_kilit:
+        p._izleme_bekleyen.add(alt)
+    return alt
+
+
+def test_izleyici_bagimsiz_tarama_baslatmaz(tmp_path):
+    con, kok = _hazirla(tmp_path, planli="1")
+    p = _Pencere(con, kok)
+    alt = _izleyici_hazirla(p, kok)
+    p._izleme_bosalt()
+    assert p.baslatilan == [], "izleyici kendiliginden tarama baslatmamali"
+    assert any("Şimdi tara" in m for m in p.kayitlar + p.durum.mesajlar), (p.kayitlar, p.durum.mesajlar)
+    assert os.path.isdir(alt)
+    con.close()
+
+
+def test_izleyici_kapsam_disini_yoksayar(tmp_path):
+    con, kok = _hazirla(tmp_path, planli="1")
+    p = _Pencere(con, kok)
+    dis = tmp_path / "dis"
+    dis.mkdir()
+    with p._izleme_kilit:
+        p._izleme_bekleyen.add(str(dis))
+    p._izleme_bosalt()
+    assert p.baslatilan == []
+    assert p.kayitlar == [] and p.durum.mesajlar == []
     con.close()

@@ -172,18 +172,16 @@ def ensure_current(con, progress=None) -> None:
 
 
 def ensure_schedule_optin(con):
-    """Scheduled scans are opt-in; keep an existing user's active choice.
+    """Scheduled scans are opt-in; a missing choice always starts OFF.
 
-    A vault that already recorded a scheduled slot was using the feature, so it
-    stays enabled. A brand-new profile starts with scheduled scans off.
+    `son_slot` only records that a scan once ran; it is not user consent and
+    never enables the feature. An explicitly saved choice is preserved.
     """
     row = con.execute("SELECT 1 FROM settings WHERE k='planli_tarama'").fetchone()
     if row:
         return None
-    used = con.execute("SELECT v FROM settings WHERE k='son_slot'").fetchone()
-    deger = "1" if used and (used[0] or "").strip() else "0"
-    con.execute("INSERT OR REPLACE INTO settings(k,v) VALUES('planli_tarama',?)", (deger,))
-    return deger
+    con.execute("INSERT OR REPLACE INTO settings(k,v) VALUES('planli_tarama','0')")
+    return "0"
 
 
 def ensure_archive(con):

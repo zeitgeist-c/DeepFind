@@ -19,8 +19,21 @@ class Entry:
     mtime_ns: int | None
 
 
+def _tasma_mi(e) -> bool:
+    """Junction/symlink gibi secili kok disina tasiyabilecek baglar."""
+    try:
+        if e.is_symlink():
+            return True
+    except OSError:
+        return True
+    try:
+        return bool(e.stat(follow_symlinks=False).st_file_attributes & 0x400)
+    except (OSError, AttributeError):
+        return False
+
+
 def walk_ro(root: str):
-    """Lazy dizin gezme; symlink izlenmez, klasor disi cikilmaz."""
+    """Lazy dizin gezme; symlink/junction izlenmez, klasor disi cikilmaz."""
     root = os.path.abspath(root)
     stack = [root]
     while stack:
@@ -29,6 +42,8 @@ def walk_ro(root: str):
             with os.scandir(cur) as it:
                 for e in it:
                     try:
+                        if _tasma_mi(e):
+                            continue  # Secili kok disina sessizce tasma.
                         if e.is_dir(follow_symlinks=False):
                             if e.name in SKIP_DIRS or e.name.startswith("~$"):
                                 continue

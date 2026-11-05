@@ -44,15 +44,27 @@ def _sentetik(kok: str) -> None:
         f.write(b"\x00\x01sahte-doc")
 
 
-def test_kasa_yanlis_sifre_acmaz(tmp_path):
+def test_kasa_eski_sifreli_donusumsuz_acilmaz(tmp_path):
+    import sqlcipher3
     db = str(tmp_path / "k.db")
-    con = vault.open_vault(db, PW)
+    con = vault.open_vault(db)
     schema.ensure_schema(con)
     ensure_v5(con)
     ensure_v6(con)
+    con.execute("INSERT INTO files(path,name,ext) VALUES ('a.pdf','a.pdf','.pdf')")
+    con.commit()
     con.close()
-    with pytest.raises(Exception):
-        vault.open_vault(db, "yanlis-sifre-00000")
+    # Eski bicimi taklit et: duz kasayi sifrele.
+    sifreli = str(tmp_path / "eski.db")
+    ham = sqlcipher3.connect(db)
+    try:
+        ham.execute("ATTACH DATABASE '" + sifreli.replace("'", "''") + "' AS enc KEY 'dogru-parola-1234'")
+        ham.execute("SELECT sqlcipher_export('enc')")
+        ham.execute("DETACH DATABASE enc")
+    finally:
+        ham.close()
+    with pytest.raises(vault.EncryptedVaultError):
+        vault.open_vault(sifreli)
 
 
 def test_dikey_akis(tmp_path):

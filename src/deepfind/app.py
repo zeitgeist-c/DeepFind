@@ -2888,9 +2888,12 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             izinli = self._otomatik_kapsam()
             bekleyen = [d for d in bekleyen if any(self._under(d, k) for k in izinli)]
         if bekleyen:
+            # Izleyici bagimsiz otomatik tarama baslatmaz: kullaniciya haber verir,
+            # tarama yalniz elle veya saatli kuraliyla baslar.
             self.scan_log.appendPlainText(
-                f"İzleme: {len(bekleyen)} klasörde değişiklik → tarama başlıyor.")
-            self._tara_baslat(roots=bekleyen, automatic=True)
+                f"İzleme: {len(bekleyen)} klasörde değişiklik → güncelemek için “Şimdi tara”ya basın.")
+            self.durum.showMessage(t("İzlenen klasörlerde değişiklik var; taramak için “Şimdi tara”ya basın."))
+            diagnostics.record("watch_noticed_no_auto_scan")
 
     # -- history: list + selected search detail --
     def _ekran_gecmis(self):
@@ -3247,17 +3250,14 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             t("Saatli taramayı etkinleştir"),
             t("Yalnız uygulama bu saatte açıksa çalışır; kaçırılan taramalar sonradan başlatılmaz."),
             self.planli_tarama))
-        k.addWidget(ayar_satiri(t("Günlük tarama saati"), t("Saatli tarama etkinken geçerlidir."), self.scan_time_edit))
-        self.gecikme = QCheckBox()
-        self.gecikme.setChecked(migrate.get_setting(self.con, "gecikme", "0") == "1")
-        k.addWidget(ayar_satiri(t("Ağ yükünü azaltmak için taramayı geciktir"), t("Cihaz başına küçük rastgele gecikme ekler."), self.gecikme))
+        k.addWidget(ayar_satiri(t("Günlük tarama saati"), t("Saatli tarama etkinken geçerlidir; seçtiğiniz saatte çalışır."), self.scan_time_edit))
         self.otostart = QCheckBox()
         startup_command = sched.autostart_get(identity.APP_IDENTITY)
         self.otostart.setChecked(startup_command is not None)
         k.addWidget(ayar_satiri(t("Windows açılışında başlat"), t("Oturum açıldığında DeepFind kendiliğinden başlar."), self.otostart))
         self.canli_izleme = QCheckBox()
         self.canli_izleme.setChecked(migrate.get_setting(self.con, "canli_izleme", "1") == "1")
-        k.addWidget(ayar_satiri(t("Değişen klasörleri canlı izle"), t("Değişiklik olunca kendiliğinden tarar."), self.canli_izleme))
+        k.addWidget(ayar_satiri(t("Değişen klasörleri canlı izle"), t("Değişiklik olunca haber verir; kendiliğinden tarama başlatmaz."), self.canli_izleme))
         self.tepsiye = QCheckBox()
         self.tepsiye.setChecked(migrate.get_setting(self.con, "tepsiye", "1") == "1")
         k.addWidget(ayar_satiri(t("Kapatınca tepsiye küçült"), t("Program arka planda çalışmaya devam eder."), self.tepsiye))
@@ -3391,7 +3391,6 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         migrate.set_setting(self.con, "planli_tarama", "1" if self.planli_tarama.isChecked() else "0")
         migrate.set_setting(self.con, "dakika", str(self.scan_time_edit.time().minute()))
         self.tarama_time.setText(f"{self.scan_time_edit.time().hour():02d}:{self.scan_time_edit.time().minute():02d}")
-        migrate.set_setting(self.con, "gecikme", "1" if self.gecikme.isChecked() else "0")
         onceki_izleme = migrate.get_setting(self.con, "canli_izleme", "1")
         migrate.set_setting(self.con, "canli_izleme", "1" if self.canli_izleme.isChecked() else "0")
         if ("1" if self.canli_izleme.isChecked() else "0") != onceki_izleme:
@@ -3597,8 +3596,8 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
                 return
             saat = int(migrate.get_setting(self.con, "saat", "12"))
             dakika = int(migrate.get_setting(self.con, "dakika", "30"))
-            lag = sched.device_lag_min(os.environ.get("COMPUTERNAME", "pc")) \
-                if migrate.get_setting(self.con, "gecikme", "0") == "1" else 0
+            # Kullanicinin sectigi saat degistirilmez: gizli cihaz gecikmesi yok.
+            lag = 0
             son_txt = migrate.get_setting(self.con, "son_slot", "")
             son = dt.datetime.fromisoformat(son_txt) if son_txt else None
             kos, neden = sched.should_run(
