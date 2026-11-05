@@ -90,6 +90,25 @@ def _kapat(exe_adi):
                    capture_output=True, timeout=60)
 
 
+def _surecleri_temizle():
+    """Kurulu uygulamanin tum surecleri (arama motoru dahil) dursun.
+
+    Yalniz kabul ortami: kaldirma kilitli dosya birakmasin diye _kaldir'dan
+    once cagrilir. Gercek kullanimda Inno CloseApplications ile sorar.
+    """
+    for imaj in ("DeepFind-0.10.9.exe", "llama-server.exe"):
+        subprocess.run(["taskkill", "/F", "/IM", imaj],
+                       capture_output=True, timeout=60)
+    bitis = time.monotonic() + 60
+    while time.monotonic() < bitis:
+        r = subprocess.run(["tasklist"], capture_output=True, text=True, timeout=60)
+        kucuk = r.stdout.lower()
+        if "deepfind-0.10.9.exe" not in kucuk and "llama-server.exe" not in kucuk:
+            return True
+        time.sleep(2)
+    return False
+
+
 def main():
     sonuc = {}
     LOG.write_text("", encoding="utf-8")
@@ -140,6 +159,7 @@ def main():
                 _kayit("paketli acilis raporu: " + json.dumps(veri, ensure_ascii=False)[:400])
                 assert veri.get("ok") is True, veri
                 sonuc["paketli_acilis"] = veri
+            assert _surecleri_temizle(), "uygulama surecleri durmadi"
             k = _kaldir(hedef)
             _kayit(f"kaldirma({dil}) cikis={getattr(k, 'returncode', None)}")
             sonuc[f"kaldirma_{dil}"] = getattr(k, "returncode", None)
