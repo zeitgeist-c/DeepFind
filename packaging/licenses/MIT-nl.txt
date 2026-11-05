@@ -1,0 +1,26 @@
+Dit is een informatieve Nederlandse vertaling. Juridisch bindend is uitsluitend
+de oorspronkelijke Engelse tekst (bestand LICENSE, meegeleverd met de
+installatie). Bij tegenstrijdigheden geldt de Engelse tekst.
+
+MIT-licentie
+
+Copyright (c) 2026 zeitgeist-c
+
+Hierbij wordt, kosteloos, aan eenieder die een kopie van deze software en de
+bijbehorende documentatiebestanden (de „Software") verkrijgt, toestemming
+verleend om met de Software zonder beperking te werken, met inbegrip van en
+zonder beperking de rechten tot gebruik, kopiëren, wijzigen, samenvoegen,
+publiceren, distribueren, in sublicentie geven en/of verkopen van kopieën van
+de Software, en om personen aan wie de Software wordt verstrekt toe te staan
+hetzelfde te doen, onder de volgende voorwaarden:
+
+De bovenstaande copyrightvermelding en deze toestemmingsvermelding worden
+opgenomen in alle kopieën of wezenlijke delen van de Software.
+
+DE SOFTWARE WORDT GELEVERD „IN DE STAAT WAARIN DEZE ZICH BEVINDT", ZONDER ENIGE
+GARANTIE, EXPLICIET OF IMPLICIET, MET INBEGRIP VAN MAAR NIET BEPERKT TOT DE
+GARANTIES VAN VERKOOPBAARHEID, GESCHIKTHEID VOOR EEN BEPAALD DOEL EN
+NIET-INBREUK. DE AUTEURS OF RECHTHEBBENDEN ZIJN IN GEEN GEVAL AANSPRAKELIJK VOOR
+VORDERINGEN, SCHADE OF ANDERE VERPLICHTINGEN, HETZIJ UIT OVEREENKOMST, ONRECHTMATIGE
+DAAD OF ANDERSZINS, VOORTVLOEIEND UIT DE SOFTWARE OF HET GEBRUIK ERVAN OF ANDERE
+HANDELINGEN MET BETREKKING TOT DE SOFTWARE.

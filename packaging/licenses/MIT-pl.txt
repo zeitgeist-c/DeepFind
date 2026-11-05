@@ -1,0 +1,28 @@
+Niniejszy tekst jest polskim tłumaczeniem o charakterze informacyjnym. Jedynie
+oryginalny tekst w języku angielskim (plik LICENSE, dostarczany wraz
+z instalacją) jest prawnie wiążący. W razie rozbieżności obowiązuje tekst
+angielski.
+
+Licencja MIT
+
+Copyright (c) 2026 zeitgeist-c
+
+Niniejszym udziela się bezpłatnie każdej osobie, która uzyska kopię niniejszego
+oprogramowania wraz z powiązanymi plikami dokumentacji („Oprogramowanie"),
+zezwolenia na korzystanie z Oprogramowania bez ograniczeń, w tym bez
+ograniczeń praw do używania, kopiowania, modyfikowania, łączenia,
+publikowania, rozpowszechniania, udzielania sublicencji i/lub sprzedaży kopii
+Oprogramowania, oraz zezwalania osobom, którym Oprogramowanie jest dostarczane,
+na czynienie tego samego, z zastrzeżeniem następujących warunków:
+
+Powyższa informacja o prawach autorskich oraz niniejsza informacja o zezwoleniu
+muszą być zawarte we wszystkich kopiach lub istotnych częściach Oprogramowania.
+
+OPROGRAMOWANIE JEST DOSTARCZANE „W STANIE, W JAKIM JEST", BEZ JAKICHKOLWIEK
+GWARANCJI, WYRAŹNYCH ANI DOROZUMIANYCH, W TYM MIĘDZY INNYMI GWARANCJI
+PRZYDATNOŚCI HANDLOWEJ, PRZYDATNOŚCI DO OKREŚLONEGO CELU ORAZ NIENARUSZANIA PRAW.
+AUTORZY ANI POSIADACZE PRAW AUTORSKICH W ŻADNYM WYPADKU NIE PONOSZĄ
+ODPOWIEDZIALNOŚCI ZA JAKIEKOLWIEK ROSZCZENIA, SZKODY LUB INNE ZOBOWIĄZANIA,
+WYNIKAJĄCE Z UMOWY, CZYNU NIEDOZWOLONEGO LUB INACZEJ, W ZWIĄZKU
+Z OPROGRAMOWANIEM LUB JEGO UŻYTKOWANIEM BĄDŹ INNYMI CZYNNOŚCIAMI ZWIĄZANYMI
+Z OPROGRAMOWANIEM.

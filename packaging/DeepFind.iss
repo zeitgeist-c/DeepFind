@@ -60,17 +60,17 @@ LicenseFile=..\LICENSE
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"; LicenseFile: "licenses\MIT-tr.txt"
-Name: "german"; MessagesFile: "compiler:Languages\German.isl"
-Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
-Name: "french"; MessagesFile: "compiler:Languages\French.isl"
-Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
-Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
-Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
-Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
-Name: "dutch"; MessagesFile: "compiler:Languages\Dutch.isl"
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
-Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
-Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"; LicenseFile: "licenses\MIT-de.txt"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"; LicenseFile: "licenses\MIT-es.txt"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"; LicenseFile: "licenses\MIT-fr.txt"
+Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"; LicenseFile: "licenses\MIT-it.txt"
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"; LicenseFile: "licenses\MIT-pt.txt"
+Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"; LicenseFile: "licenses\MIT-ru.txt"
+Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"; LicenseFile: "licenses\MIT-pl.txt"
+Name: "dutch"; MessagesFile: "compiler:Languages\Dutch.isl"; LicenseFile: "licenses\MIT-nl.txt"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"; LicenseFile: "licenses\MIT-zh.txt"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; LicenseFile: "licenses\MIT-ja.txt"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"; LicenseFile: "licenses\MIT-ko.txt"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:DesktopIcon}"; Flags: unchecked

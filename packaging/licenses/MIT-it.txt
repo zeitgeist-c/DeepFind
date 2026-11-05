@@ -1,0 +1,25 @@
+Questa è una traduzione italiana fornita a scopo informativo. L'unico testo
+giuridicamente vincolante è il file originale in inglese (LICENSE), distribuito
+con l'installazione. In caso di difformità, prevale il testo inglese.
+
+Licenza MIT
+
+Copyright (c) 2026 zeitgeist-c
+
+Con la presente si concede, a titolo gratuito, a chiunque ottenga una copia di
+questo software e dei relativi file di documentazione (il «Software») il
+permesso di usare il Software senza restrizioni, inclusi, senza limitazione, i
+diritti di usare, copiare, modificare, unire, pubblicare, distribuire,
+concedere in sublicenza e/o vendere copie del Software, e di consentire alle
+persone alle quali il Software è fornito di fare altrettanto, alle seguenti
+condizioni:
+
+L'avviso di copyright sopra riportato e il presente avviso di autorizzazione
+devono essere inclusi in tutte le copie o parti sostanziali del Software.
+
+IL SOFTWARE È FORNITO «COSÌ COM'È», SENZA ALCUNA GARANZIA, ESPRESSA O IMPLICITA,
+INCLUSE, A TITOLO ESEMPLIFICATIVO, LE GARANZIE DI COMMERCIABILITÀ, IDONEITÀ PER
+UNO SCOPO PARTICOLARE E NON VIOLAZIONE. GLI AUTORI O I TITOLARI DEL COPYRIGHT
+NON SARANNO IN ALCUN CASO RESPONSABILI DI RECLAMI, DANNI O ALTRE OBBLIGAZIONI,
+DERIVANTI DA CONTRATTO, ATTO ILLECITO O ALTRO, IN RELAZIONE AL SOFTWARE O
+ALL'USO O AD ALTRE OPERAZIONI RELATIVE AL SOFTWARE.

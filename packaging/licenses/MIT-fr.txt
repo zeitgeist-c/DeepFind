@@ -1,0 +1,26 @@
+Ceci est une traduction française fournie à titre informatif. Seul le texte
+original en anglais (fichier LICENSE, distribué avec l'installation) fait foi
+juridiquement. En cas de divergence, le texte anglais prévaut.
+
+Licence MIT
+
+Copyright (c) 2026 zeitgeist-c
+
+Par la présente, l'autorisation est accordée, à titre gratuit, à toute personne
+obtenant une copie de ce logiciel et des fichiers de documentation associés (le
+« Logiciel ») d'utiliser le Logiciel sans restriction, y compris et sans
+limitation les droits d'utiliser, copier, modifier, fusionner, publier,
+distribuer, sous-licencier et/ou vendre des copies du Logiciel, et de permettre
+aux personnes auxquelles le Logiciel est fourni de faire de même, sous réserve
+des conditions suivantes :
+
+La notice de droit d'auteur ci-dessus et la présente notice d'autorisation
+doivent figurer dans toutes les copies ou parties substantielles du Logiciel.
+
+LE LOGICIEL EST FOURNI « EN L'ÉTAT », SANS GARANTIE D'AUCUNE SORTE, EXPRESSE OU
+IMPLICITE, Y COMPRIS, MAIS SANS S'Y LIMITER, LES GARANTIES DE QUALITÉ MARCHANDE,
+D'ADÉQUATION À UN USAGE PARTICULIER ET D'ABSENCE DE CONTREFAÇON. LES AUTEURS OU
+TITULAIRES DU DROIT D'AUTEUR NE POURRONT EN AUCUN CAS ÊTRE TENUS RESPONSABLES
+DE QUELQUE RÉCLAMATION, DOMMAGE OU AUTRE OBLIGATION QUE CE SOIT, DÉCOULANT D'UN
+CONTRAT, D'UN DÉLIT OU AUTREMENT, EN LIEN AVEC LE LOGICIEL OU SON UTILISATION
+OU D'AUTRES OPÉRATIONS PORTANT SUR LE LOGICIEL.
