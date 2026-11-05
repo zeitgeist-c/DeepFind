@@ -1,4 +1,4 @@
-"""Real isolated Inno upgrade, missing/corrupt model and cleanup acceptance.
+"""Real isolated Inno upgrade and no-bundled-model acceptance.
 
 Never runs against the user's installed AppId, vault or shortcuts. Test setup
 uses the exact production file lists/code with a separate AppId, local model
@@ -54,6 +54,8 @@ def main():
         with model.open('rb') as f: assert hashlib.file_digest(f,'sha256').hexdigest()==MODEL_SHA256
         before=model.stat().st_mtime_ns
         assert not legacy.exists()
+        for motor in ('cpu', 'vulkan', 'cuda'):
+            assert (target/'_internal/embedding'/motor/'llama-server.exe').is_file(), motor
         assert not (target/'DeepFind-0.10.4.exe').exists()
         assert not (target/'DeepFind-0.10.4.bat').exists()
         assert not (target/'_internal/rapidfuzz').exists()
@@ -63,26 +65,28 @@ def main():
         install(__version__)
         assert model.stat().st_mtime_ns==before
         result['incremental_keeps_model']=True
-        # A full installer repairs corruption and also cleans a 0.10.2 launcher.
+        # Model ayri: tam kurulum {app} icine model koymaz; 0.10.2 kalintilari temizlenir.
         shutil.copyfile(ROOT/'dist/DeepFind-0.10.2/DeepFind-0.10.2.exe',target/'DeepFind-0.10.2.exe')
         shutil.copyfile(ROOT/'dist/DeepFind-0.10.2/DeepFind-0.10.2.bat',target/'DeepFind-0.10.2.bat')
-        model.write_bytes(b'corrupt')
+        if model.is_file():
+            model.unlink()
         compile_setup()
         install(__version__)
-        with model.open('rb') as f: assert hashlib.file_digest(f,'sha256').hexdigest()==MODEL_SHA256
+        assert not (target/'_internal/embedding/embeddinggemma-2-Q8_0.gguf').exists()
+        for motor in ('cpu', 'vulkan', 'cuda'):
+            assert (target/'_internal/embedding'/motor/'llama-server.exe').is_file(), motor
         assert not (target/'DeepFind-0.10.2.exe').exists()
         assert not (target/'DeepFind-0.10.2.bat').exists()
-        result['full_setup_repairs_model_and_cleans_0_10_2']=True
+        result['full_setup_without_bundled_model_and_cleans_0_10_2']=True
         smoke=target/'acceptance-smoke.json'
-        subprocess.run([str(target/f'DeepFind-{__version__}.exe'),'--package-smoke',str(smoke)],check=True,timeout=300)
+        subprocess.run([str(target/f'DeepFind-{__version__}.exe'),'--package-smoke',str(smoke)],check=True,timeout=900)
         report=json.loads(smoke.read_text(encoding='utf-8'))
         assert report['ok'] and 'real-semantic-search' in report['checks']
         result['installed_runtime_smoke']=report
         subprocess.run([str(target/'unins000.exe'),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'],check=True,timeout=120)
         assert not (target/f'DeepFind-{__version__}.exe').exists()
-        assert not model.exists()
         assert sentinel.is_file() and unknown.is_file()
-        result['uninstall_removes_program_model_preserves_unknown_files']=True
+        result['uninstall_removes_program_preserves_unknown_files']=True
     (ROOT/f'build/installer-acceptance-{__version__}.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps({key:val for key,val in result.items() if key!='installed_runtime_smoke'}),flush=True)
 

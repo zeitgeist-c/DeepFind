@@ -36,13 +36,26 @@ def asset_root():
 
 
 def _varsayilan_model_yolu():
+    """Model arama sirasi: paket ici, kullanici alani, ortak alan."""
     bundled = asset_root() / MODEL_DOSYA
     if bundled.is_file(): return str(bundled)
-    return str(shared_model_path())
+    from . import model_indir as _mi
+    for aday in (user_model_path(), shared_model_path()):
+        try:
+            if aday.is_file() and _mi._sha256_yoksa(aday) == _mi.MODEL_SHA256:
+                return str(aday)
+        except OSError:
+            continue
+    # Indirme hedefi her zaman kullanici alanidir (yonetici yetkisi gerekmez).
+    return str(user_model_path())
 
 
 def shared_model_path():
     return Path(os.environ.get('PROGRAMDATA', 'C:/ProgramData')) / 'DeepFind' / 'models' / MODEL_DOSYA
+
+
+def user_model_path():
+    return Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData/Local'))) / 'DeepFind' / 'models' / MODEL_DOSYA
 
 
 def status():

@@ -71,6 +71,12 @@ def run(report_path):
             stat = source.stat()
             index_entry(con, Entry(str(source), source.name, ".xlsx", stat.st_size, stat.st_mtime_ns), result)
             from . import embed as model, gom as embedding_jobs
+            from . import model_indir as _mi
+            if _mi.gerekli_mi():
+                # Kurulu pakette model yoksa ilk acilis akisi: indir, dogrula.
+                checkpoint("model-download")
+                _mi.indir(_mi.MODEL_URL, _mi.MODEL_SHA256, None,
+                          ilerleme=lambda d, t: checkpoint(f"model-download {d}/{t}"))
             session=model.isit_oturumu()
             assert session is not None,model.status()
             fid=con.execute('SELECT file_id FROM files').fetchone()[0]

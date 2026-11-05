@@ -74,6 +74,7 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:DesktopIcon}"; Flags: unchecked
+Name: "fetchmodel"; Description: "{cm:FetchModel}"; Flags: checkedonce
 
 [CustomMessages]
 english.DesktopIcon=Create a desktop icon
@@ -102,12 +103,26 @@ dutch.LaunchProgram=%1 starten
 chinesesimplified.LaunchProgram=启动 %1
 japanese.LaunchProgram=%1 を起動
 korean.LaunchProgram=%1 시작
+english.FetchModel=Download the semantic search model on first launch (~296 MB, for offline search)
+turkish.FetchModel=İlk açılışta anlamsal arama modelini indir (~296 MB, çevrimdışı arama için)
+german.FetchModel=Semantisches Suchmodell beim ersten Start laden (~296 MB, für Offline-Suche)
+spanish.FetchModel=Descargar el modelo de búsqueda semántica en el primer inicio (~296 MB, para búsqueda sin conexión)
+french.FetchModel=Télécharger le modèle de recherche sémantique au premier lancement (~296 Mo, pour la recherche hors ligne)
+italian.FetchModel=Scarica il modello di ricerca semantica al primo avvio (~296 MB, per la ricerca offline)
+brazilianportuguese.FetchModel=Baixar o modelo de pesquisa semântica na primeira execução (~296 MB, para pesquisa offline)
+russian.FetchModel=Загрузить модель семантического поиска при первом запуске (~296 МБ, для офлайн-поиска)
+polish.FetchModel=Pobierz model wyszukiwania semantycznego przy pierwszym uruchomieniu (~296 MB, do wyszukiwania offline)
+dutch.FetchModel=Semantisch zoekmodel downloaden bij eerste start (~296 MB, voor offline zoeken)
+chinesesimplified.FetchModel=首次启动时下载语义搜索模型（约296 MB，用于离线搜索）
+japanese.FetchModel=初回起動時にセマンティック検索モデルをダウンロード（約296 MB、オフライン検索用）
+korean.FetchModel=첫 실행 시 시맨틱 검색 모델 다운로드(약 296 MB, 오프라인 검색용)
 
 [Files]
 Source: "..\dist\{#AppName}-{#AppVersion}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
 #ifndef UpdatePackage
 #ifndef TestPrevious
-Source: "..\build\embedding\embeddinggemma-2-Q8_0.gguf"; DestDir: "{#ModelDir}"; Flags: ignoreversion; Check: ModelNeedsRepair
+; Model ayri indirilir (ilk acilis veya Ayarlar); kurulum paketinde tasinmaz.
+; Mevcut kullanicilarin modeli yerinde kalir, tekrar indirilmez.
 #endif
 #endif
 
@@ -257,6 +272,13 @@ begin
   end;
 end;
 
+procedure WriteModelFlag();
+var Istek: String;
+begin
+  if WizardIsTaskSelected('fetchmodel') then Istek := '1' else Istek := '0';
+  SaveStringToFile(ExpandConstant('{app}') + '\model-indir-iste.txt', Istek, False);
+end;
+
 procedure WriteInstallLanguage();
 var LangCode: String;
 begin
@@ -282,7 +304,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then WriteInstallLanguage;
+  if CurStep = ssPostInstall then begin WriteInstallLanguage; WriteModelFlag; end;
   if (CurStep = ssDone) and (not ModelNeedsRepair) then begin
     CleanupOldLaunchers;
     if ValidModel(LegacyModelPath) then DeleteFile(LegacyModelPath);

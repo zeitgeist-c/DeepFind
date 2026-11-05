@@ -3840,6 +3840,29 @@ def main(kasa_yolu=None, sifre=None):
         os.makedirs(os.path.dirname(os.path.abspath(args.kasa)), exist_ok=True)
         diagnostics.record("setup_passwordless")
     if setup is not None:
+        # Kurulumdaki model secenegi: bayrak "1" ise ve model eksikse indirme
+        # penceresi acilir; "0" ise uygulama modelsiz acilir (Ayarlardan indirilir).
+        try:
+            from . import model_indir as _mi
+            istek = ""
+            bayrak_dosya = None
+            if getattr(sys, "frozen", False):
+                bayrak_dosya = os.path.join(os.path.dirname(sys.executable), "model-indir-iste.txt")
+            if bayrak_dosya and os.path.isfile(bayrak_dosya):
+                try:
+                    istek = open(bayrak_dosya, encoding="utf-8").read().strip()
+                except OSError:
+                    istek = ""
+                try:
+                    os.remove(bayrak_dosya)
+                except OSError:
+                    pass
+            if _mi.gerekli_mi() and istek == "1":
+                from .model_ui import indir_penceresi
+                diagnostics.record("model_download_offered")
+                indir_penceresi(None)
+        except Exception as error:
+            diagnostics.record("model_download_offer_failed", type(error).__name__)
         from .ocr_setup_ui import prepare_ocr
         diagnostics.record("ocr_prepare")
         if not prepare_ocr():

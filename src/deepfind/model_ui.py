@@ -1,6 +1,8 @@
 """Local model settings; work stays off the GUI thread."""
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QComboBox, QPushButton
+import threading
+from PySide6.QtCore import QTimer, Signal, QObject
+from PySide6.QtWidgets import (QComboBox, QPushButton, QDialog, QVBoxLayout,
+                               QProgressBar, QCheckBox, QLabel)
 from . import archive_ui, engine, migrate
 from .theme import t
 from .ui import bolum, label
@@ -49,6 +51,11 @@ def install(window, layout):
             window._ara_simdi()
     window.model_retry.clicked.connect(restart)
     window.model_backend.currentIndexChanged.connect(restart)
+    from . import model_indir as _mi
+    if _mi.gerekli_mi():
+        window.model_indir_btn = QPushButton(t("Anlamsal arama modelini indir (~296 MB)"))
+        window.model_indir_btn.clicked.connect(lambda: indir_penceresi(window))
+        layout.addWidget(window.model_indir_btn)
     window.model_timer = QTimer(window)
     window.model_timer.timeout.connect(refresh)
     window.model_timer.start(1000)
@@ -63,3 +70,91 @@ def refresh_coverage(window):
         done,total=value
         window.model_coverage.setText(f'Anlamsal indeks: {done}/{total} bölüm. Eksikler sonraki taramada tamamlanır.')
     archive_ui.job(window,'model_coverage',operation,ready)
+
+
+class _IndirmeIsci(QObject):
+    ilerleme = Signal(int, int)
+    bitti = Signal(str)
+    hata = Signal(str)
+
+    def __init__(self, ebeveyn=None):
+        super().__init__(ebeveyn)
+        self._dur = threading.Event()
+
+    def iptal(self):
+        self._dur.set()
+
+    def calistir(self):
+        from . import model_indir as _mi
+        from . import engine as _e
+        try:
+            yol = _mi.indir(_mi.MODEL_URL, _mi.MODEL_SHA256, str(_e.user_model_path()),
+                            ilerleme=lambda d, t: self.ilerleme.emit(d, t),
+                            cancel=self._dur.is_set)
+            self.bitti.emit(yol)
+        except InterruptedError:
+            self.hata.emit(t("İndirme iptal edildi."))
+        except Exception as exc:
+            self.hata.emit(f'{t("İndirme tamamlanamadı.")} {exc}')
+
+
+def indir_penceresi(ebeveyn):
+    """Model indirme penceresi: amac, boyut, lisans, ilerleme, iptal, yeniden deneme."""
+    from . import model_indir as _mi
+    from PySide6.QtWidgets import QThread
+    from .theme import app_icon
+    pencere = QDialog(ebeveyn)
+    pencere.setWindowTitle(t("Anlamsal arama modelini indir (~296 MB)"))
+    pencere.setWindowIcon(app_icon())
+    pencere.setMinimumWidth(460)
+    k = QVBoxLayout(pencere)
+    k.addWidget(label(t("Model, çevrimdışı aramanın çalışması için gerekir; bir kez indirilir."), "ikincil"))
+    lisans = QCheckBox(t("Model lisansını (Apache-2.0) kabul ediyorum"))
+    k.addWidget(lisans)
+    durum = QLabel(t("Model hazır.") if not _mi.gerekli_mi() else "")
+    durum.setWordWrap(True)
+    k.addWidget(durum)
+    bar = QProgressBar()
+    bar.setRange(0, 100)
+    bar.setValue(0)
+    k.addWidget(bar)
+    baslat = QPushButton(t("İndirmeyi başlat"))
+    iptal = QPushButton(t("İptal"))
+    yinele = QPushButton(t("Yeniden dene"))
+    kapat = QPushButton(t("Kapat"))
+    for dugme in (baslat, iptal, yinele, kapat):
+        k.addWidget(dugme)
+    yinele.hide()
+    isci = _IndirmeIsci()
+    kanal = QThread(pencere)
+    isci.moveToThread(kanal)
+    kanal.started.connect(isci.calistir)
+    isci.ilerleme.connect(lambda d, to: (bar.setRange(0, 100),
+                                         bar.setValue(int(d * 100 / to)) if to else bar.setRange(0, 0),
+                                         durum.setText(t("Model indiriliyor…"))))
+    def _tamam(yol):
+        kanal.quit()
+        bar.setValue(100)
+        durum.setText(t("Model indirildi ve doğrulandı."))
+        baslat.hide(); iptal.hide(); yinele.hide()
+    def _bozuk(mesaj):
+        kanal.quit()
+        durum.setText(mesaj)
+        baslat.hide(); iptal.hide(); yinele.show()
+    isci.bitti.connect(_tamam)
+    isci.hata.connect(_bozuk)
+    baslat.clicked.connect(lambda: (lisans.setEnabled(False), baslat.setEnabled(False),
+                                    durum.setText(t("Model indiriliyor…")), kanal.start()) if lisans.isChecked()
+                           else durum.setText(t("Model lisansını (Apache-2.0) kabul ediyorum")))
+    iptal.clicked.connect(lambda: isci.iptal())
+    yinele.clicked.connect(lambda: (yinele.hide(), baslat.setEnabled(False),
+                                    durum.setText(t("Model indiriliyor…")),
+                                    kanal.start() if kanal.isFinished() else None))
+    kapat.clicked.connect(lambda: (isci.iptal(), kanal.quit(), kanal.wait(3000), pencere.accept()))
+    if not _mi.gerekli_mi():
+        baslat.hide(); iptal.hide()
+    else:
+        baslat.setEnabled(True)
+    lisans.toggled.connect(lambda acik: baslat.setEnabled(acik) if _mi.gerekli_mi() else None)
+    baslat.setEnabled(False)
+    pencere.exec()

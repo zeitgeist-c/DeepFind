@@ -7,10 +7,12 @@ yedeklenir, sonra geri yuklenir.
 Kontroller:
 1. Kurulum secilen dilde install-language.txt uretir (tr, de).
 2. Kurulan exe adi ve gomulu surum dogru.
-3. Kurulumun "DeepFind'i baslat" komutu (explorer aktarimi) uygulamayi baslatir.
-4. Paketli uygulama ilk acilis -> ana ekran -> yeniden acilis zincirini tamamlar
+3. Uc motor (cpu/vulkan/cuda) gerekli dagitilabilir dosyalariyla kurulur.
+4. Model pakette gomulu degildir; ilk acilis akisi indirir (smoke dogrular).
+5. Kurulumun "DeepFind'i baslat" komutu (explorer aktarimi) uygulamayi baslatir.
+6. Paketli uygulama ilk acilis -> ana ekran -> yeniden acilis zincirini tamamlar
    (paket ici --package-smoke, sentetik belgeler).
-5. Kaldirma temiz calisir.
+7. Kaldirma temiz calisir; kullanici alanindaki model korunur.
 
 Kullanim: PYTHONPATH=src python eval/install_launch_acceptance.py
 """
@@ -92,12 +94,19 @@ def main():
             surum = windows_file_version(exe)
             _kayit(f"exe surumu={surum}")
             assert surum == tuple(map(int, __version__.split(".")))
+            for motor in ("cpu", "vulkan", "cuda"):
+                srv = hedef / "_internal" / "embedding" / motor / "llama-server.exe"
+                assert srv.is_file(), motor
+            _kayit("motorlar: cpu+vulkan+cuda kurulu")
+            assert not (hedef / "_internal" / "embedding" / "embeddinggemma-2-Q8_0.gguf").exists(), \
+                "model pakette gomulu olmamali"
+            _kayit("model pakette gomulu degil (ayri indirilir)")
             sonuc[f"kurulum_{dil}"] = dict(cikis=r.returncode, dil=icerik, surum=str(surum))
             if dil == "turkish":
                 # Setup'in postinstall komutu: explorer aktarimi ile uygulamayi baslat.
                 rapor = ROOT / "build" / f"pkg-smoke-{uuid.uuid4().hex}.json"
                 _explorer_baslat(exe, "--package-smoke", str(rapor))
-                bitis = time.monotonic() + 300
+                bitis = time.monotonic() + 900  # ilk acilista model indirilebilir
                 while time.monotonic() < bitis:
                     if rapor.is_file() and rapor.stat().st_size > 0:
                         try:
