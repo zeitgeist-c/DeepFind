@@ -29,6 +29,7 @@ a = Analysis([str(root / "src/deepfind/__main__.py")], pathex=[str(root / "src")
                                        (str(root / 'build/embedding/common'), 'embedding/common'),
                                        (str(root / 'build/embedding/cpu'), 'embedding/cpu'),
                                        (str(root / 'build/embedding/vulkan'), 'embedding/vulkan'),
+                                       (str(root / 'build/embedding/cuda'), 'embedding/cuda'),
                                        (str(root / 'build/embedding/manifest.json'), 'embedding'),
                                        (str(root / 'build/embedding/llama-LICENSE.txt'), 'embedding'),
                                        (str(root / 'build/embedding/model-LICENSE.txt'), 'embedding')], hiddenimports=["PySide6.QtWidgets",
@@ -67,7 +68,7 @@ def compact_native(entries):
             continue
         if name in shared_names and len(path.parts) == 1:
             continue
-        if name in shared and len(path.parts)>2 and path.parts[0]=='embedding' and path.parts[1] in ('cpu','vulkan'):
+        if name in shared and len(path.parts)>2 and path.parts[0]=='embedding' and path.parts[1] in ('cpu','vulkan','cuda'):
             if name not in emitted:
                 result.append((str(Path('embedding/common')/path.name),str(shared[name]),kind))
                 emitted.add(name)

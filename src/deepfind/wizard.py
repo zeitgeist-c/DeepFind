@@ -354,7 +354,7 @@ class Sihirbaz(QWizard):
             satirlar.append(t("Ekran kartı denemesi başarısız olursa arama işlemcide sürer; "
                               "hangi birimin kullanıldığı durum alanında yazar."))
         elif anahtar == "cuda" and not self.motor_dugme["cuda"].isEnabled():
-            satirlar.append(t("CUDA bileşeni henüz indirilmedi. Kurulumdan sonra Ayarlar bölümünden indirebilirsiniz."))
+            satirlar.append(t("CUDA motoru bu kurulumda bulunamadı; kurulumu onarın."))
         self.motor_durum.setText("\n".join(satirlar))
 
     def _tazele(self):

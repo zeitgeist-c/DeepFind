@@ -23,10 +23,8 @@ def install(window, layout):
     layout.addWidget(window.model_backend)
     window.model_retry = QPushButton(t('Motoru yeniden başlat'))
     layout.addWidget(window.model_retry)
-    window.cuda_install = QPushButton(t('NVIDIA CUDA bileşenini indir (yaklaşık 663 MB)'))
-    layout.addWidget(window.cuda_install)
     detail = label('Model kurulumla gelir. İnternet veya API anahtarı olmadan arar. '
-                   'CUDA isteğe bağlıdır; Vulkan ve CPU kurulumun içindedir.', 'ikincil')
+                   'CPU, Vulkan ve CUDA motorları kurulumun içindedir.', 'ikincil')
     detail.setWordWrap(True)
     layout.addWidget(detail)
     def restart():
@@ -38,23 +36,6 @@ def install(window, layout):
             engine.isit_oturumu(cancel=lambda: window._locked or window._exiting)
             return engine.status()
         archive_ui.job(window, 'model_start', work, lambda _: refresh())
-    def download():
-        window.cuda_install.setEnabled(False)
-        window.cuda_install.setText(t('CUDA indiriliyor ve doğrulanıyor…'))
-        def work(_):
-            from .model_indir import install_cuda
-            stop = window._job_keys['cuda_install'].stop
-            install_cuda(cancel=stop.is_set)
-            return True
-        def done(_):
-            window.cuda_install.setText(t('CUDA hazır'))
-            window.cuda_install.setEnabled(True)
-            restart()
-        def failed(error):
-            window.cuda_install.setText(t('CUDA indirmesi tamamlanamadı; yeniden dene'))
-            window.cuda_install.setEnabled(True)
-            window.model_status.setText(error)
-        archive_ui.job(window, 'cuda_install', work, done, failed=failed)
     def refresh():
         if window._locked: return
         state = engine.status()
@@ -68,7 +49,6 @@ def install(window, layout):
             window._ara_simdi()
     window.model_retry.clicked.connect(restart)
     window.model_backend.currentIndexChanged.connect(restart)
-    window.cuda_install.clicked.connect(download)
     window.model_timer = QTimer(window)
     window.model_timer.timeout.connect(refresh)
     window.model_timer.start(1000)

@@ -50,6 +50,10 @@ def status():
 
 
 def cuda_root():
+    """CUDA motor dizini: once paket ici, yoksa eski kullanici dizini."""
+    paketlenmis = asset_root() / 'cuda'
+    if (paketlenmis / 'llama-server.exe').is_file():
+        return paketlenmis
     return paths.engines_dir('b11765-cuda12')
 
 
@@ -62,10 +66,10 @@ def motor_secenekleri():
     rows = [{'key': 'auto', 'installed': True, 'size_mb': 0},
             {'key': 'cpu', 'installed': (root / 'cpu' / 'llama-server.exe').is_file(), 'size_mb': 0},
             {'key': 'vulkan', 'installed': (root / 'vulkan' / 'llama-server.exe').is_file(), 'size_mb': 0},
-            {'key': 'cuda', 'installed': (cuda_root() / 'llama-server.exe').is_file(), 'size_mb': 663}]
+            {'key': 'cuda', 'installed': (cuda_root() / 'llama-server.exe').is_file(), 'size_mb': 0}]
     for row in rows:
-        if row['key'] in ('cpu', 'vulkan') and row['installed']:
-            folder = root / row['key']
+        if row['installed'] and row['key'] != 'auto':
+            folder = root / row['key'] if row['key'] != 'cuda' else cuda_root()
             try:
                 row['size_mb'] = int(sum(p.stat().st_size for p in folder.rglob('*') if p.is_file()) / 1048576)
             except OSError:
