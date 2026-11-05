@@ -226,7 +226,7 @@ class Sihirbaz(QWizard):
             secenek = QRadioButton(metin)
             secenek.setEnabled(kurulu or anahtar == "auto")
             if anahtar == "cuda" and not kurulu:
-                secenek.setToolTip(t("Yaklaşık 663 MB. Ayarlar bölümünden indirebilirsiniz."))
+                secenek.setToolTip(t("CUDA motoru bu kurulumda bulunamadı; kurulumu onarın."))
             self.motor_grup.addButton(secenek)
             self.motor_dugme[anahtar] = secenek
             motor_kutu.addWidget(secenek)
@@ -348,8 +348,8 @@ class Sihirbaz(QWizard):
                 boyut = f" ({row['size_mb']} MB)" if row["size_mb"] else ""
                 satirlar.append(f"{ad}: " + t("kurulu") + boyut)
             else:
-                ek = f" — {t('yaklaşık {size} MB, indirilebilir', size=row['size_mb'])}" if row["size_mb"] else ""
-                satirlar.append(f"{ad}: " + t("kurulu değil") + ek)
+                # Motorlar kurulumla gelir; eksiklik kurulum sorunudur.
+                satirlar.append(f"{ad}: " + t("kurulu değil"))
         if anahtar == "auto":
             satirlar.append(t("Ekran kartı denemesi başarısız olursa arama işlemcide sürer; "
                               "hangi birimin kullanıldığı durum alanında yazar."))

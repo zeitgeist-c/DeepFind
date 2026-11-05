@@ -1,6 +1,7 @@
 """Packaged main-window/search/preview/worker verification: synthetic data only."""
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -43,15 +44,15 @@ def run(report_path):
             assert wizard.buttonText(QWizard.NextButton) == t("İleri")
             assert not wizard.windowIcon().isNull()
             wizard.next()
-            wizard.s1.setText("yalniz-sentetik-smoke-1234")
-            wizard.s2.setText(wizard.s1.text())
-            assert wizard.validateCurrentPage()
-            wizard.next()
-            wizard.agac.setCurrentIndex(wizard.model.index(temp))
+            wizard.unc.setText(temp)
             wizard.ekle.click()
             assert wizard.secim["kokler"] == [temp]
-            wizard.yenile.click()
             assert wizard.kok_model.rowCount() == 1
+            assert wizard.validateCurrentPage()
+            wizard.next()
+            assert wizard.motor_dugme["auto"].isChecked()
+            wizard.next()
+            assert t("Kasa: şifresiz\n").strip() in wizard.ozet.text()
             wizard.close()
             wizard.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
@@ -95,7 +96,10 @@ def run(report_path):
             assert not pen.secim_onizle.isEnabled() and not pen.dosya_onizle.isEnabled()
             assert pen.settings_page.isAncestorOf(pen.yedek_liste)
             assert pen.settings_page.isAncestorOf(pen.update_durum)
-            assert not pen.update_denetle_btn.isHidden()   # packaged: check on
+            if getattr(sys, "frozen", False):
+                assert not pen.update_denetle_btn.isHidden()   # packaged: check on
+            else:
+                assert pen.update_denetle_btn.isHidden()       # source: check off
             assert pen.update_indir_btn.isHidden()
             assert pen.update_bar.isHidden()
             pen.arama_kutu.setText("Ankara denetim")
