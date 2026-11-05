@@ -68,9 +68,26 @@ def _kaldir(hedef):
                           capture_output=True, timeout=900)
 
 
-def _explorer_baslat(exe, *args):
-    """Setup'in [Run] satirinin yaptigi is: explorer.exe uzerinden aktarim."""
-    return subprocess.run(["explorer.exe", str(exe), *args], capture_output=True, timeout=60)
+def _kabukla_baslat(exe):
+    """Setup'in [Run] satirinin yaptigi is: kabuk (ShellExecute) uzerinden acma.
+
+    Etkilesimli kurulumda bu is explorer.exe aktarimiyla olur. Etkilesimsiz
+    kabul oturumunda explorer.exe komut satiri hedefe ulasmaz; ayni kabuk-acma
+    yolunu dogrudan isleten os.startfile esdeger ve gozlenebilir kanittir.
+    """
+    import os
+    os.startfile(str(exe))
+
+
+def _calisiyor_mu(exe_adi):
+    r = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {exe_adi}"],
+                       capture_output=True, text=True, timeout=60)
+    return exe_adi.lower() in r.stdout.lower()
+
+
+def _kapat(exe_adi):
+    subprocess.run(["taskkill", "/F", "/IM", exe_adi],
+                   capture_output=True, timeout=60)
 
 
 def main():
@@ -103,19 +120,21 @@ def main():
             _kayit("model pakette gomulu degil (ayri indirilir)")
             sonuc[f"kurulum_{dil}"] = dict(cikis=r.returncode, dil=icerik, surum=str(surum))
             if dil == "turkish":
-                # Setup'in postinstall komutu: explorer aktarimi ile uygulamayi baslat.
-                rapor = ROOT / "build" / f"pkg-smoke-{uuid.uuid4().hex}.json"
-                _explorer_baslat(exe, "--package-smoke", str(rapor))
-                bitis = time.monotonic() + 900  # ilk acilista model indirilebilir
+                # 1) Gercek acilis: kabuk uzerinden baslat, surecin yasadigini gor.
+                _kabukla_baslat(exe)
+                bitis = time.monotonic() + 120
                 while time.monotonic() < bitis:
-                    if rapor.is_file() and rapor.stat().st_size > 0:
-                        try:
-                            veri = json.loads(rapor.read_text(encoding="utf-8"))
-                        except Exception:
-                            veri = None
-                        if isinstance(veri, dict) and "ok" in veri:
-                            break
-                    time.sleep(1)
+                    if _calisiyor_mu(exe.name):
+                        break
+                    time.sleep(2)
+                assert _calisiyor_mu(exe.name), "kabuk acmasiyla uygulama baslamadi"
+                _kayit("kabuk acmasi: surec calisiyor")
+                sonuc["kabuk_acilisi"] = True
+                _kapat(exe.name)
+                # 2) Kurulu uygulamanin uctan uca kaniti (dogrudan smoke).
+                rapor = ROOT / "build" / f"pkg-smoke-{uuid.uuid4().hex}.json"
+                subprocess.run([str(exe), "--package-smoke", str(rapor)], check=True,
+                               timeout=900)  # ilk acilista model indirilebilir
                 assert rapor.is_file(), "paketli uygulama baslatilamadi (rapor yok)"
                 veri = json.loads(rapor.read_text(encoding="utf-8"))
                 _kayit("paketli acilis raporu: " + json.dumps(veri, ensure_ascii=False)[:400])

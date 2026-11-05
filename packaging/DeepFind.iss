@@ -305,8 +305,11 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin WriteInstallLanguage; WriteModelFlag; end;
+  { Eski baslatıcılar her zaman temizlenir: tam kurulum paylasilan dosyalari
+    degistirdigi icin eski exe zaten calismaz; birakmak kirik kalinti demektir.
+    Model onarim durumu yalniz eski model dosyalarinin silinmesini kapsar. }
+  if CurStep = ssDone then CleanupOldLaunchers;
   if (CurStep = ssDone) and (not ModelNeedsRepair) then begin
-    CleanupOldLaunchers;
     if ValidModel(LegacyModelPath) then DeleteFile(LegacyModelPath);
   end;
 #ifndef TestInstall
