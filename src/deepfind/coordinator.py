@@ -130,6 +130,23 @@ def find_resumable_run(con, root: str):
     return row[0] if row else None
 
 
+def buda_secim_disini(con, aktif: set) -> None:
+    """Devam eden turda kapatilmis turun eski secimini ele.
+
+    Bekleyen isler silinmez (tur yeniden acilinca islenir); yalniz bu turun
+    seciminden cikarilir, eski indeks satirlarina dokunulmaz.
+    """
+    if not aktif:
+        con.execute("DELETE FROM scan_selected")
+    else:
+        marks = ",".join("?" * len(aktif))
+        con.execute(
+            "DELETE FROM scan_selected WHERE file_id IN "
+            f"(SELECT file_id FROM files WHERE ext IS NOT NULL AND lower(ext) NOT IN ({marks}))",
+            tuple(sorted(aktif)))
+    con.commit()
+
+
 def apply_tag_rules(con, file_id: int, name: str, text: str = "") -> set:
     """Run the stored rules, return the added tags. Never touch manual tags."""
     from . import rank as rank_mod
@@ -169,8 +186,9 @@ def build_manifest(con, root: str) -> tuple:
         (absroot, int(time.time()))
     ).lastrowid
     total = 0
+    aktif = scan_mod.aktif_turler(con)
     for e in scan_mod.walk_ro(absroot):
-        if e.ext not in scan_mod.SUPPORTED_EXTS and e.ext not in scan_mod.NAME_ONLY_EXTS:
+        if e.ext not in aktif:
             continue
         fid = ensure_file(con, e, commit=False)
         con.execute("INSERT OR IGNORE INTO scan_manifest VALUES (?,?,?,?)",
@@ -479,6 +497,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
     with (nullcontext() if lock_held else ScanLock(vault_path)):
         from .schema import ensure_embeddings
         ensure_embeddings(con)
+        aktif = scan_mod.aktif_turler(con)
         if not prepared:
             con.execute("DELETE FROM scan_manifest WHERE run_id IN (SELECT run_id FROM scan_runs "
                         "WHERE finished_at IS NOT NULL AND coalesce(result,'')<>'manifest')")
@@ -492,6 +511,8 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             ).lastrowid
             con.execute("DELETE FROM scan_selected")
             con.commit()
+        # Yarim kalan turun eski secimi yeni tur sinirini asamaz.
+        buda_secim_disini(con, aktif)
         if fresh_inventory:
             con.execute('DELETE FROM scan_selected')
             con.execute('DELETE FROM scan_manifest WHERE run_id=?', (run_id,))
@@ -507,7 +528,13 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         if prepared:
             stats.update(prepared)
             con.execute('DELETE FROM scan_selected')
-            con.execute('INSERT INTO scan_selected SELECT file_id FROM scan_manifest WHERE run_id=?', (run_id,))
+            if aktif:
+                marks = ",".join("?" * len(aktif))
+                con.execute(
+                    'INSERT INTO scan_selected SELECT m.file_id FROM scan_manifest m '
+                    f'JOIN files f ON f.file_id=m.file_id WHERE m.run_id=? AND f.ext IS NOT NULL AND lower(f.ext) IN ({marks})',
+                    (run_id, *sorted(aktif)))
+            # Aktif tur yoksa secim bos kalir: bu turda isleme alinmaz.
             seen = {r[0] for r in con.execute('SELECT f.path FROM files f JOIN scan_manifest m ON m.file_id=f.file_id WHERE m.run_id=?', (run_id,))}
             con.commit()
         last_report = 0.0
@@ -647,7 +674,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                                 continue
                             st = e.stat(follow_symlinks=False)
                             ext = os.path.splitext(e.name)[1].lower()
-                            if ext not in scan_mod.SUPPORTED_EXTS and ext not in scan_mod.NAME_ONLY_EXTS:
+                            if ext not in aktif:
                                 continue
                             entry = scan_mod.Entry(e.path, e.name, ext, st.st_size, st.st_mtime_ns)
                             if exc.is_excluded(entry.path, rules):
@@ -787,9 +814,12 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             con.commit()
             report(t("Kopya doğrulaması tamamlanamadı"), root, type(error).__name__, force=True)
         # --- kayip dosya: yalniz tam kapsamda ---
+        # Kapali turdeki onceki belgeler korunur: ne silinir, ne kayip sayilir.
         if all_complete and not (stop and stop()):
-            rows = con.execute("SELECT file_id, path FROM files").fetchall()
-            for fid, p in rows:
+            rows = con.execute("SELECT file_id, path, ext FROM files").fetchall()
+            for fid, p, fext in rows:
+                if (fext or "").lower() not in aktif:
+                    continue
                 # Scanning one root can never delete another root's index.
                 try:
                     if os.path.commonpath([os.path.abspath(p), os.path.abspath(root)]) != os.path.abspath(root):

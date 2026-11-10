@@ -1105,3 +1105,64 @@ def test_015_without_tray(pencere):
         assert pencere.scan_dialog.isVisible()
     finally:
         pencere.tepsi = tray
+
+
+def test_ayarlar_sayfasi_gezinme_hatasiz(pencere):
+    """Ayarlar sayfasina normal gezinti: kaldirilmis kurtarma cagrisi yok."""
+    from PySide6.QtWidgets import QApplication
+    pencere._ekran(5)
+    QApplication.processEvents()
+    assert pencere.yigin.currentIndex() == 5
+    assert hasattr(pencere, "ayar_tema_sec")
+    assert pencere.ayar_tema_sec.currentData() == pencere.tema_sec.currentData()
+
+
+def test_tur_secimi_varsayilan_tumu_bos_engel(pencere, monkeypatch):
+    """Tur kutulari varsayilanda tumu isaretli; bos secim taramayi baslatmaz."""
+    from PySide6.QtWidgets import QMessageBox
+    from deepfind import scan as scan_mod
+    pencere._turleri_tazele()
+    assert len(pencere.tur_kutular) == len(scan_mod.TUM_TURLER)
+    assert all(k.isChecked() for k in pencere.tur_kutular.values())
+    assert str(len(scan_mod.TUM_TURLER)) in pencere.tur_ozet.text()
+    pencere.tur_kutular[".pdf"].setChecked(False)
+    assert ".pdf" not in scan_mod.secili_turler(pencere.con)
+    pencere._tum_turler()
+    assert scan_mod.secili_turler(pencere.con) == set(scan_mod.TUM_TURLER)
+    for k in pencere.tur_kutular.values():
+        k.setChecked(False)
+    assert scan_mod.baslatma_engeli(pencere.con)
+    nedenler = []
+    monkeypatch.setattr(QMessageBox, "information",
+                        lambda *a, **k: nedenler.append(a[-1] if a else "") or 0)
+    pencere._tara_baslat()
+    assert pencere.isci_thread is None
+    assert nedenler and "tür" in nedenler[0]
+
+
+def test_sihirbaz_tema_dugme_yazisi_gosterimde_kalir():
+    """QWizard ilk gosterimde CustomButton1 yazisini silmemeli (setButtonText yolu)."""
+    _app()
+    from PySide6.QtWidgets import QWizard
+    from PySide6.QtCore import QCoreApplication, QEvent, QSettings
+    from deepfind import identity
+    from deepfind.wizard import Sihirbaz
+    onceki = QSettings(identity.APP_IDENTITY, "Appearance").value("theme", "sistem")
+    QSettings(identity.APP_IDENTITY, "Appearance").setValue("theme", "sistem")
+    try:
+        s = Sihirbaz()
+        s.show()
+        _app().processEvents()
+        _app().processEvents()
+        assert "Tema" in s.buttonText(QWizard.CustomButton1)
+        assert "Sistem temas" in s.buttonText(QWizard.CustomButton1)
+        s.tema.setCurrentIndex(max(0, s.tema.findData("acik")))
+        _app().processEvents()
+        assert "k tema" in s.buttonText(QWizard.CustomButton1)
+        assert s.secim["tema"] == "acik"
+        assert s.button(QWizard.CustomButton1) is s.theme_button
+        s.close()
+        s.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    finally:
+        QSettings(identity.APP_IDENTITY, "Appearance").setValue("theme", onceki)

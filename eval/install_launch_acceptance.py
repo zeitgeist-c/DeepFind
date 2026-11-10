@@ -73,41 +73,34 @@ def _kaldir(hedef):
 
 
 def _kabukla_baslat(exe):
-    """Setup'in [Run] satirinin yaptigi is: kabuk (ShellExecute) uzerinden acma.
+    """Setup'in [Run] satirinin baslattigi uygulamayi gozlenebilir bicimde ac.
 
     Etkilesimli kurulumda bu is explorer.exe aktarimiyla olur. Etkilesimsiz
-    kabul oturumunda explorer.exe komut satiri hedefe ulasmaz; ayni kabuk-acma
-    yolunu dogrudan isleten os.startfile esdeger ve gozlenebilir kanittir.
+    kabulde ayni ikili dogrudan baslatilir; Popen PID verdigi icin temizlik
+    yalniz bu testin baslattigi dogrulanmis surecle sinirli kalir (isim
+    bazli taskkill yok).
     """
-    import os
-    os.startfile(str(exe))
+    return subprocess.Popen([str(exe)])
 
 
-def _calisiyor_mu(exe_adi):
-    r = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {exe_adi}"],
+def _calisiyor_mu_pid(pid):
+    r = subprocess.run(["tasklist", "/FI", f"PID eq {int(pid)}"],
                        capture_output=True, text=True, timeout=60)
-    return exe_adi.lower() in r.stdout.lower()
+    return str(int(pid)) in (r.stdout or "")
 
 
-def _kapat(exe_adi):
-    subprocess.run(["taskkill", "/F", "/IM", exe_adi],
+def _kapat_pid(pid):
+    subprocess.run(["taskkill", "/PID", str(int(pid)), "/T", "/F"],
                    capture_output=True, timeout=60)
 
 
-def _surecleri_temizle():
-    """Kurulu uygulamanin tum surecleri (arama motoru dahil) dursun.
-
-    Yalniz kabul ortami: kaldirma kilitli dosya birakmasin diye _kaldir'dan
-    once cagrilir. Gercek kullanimda Inno CloseApplications ile sorar.
-    """
-    for imaj in (f"DeepFind-{__version__}.exe", "llama-server.exe"):
-        subprocess.run(["taskkill", "/F", "/IM", imaj],
-                       capture_output=True, timeout=60)
+def _surecleri_temizle(pidler):
+    """Yalniz testin baslattigi PID'leri (agaciyla) durdur; isimle kapatma yok."""
+    for pid in dict.fromkeys(int(p) for p in (pidler or []) if p):
+        _kapat_pid(pid)
     bitis = time.monotonic() + 60
     while time.monotonic() < bitis:
-        r = subprocess.run(["tasklist"], capture_output=True, text=True, timeout=60)
-        kucuk = r.stdout.lower()
-        if f"deepfind-{__version__}.exe" not in kucuk and "llama-server.exe" not in kucuk:
+        if not any(_calisiyor_mu_pid(p) for p in (pidler or []) if p):
             return True
         time.sleep(2)
     return False
@@ -126,6 +119,7 @@ def main():
             # tasiyamaz; ayni-dizin yukseltme installer_acceptance'ta kapsanir.
             hedef = (ROOT / "build" / ("installed-" + uuid.uuid4().hex)).resolve()
             hedefler.append(hedef)
+            baslatilan = []
             r = _kur(hedef, dil)
             _kayit(f"kurulum({dil}) cikis={r.returncode}")
             assert r.returncode == 0, r.returncode
@@ -147,27 +141,40 @@ def main():
             _kayit("model pakette gomulu degil (ayri indirilir)")
             sonuc[f"kurulum_{dil}"] = dict(cikis=r.returncode, dil=icerik, surum=str(surum))
             if dil == "turkish":
-                # 1) Gercek acilis: kabuk uzerinden baslat, surecin yasadigini gor.
-                _kabukla_baslat(exe)
-                bitis = time.monotonic() + 120
-                while time.monotonic() < bitis:
-                    if _calisiyor_mu(exe.name):
-                        break
-                    time.sleep(2)
-                assert _calisiyor_mu(exe.name), "kabuk acmasiyla uygulama baslamadi"
-                _kayit("kabuk acmasi: surec calisiyor")
-                sonuc["kabuk_acilisi"] = True
-                _kapat(exe.name)
+                # 1) Gercek acilis: [Run] ikilisini baslat, PID'nin yasadigini gor.
+                islem = _kabukla_baslat(exe)
+                baslatilan = [islem.pid]
+                try:
+                    bitis = time.monotonic() + 120
+                    while time.monotonic() < bitis:
+                        if _calisiyor_mu_pid(islem.pid):
+                            break
+                        time.sleep(2)
+                    assert _calisiyor_mu_pid(islem.pid), "acilisla uygulama baslamadi"
+                    _kayit(f"acilis: PID {islem.pid} calisiyor")
+                    sonuc["kabuk_acilisi"] = True
+                finally:
+                    _kapat_pid(islem.pid)
+                    _surecleri_temizle(baslatilan)
                 # 2) Kurulu uygulamanin uctan uca kaniti (dogrudan smoke).
                 rapor = ROOT / "build" / f"pkg-smoke-{uuid.uuid4().hex}.json"
-                subprocess.run([str(exe), "--package-smoke", str(rapor)], check=True,
-                               timeout=900)  # ilk acilista model indirilebilir
+                duman = subprocess.Popen([str(exe), "--package-smoke", str(rapor)])
+                baslatilan.append(duman.pid)
+                try:
+                    duman.wait(timeout=900)  # ilk acilista model indirilebilir
+                except subprocess.TimeoutExpired:
+                    _kapat_pid(duman.pid)
+                    _surecleri_temizle(baslatilan)
+                    raise
+                assert duman.returncode == 0, duman.returncode
+                _kapat_pid(duman.pid)
+                _surecleri_temizle(baslatilan)
                 assert rapor.is_file(), "paketli uygulama baslatilamadi (rapor yok)"
                 veri = json.loads(rapor.read_text(encoding="utf-8"))
                 _kayit("paketli acilis raporu: " + json.dumps(veri, ensure_ascii=False)[:400])
                 assert veri.get("ok") is True, veri
                 sonuc["paketli_acilis"] = veri
-            assert _surecleri_temizle(), "uygulama surecleri durmadi"
+            assert _surecleri_temizle(baslatilan), "uygulama surecleri durmadi"
             k = _kaldir(hedef)
             _kayit(f"kaldirma({dil}) cikis={getattr(k, 'returncode', None)}")
             sonuc[f"kaldirma_{dil}"] = getattr(k, "returncode", None)

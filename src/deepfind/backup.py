@@ -61,10 +61,17 @@ def verify_backup(backup_path: str, password: str | None = None, progress=None) 
     """Yedegi ayri baglantiyla ac: butunluk + ornek icerik/arama."""
     from . import vault as vault_mod
     if os.path.isfile(backup_path) and vault_mod.is_encrypted(backup_path):
+        from . import vault_convert as vc
         if not password:
+            # 0.10.9 parolasiz kurulumun sifreli yedegi: ic anahtarla dogrula.
+            try:
+                sessiz = vc.verify_encrypted(backup_path, vc.SIFRESIZ_ANAHTAR)
+            except RuntimeError:
+                sessiz = {"ok": False}
+            if sessiz.get("ok"):
+                return sessiz
             return {"ok": False, "neden": "sifreli-yedek-parola-gerekli",
                     "counts": {}}
-        from . import vault_convert as vc
         return vc.verify_encrypted(backup_path, password)
     try:
         con = sqlite3.connect(backup_path, timeout=10)
@@ -205,7 +212,15 @@ def restore_replace(vault_path: str, password: str | None, backup_path: str,
     if not v["ok"]:
         raise RuntimeError("yedek dogrulanamadi; mevcut kasa korunuyor")
     if vault_mod.is_encrypted(backup_path) and not backup_password:
-        raise RuntimeError("sifreli yedek icin yedek parolasi gerekli")
+        # Parolasiz kurulumun sifreli yedegi verify_backup'ta ic anahtarla
+        # dogrulanmistir; parola sormadan devam et.
+        from . import vault_convert as _vc0
+        try:
+            probe = _vc0.verify_encrypted(backup_path, _vc0.SIFRESIZ_ANAHTAR)
+        except RuntimeError:
+            probe = {"ok": False}
+        if not probe.get("ok"):
+            raise RuntimeError("sifreli yedek icin yedek parolasi gerekli")
     os.makedirs(staging_dir, exist_ok=True)
     korunan = []
     if os.path.exists(vault_path):

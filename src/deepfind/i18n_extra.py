@@ -97,6 +97,20 @@ EN = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "CUDA engine was not found in this installation; repair the installation.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Your search data stays on this computer.",
     "Kasa: şifresiz\n": "Vault: password-free\n",
+    "Dosya türleri": "File types",
+    "Bu taramada işleme alınacak türler. Kapalı türdeki eski belgeler korunur.":
+        "Types processed in this scan. Older documents of switched-off types are kept.",
+    "Tüm türler": "All types",
+    "Tüm dosya türlerine dön": "Back to all file types",
+    "{secili} / {toplam} tür seçili": "{secili} / {toplam} types selected",
+    "Dosya türü {tur}": "File type {tur}",
+    "Kompakt": "Compact",
+    "Izgara": "Grid",
+    "Sayfa": "Page",
+    "Hiç dosya türü seçili değil. Taramayı başlatmak için Tarama ekranından en az bir türü işaretleyin.":
+        "No file type selected. Tick at least one type on the Scan page to start scanning.",
+    "Pencerenin açık, koyu veya sistem görünümü. Üst çubuktaki seçimle aynıdır.":
+        "Light, dark or system look of the window. Same as the top-bar choice.",
 }
 
 DE = {
@@ -192,6 +206,20 @@ DE = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "CUDA-Engine in dieser Installation nicht gefunden; Installation reparieren.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Ihre Suchdaten bleiben auf diesem Computer.",
     "Kasa: şifresiz\n": "Tresor: passwortfrei\n",
+    "Dosya türleri": "Dateitypen",
+    "Bu taramada işleme alınacak türler. Kapalı türdeki eski belgeler korunur.":
+        "In diesem Scan verarbeitete Typen. Ältere Dokumente abgeschalteter Typen bleiben erhalten.",
+    "Tüm türler": "Alle Typen",
+    "Tüm dosya türlerine dön": "Zurück zu allen Dateitypen",
+    "{secili} / {toplam} tür seçili": "{secili} / {toplam} Typen ausgewählt",
+    "Dosya türü {tur}": "Dateityp {tur}",
+    "Kompakt": "Kompakt",
+    "Izgara": "Raster",
+    "Sayfa": "Seite",
+    "Hiç dosya türü seçili değil. Taramayı başlatmak için Tarama ekranından en az bir türü işaretleyin.":
+        "Kein Dateityp ausgewählt. Zum Start mindestens einen Typ auf der Scan-Seite anhaken.",
+    "Pencerenin açık, koyu veya sistem görünümü. Üst çubuktaki seçimle aynıdır.":
+        "Helles, dunkles oder System-Aussehen des Fensters. Wie die Auswahl in der oberen Leiste.",
 }
 
 ES = {

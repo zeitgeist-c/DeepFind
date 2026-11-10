@@ -9,6 +9,42 @@ SUPPORTED_EXTS = {".pdf", ".xlsx", ".xls", ".docx", '.jpg', '.jpeg', '.png', '.t
                   ".txt", ".md", ".log", ".csv", ".tsv", ".pptx", ".epub", ".eml", ".zip"}
 NAME_ONLY_EXTS = {".doc"}  # A3: DOC ad/yol; icerik adaptoru A4 karariyla
 
+# Tarama ekranindaki dosya turu secimi: bugunku kapsam = hepsi isaretli.
+# Eski profillerde ayar yoktur ve bugunku kapsamla devam eder (None).
+TUM_TURLER = sorted(SUPPORTED_EXTS | NAME_ONLY_EXTS)
+TUR_AYARI = "tarama_turleri"
+
+
+def secili_turler(con) -> set | None:
+    """Kullanicinin tarama turu secimi; None = ayar yok, bugunku kapsam."""
+    try:
+        ham = con.execute("SELECT v FROM settings WHERE k=?", (TUR_AYARI,)).fetchone()
+    except Exception:
+        return None
+    if ham is None:
+        return None
+    return {p for p in (x.strip().lower() for x in (ham[0] or "").split(",")) if p in TUM_TURLER}
+
+
+def turleri_kaydet(con, turler: set) -> None:
+    """Secimi kalici yaz; yeniden acilista korunur. Bos kumede sinirliyken tarama baslamaz."""
+    from . import migrate as _migrate
+    _migrate.set_setting(con, TUR_AYARI, ",".join(sorted(set(turler) & set(TUM_TURLER))))
+
+
+def aktif_turler(con) -> set:
+    """Bu taramada isleme alinacak turler (varsayilan: hepsi)."""
+    secili = secili_turler(con)
+    return set(TUM_TURLER) if secili is None else secili
+
+
+def baslatma_engeli(con) -> str | None:
+    """Hic tur secilmediyse tarama baslamaz; donus: kullaniciya gosterilecek neden."""
+    if secili_turler(con) == set():
+        return ("Hiç dosya türü seçili değil. Taramayı başlatmak için "
+                "Tarama ekranından en az bir türü işaretleyin.")
+    return None
+
 
 @dataclass
 class Entry:

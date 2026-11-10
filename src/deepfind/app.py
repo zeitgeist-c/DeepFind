@@ -803,9 +803,10 @@ class AnaPencere(QMainWindow):
         self.head_bar.denetim.addWidget(self.tara_btn)
         self.tema_sec = QComboBox()
         self.tema_sec.setProperty("kucuk", True)
-        for caption, value in [(t("Sistem teması"), "sistem"), (t("Açık"), "acik"), ("Koyu", "koyu")]:
+        for caption, value in [(t("Sistem teması"), "sistem"), (t("Açık tema"), "acik"), (t("Koyu tema"), "koyu")]:
             self.tema_sec.addItem(caption, value)
         self.tema_sec.setCurrentIndex(max(0, self.tema_sec.findData(migrate.get_setting(self.con, "tema", "sistem"))))
+        self.tema_sec.setAccessibleName(t("Tema"))
         self.tema_sec.currentIndexChanged.connect(lambda _: self._tema_degistir(self.tema_sec.currentData()))
         self.head_bar.denetim.addWidget(self.tema_sec)
 
@@ -1204,9 +1205,9 @@ so it walks every page on the stack."""
         bas.addStretch(1)
         # View mode (paperless view-switch pattern).
         self.gorunum_btnleri = {}
-        for etiket, mod, ikon in (("Kompakt", "kompakt", "compact"),
+        for etiket, mod, ikon in ((t("Kompakt"), "kompakt", "compact"),
                                   (t("Satırlar"), "satir", "rows"),
-                                  ("Izgara", "izgara", "grid")):
+                                  (t("Izgara"), "izgara", "grid")):
             dugme = QPushButton()
             dugme.setCheckable(True)
             dugme.setIcon(theme.symbol_icon(ikon))
@@ -1238,7 +1239,7 @@ so it walks every page on the stack."""
         toplu.setSpacing(7)
         self.secim_btnleri = []
         for etiket, adet, ipucu in ((t("Hiçbiri"), 0, t("Seçimi temizle")),
-                                    ("Sayfa", 50, t("İlk 50 sonucu seç")),
+                                    (t("Sayfa"), 50, t("İlk 50 sonucu seç")),
                                     (t("Tümü"), -1, t("Tüm sonuçları seç"))):
             dugme = QPushButton(etiket)
             dugme.setProperty("kucuk", True)
@@ -2362,7 +2363,14 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         w = QWidget()
         w.setObjectName("scanBody")
         w.setAttribute(Qt.WA_StyledBackground, True)
-        k = QVBoxLayout(w)
+        outer = QVBoxLayout(w)
+        outer.setContentsMargins(22, 18, 22, 20)
+        outer.setSpacing(6)
+        ic = QWidget()
+        ic.setAttribute(Qt.WA_StyledBackground, True)
+        k = QVBoxLayout(ic)
+        k.setContentsMargins(0, 0, 8, 0)
+        k.setSpacing(0)
         hour = migrate.get_setting(self.con, "saat", "12")
         minute = migrate.get_setting(self.con, "dakika", "30")
         try:
@@ -2503,13 +2511,49 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         k.addWidget(self.scope_browse)
         self.scope_mode.currentIndexChanged.connect(self._scope_changed)
 
+        self.tur_ozet = label("", "ikincil")
+        self.tur_ozet.setWordWrap(True)
+        self.tum_turler_btn = QPushButton(t("Tüm türler"))
+        self.tum_turler_btn.setProperty("kucuk", True)
+        self.tum_turler_btn.setToolTip(t("Tüm dosya türlerine dön"))
+        self.tum_turler_btn.clicked.connect(self._tum_turler)
+        k.addWidget(ayar_satiri(t("Dosya türleri"), t("Bu taramada işleme alınacak türler. Kapalı türdeki eski belgeler korunur."), self.tum_turler_btn))
+        k.addWidget(self.tur_ozet)
+        self.tur_kutu = QWidget()
+        tur_izgara = QGridLayout(self.tur_kutu)
+        tur_izgara.setContentsMargins(0, 0, 0, 0)
+        tur_izgara.setSpacing(6)
+        from . import scan as scan_mod
+        self.tur_kutular = {}
+        for i, uzanti in enumerate(scan_mod.TUM_TURLER):
+            # Gosterge/metin cakismasin diye kutu metinsiz, etiket ayri (Ayarlar deseni).
+            hucre = QWidget()
+            satir = QHBoxLayout(hucre)
+            satir.setContentsMargins(0, 0, 0, 0)
+            satir.setSpacing(8)
+            kutu = QCheckBox()
+            kutu.setAccessibleName(t("Dosya türü {tur}", tur=uzanti))
+            kutu.toggled.connect(self._tur_kaydet)
+            self.tur_kutular[uzanti] = kutu
+            satir.addWidget(kutu)
+            satir.addWidget(label(uzanti, "ikincil"), 1)
+            tur_izgara.addWidget(hucre, i // 3, i % 3)
+        k.addWidget(self.tur_kutu)
+        self._turleri_tazele()
+
         k.addWidget(bolum(t("Son taramalar")))
         self.scan_history = QListWidget()
         self.scan_history.setObjectName("cardList")
         self.scan_history.setAccessibleName(t("Son tarama kayıtları"))
-        k.addWidget(self.scan_history, 1)
+        self.scan_history.setMinimumHeight(140)
+        k.addWidget(self.scan_history)
         self._scan_history_refresh()
         k.addWidget(self.tarama_bilgi)
+        kaydir = QScrollArea()
+        kaydir.setWidgetResizable(True)
+        kaydir.setFrameShape(QScrollArea.NoFrame)
+        kaydir.setWidget(ic)
+        outer.addWidget(kaydir, 1)
         self.yigin.addWidget(w)
         self.isci = None
         self.isci_thread = None
@@ -2527,6 +2571,46 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             migrate.set_setting(self.con, "son_kapsam", json.dumps(list(kokler)))
         except Exception:
             pass
+
+    def _turleri_tazele(self):
+        """Checkbox'lari kayitli secimle esitle; ayar yoksa hepsi isaretli."""
+        from . import scan as scan_mod
+        try:
+            secili = scan_mod.secili_turler(self.con)
+            aktif = set(scan_mod.TUM_TURLER) if secili is None else secili
+        except Exception:
+            aktif = set(scan_mod.TUM_TURLER)
+        for uzanti, kutu in (getattr(self, "tur_kutular", {}) or {}).items():
+            try:
+                kutu.blockSignals(True)
+                kutu.setChecked(uzanti in aktif)
+                kutu.blockSignals(False)
+            except Exception:
+                try:
+                    kutu.blockSignals(False)
+                except Exception:
+                    pass
+        try:
+            self.tur_ozet.setText(t("{secili} / {toplam} tür seçili",
+                                    secili=len(aktif), toplam=len(scan_mod.TUM_TURLER)))
+        except Exception:
+            pass
+
+    def _tur_kaydet(self):
+        from . import scan as scan_mod
+        try:
+            scan_mod.turleri_kaydet(self.con, {u for u, k in self.tur_kutular.items() if k.isChecked()})
+        except Exception:
+            pass
+        self._turleri_tazele()
+
+    def _tum_turler(self):
+        from . import scan as scan_mod
+        try:
+            scan_mod.turleri_kaydet(self.con, set(scan_mod.TUM_TURLER))
+        except Exception:
+            pass
+        self._turleri_tazele()
 
     def _otomatik_kapsam(self):
         """Roots an automatic scan may use: the user's explicit scope, else all."""
@@ -2608,6 +2692,16 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         if not kokler:
             QMessageBox.information(self, t("Tarama"), t("Taranacak en az bir klasör seçin."))
             return
+        from . import scan as scan_mod
+        engel = scan_mod.baslatma_engeli(self.con)
+        if engel is not None:
+            if automatic:
+                migrate.set_setting(self.con, "tarama_ele_alinan_gun", dt.date.today().isoformat())
+                self.durum.showMessage(engel)
+                diagnostics.record("scheduled_scan_no_types_skipped")
+            else:
+                QMessageBox.information(self, t("Tarama"), engel)
+            return
         # Nested roots of the same scope are scanned once.
         unique = []
         for path in sorted(set(map(os.path.abspath, kokler)), key=len):
@@ -2659,6 +2753,10 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.scope_sources.setEnabled(False)
         self.scope_path.setEnabled(False)
         self.scope_browse.setEnabled(False)
+        for _kutu in (getattr(self, "tur_kutular", {}) or {}).values():
+            _kutu.setEnabled(False)
+        if getattr(self, "tum_turler_btn", None) is not None:
+            self.tum_turler_btn.setEnabled(False)
         self.tarama_bilgi.setText(f"Tarama başladı • {len(kokler)} klasör")
         self.popup_scope.setText(f"{len(kokler)} kaynak • " + " | ".join(kokler))
         if not automatic:
@@ -2833,6 +2931,10 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.scope_sources.setEnabled(True)
         self.scope_path.setEnabled(True)
         self.scope_browse.setEnabled(True)
+        for _kutu in (getattr(self, "tur_kutular", {}) or {}).values():
+            _kutu.setEnabled(True)
+        if getattr(self, "tum_turler_btn", None) is not None:
+            self.tum_turler_btn.setEnabled(True)
         self.scan_timer.stop()
         if thread is not None:
             thread.deleteLater()
@@ -3138,14 +3240,23 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         yol = self.yedek_model.item(idx.row()).data()
         from . import vault as _v
         if _v.is_encrypted(yol):
-            # Eski sifreli yedek: yalniz bu geri yukleme icin parola sorulur.
-            from PySide6.QtWidgets import QInputDialog
-            parola, kabul = QInputDialog.getText(
-                self, t("Geri yükle"), t("Bu yedek eski şifreli biçimde; yedek parolasını girin:"),
-                echo=QLineEdit.Password)
-            if not kabul or not parola:
-                return
-            backup_password = parola
+            # 0.10.9 parolasiz kurulumun yedegi ic anahtarla acilir: sorma.
+            from . import vault_convert as _vc
+            try:
+                _sessiz = bool(_vc.verify_encrypted(yol, _vc.SIFRESIZ_ANAHTAR).get("ok"))
+            except RuntimeError:
+                _sessiz = False
+            if _sessiz:
+                backup_password = _vc.SIFRESIZ_ANAHTAR
+            else:
+                # Eski sifreli yedek: yalniz bu geri yukleme icin parola sorulur.
+                from PySide6.QtWidgets import QInputDialog
+                parola, kabul = QInputDialog.getText(
+                    self, t("Geri yükle"), t("Bu yedek eski şifreli biçimde; yedek parolasını girin:"),
+                    echo=QLineEdit.Password)
+                if not kabul or not parola:
+                    return
+                backup_password = parola
         else:
             backup_password = None
         if QMessageBox.question(
@@ -3191,6 +3302,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.dil_secici.setMinimumWidth(max(
             _metin.horizontalAdvance(self.dil_secici.itemText(i))
             for i in range(self.dil_secici.count())) + 64)
+        self.dil_secici.setMinimumHeight(_metin.height() + 18)
         self.dil_secici.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.dil_secici.view().setMinimumWidth(self.dil_secici.minimumWidth())
         self.dil_secici.setAccessibleName(t("Arayüz dili"))
@@ -3208,6 +3320,13 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         _dil_kutu.addWidget(self.dil_secici)
         _dil_kutu.addWidget(self.dil_notu)
         k.addWidget(ayar_satiri(t("Arayüz dili"), t("Menüler, düğmeler ve iletiler bu dilde gösterilir."), _dil_satir))
+        self.ayar_tema_sec = QComboBox()
+        for caption, value in [(t("Sistem teması"), "sistem"), (t("Açık tema"), "acik"), (t("Koyu tema"), "koyu")]:
+            self.ayar_tema_sec.addItem(caption, value)
+        self.ayar_tema_sec.setCurrentIndex(max(0, self.ayar_tema_sec.findData(migrate.get_setting(self.con, "tema", "sistem"))))
+        self.ayar_tema_sec.setAccessibleName(t("Tema"))
+        self.ayar_tema_sec.currentIndexChanged.connect(lambda _: self._tema_degistir(self.ayar_tema_sec.currentData()))
+        k.addWidget(ayar_satiri(t("Tema"), t("Pencerenin açık, koyu veya sistem görünümü. Üst çubuktaki seçimle aynıdır."), self.ayar_tema_sec))
         self.motor_secici = QComboBox()
         from . import engine as _engine
         _kurulu = {row["key"]: row for row in _engine.motor_secenekleri()}
@@ -3464,8 +3583,16 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         aciklama = sayfa_aciklama(anahtar)
         self.head_bar.aciklama.setText(aciklama)
         self.head_bar.aciklama.setVisible(bool(aciklama))
-        if anahtar == 'tarama' and self.isci_thread is not None:
-            self._scan_show()
+        if anahtar == 'arama':
+            QTimer.singleShot(0, lambda: self.arama_kutu.setFocus(Qt.ShortcutFocusReason)
+                              if getattr(self, "arama_kutu", None) is not None else None)
+        if anahtar == 'tarama':
+            try:
+                self._turleri_tazele()
+            except Exception:
+                pass
+            if self.isci_thread is not None:
+                self._scan_show()
         if anahtar == 'gecmis':
             self._gecmis_tazele()
         elif anahtar == 'dosyalar':
@@ -3474,7 +3601,6 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self._kok_tazele()
         elif anahtar == 'ayarlar':
             self._yedek_tazele()
-            self._kurtarma_tazele()
             from .model_ui import refresh_coverage
             refresh_coverage(self)
         QTimer.singleShot(0, lambda: diagnostics.record('tab_ready_ms', str(round((time.perf_counter() - started) * 1000))))
@@ -3494,6 +3620,18 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             migrate.set_setting(self.con, "tema", mode)
         except Exception:
             pass
+        # Ust cubuk + Ayarlar secimi ayni kalir: etiket, gorunen tema, kayit eslesir.
+        for secici in (getattr(self, "tema_sec", None), getattr(self, "ayar_tema_sec", None)):
+            try:
+                if secici is not None and secici.currentData() != mode:
+                    secici.blockSignals(True)
+                    secici.setCurrentIndex(max(0, secici.findData(mode)))
+                    secici.blockSignals(False)
+            except Exception:
+                try:
+                    secici.blockSignals(False)
+                except Exception:
+                    pass
         if getattr(self, "_toast", None) is not None:
             self._toast.goster(f"{self.tema_sec.currentText()} uygulandı.")
         self.durum.showMessage(f"{self.tema_sec.currentText()} uygulandı.")
@@ -3985,20 +4123,28 @@ def main(kasa_yolu=None, sifre=None):
     try:
         vault.open_vault(args.kasa).close()
     except vault.EncryptedVaultError:
-        from PySide6.QtWidgets import QInputDialog as _QID, QLineEdit as _QLE
-        parola, kabul = _QID.getText(
-            None, t("Eski şifreli kasa"),
-            t("Bu kasa eski şifreli biçimde. Dönüştürmek için mevcut parolayı girin:"),
-            echo=_QLE.Password)
-        if not kabul or not parola:
-            return 1
         from . import vault_convert as _vc
+        sessiz = None
         try:
-            _vc.convert(args.kasa, parola)
-        except Exception as error:
-            QMessageBox.critical(None, 'Kasa', f'Dönüşüm yapılamadı: {error}')
-            return 2
-        diagnostics.record("vault_converted_at_open")
+            sessiz = _vc.passwordless_convert(args.kasa)
+        except Exception:
+            sessiz = None
+        if sessiz is None:
+            from PySide6.QtWidgets import QInputDialog as _QID, QLineEdit as _QLE
+            parola, kabul = _QID.getText(
+                None, t("Eski şifreli kasa"),
+                t("Bu kasa eski şifreli biçimde. Dönüştürmek için mevcut parolayı girin:"),
+                echo=_QLE.Password)
+            if not kabul or not parola:
+                return 1
+            try:
+                _vc.convert(args.kasa, parola)
+            except Exception as error:
+                QMessageBox.critical(None, 'Kasa', f'Dönüşüm yapılamadı: {error}')
+                return 2
+            diagnostics.record("vault_converted_at_open")
+        else:
+            diagnostics.record("vault_converted_at_open_passwordless")
     from .ocr_setup_ui import prepare_ocr
     diagnostics.record("ocr_prepare")
     if not prepare_ocr():

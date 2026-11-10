@@ -22,6 +22,33 @@ def _sqlcipher():
     return sqlcipher3
 
 
+# 0.10.9 ve oncesi: parola belirlenmeden olusturulan kasa bu ic anahtarla
+# sifrelidir. Kullanicidan hicbir parola istenmeden sessiz yukseltme icin
+# kullanilir; diske/loga yazilmaz, yalniz donusum aninda bellege alinir.
+SIFRESIZ_ANAHTAR = "DEEPFIND-SIFRESIZ-KASA-v1"
+
+
+def _sifresiz_acilir_mi(path: str) -> bool:
+    """Eski kasa ic anahtarla aciliyor mu (parolasiz kurulmus mu)?"""
+    sqlcipher3 = _sqlcipher()
+    try:
+        con = sqlcipher3.connect(path, timeout=10)
+    except Exception:
+        return False
+    try:
+        try:
+            con.execute(f"PRAGMA key='{_escape(SIFRESIZ_ANAHTAR)}'")
+            con.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            return True
+        except Exception:
+            return False
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
+
+
 def _escape(s: str) -> str:
     return s.replace("'", "''")
 
@@ -29,6 +56,22 @@ def _escape(s: str) -> str:
 def is_encrypted(path: str) -> bool:
     from . import vault as v
     return v.is_encrypted(path)
+
+
+def passwordless_convert(src: str, dest: str | None = None) -> dict | None:
+    """0.10.9 parolasiz kasayi parola sormadan donustur; degilse None.
+
+    Donus `convert` ile ayni atomik/rollback guvencelerini tasir.
+    """
+    if not is_encrypted(src):
+        return None
+    try:
+        if not _sifresiz_acilir_mi(src):
+            return None
+    except RuntimeError:
+        # sqlcipher3 yoksa sessiz deneme yapilamaz; normal parola yolu gerekir.
+        return None
+    return convert(src, SIFRESIZ_ANAHTAR, dest=dest)
 
 
 def _counts(con) -> dict:
@@ -58,12 +101,20 @@ def convert(src: str, password: str, dest: str | None = None) -> dict:
       atomik `os.replace` ile kaynagin uzerine yazilir (rollback: kaynak baska
       adla yedeklenir).
     - Yanlis parola, bozuk kaynak, disk dolmasi veya kesintide eski kasa korunur.
+    - `password` bossa once 0.10.9 parolasiz kurulumun ic anahtari denenir;
+      acilirsa kullanicidan parola istenmeden sessiz donusur.
     """
     sqlcipher3 = _sqlcipher()
     if not os.path.isfile(src):
         raise FileNotFoundError(f"kasa bulunamadi: {src}")
-    if not password:
-        raise ValueError("donusum icin mevcut parola gerekli")
+    etkin_parola = password
+    if not etkin_parola:
+        # 0.10.9 parolasiz kurulum: kullanici hic parola belirlemedi; ic
+        # anahtar aciyorsa sessiz yukselt, acmiyorsa parola iste.
+        if _sifresiz_acilir_mi(src):
+            etkin_parola = SIFRESIZ_ANAHTAR
+        else:
+            raise ValueError("donusum icin mevcut parola gerekli")
     hedef = dest or (src + ".donusuyor-" + uuid.uuid4().hex + ".db")
     rollback = None
     try:
@@ -72,7 +123,7 @@ def convert(src: str, password: str, dest: str | None = None) -> dict:
         raise RuntimeError("eski kasa acilamadi; eski kasa korunuyor") from exc
     try:
         try:
-            eski.execute(f"PRAGMA key='{_escape(password)}'")
+            eski.execute(f"PRAGMA key='{_escape(etkin_parola)}'")
             eski.execute("SELECT count(*) FROM sqlite_master").fetchone()
         except Exception as exc:
             raise ValueError(
@@ -106,7 +157,7 @@ def convert(src: str, password: str, dest: str | None = None) -> dict:
         # Kaynak sayimlari karsilastir (sifreli baglanti yeniden acilir).
         eski2 = sqlcipher3.connect(src, timeout=10)
         try:
-            eski2.execute(f"PRAGMA key='{_escape(password)}'")
+            eski2.execute(f"PRAGMA key='{_escape(etkin_parola)}'")
             eski_sayim = _counts(eski2)
         finally:
             eski2.close()
@@ -142,13 +193,14 @@ def convert(src: str, password: str, dest: str | None = None) -> dict:
 def verify_encrypted(path: str, password: str) -> dict:
     """Eski sifreli yedegi parola ile dogrula (sessizce olume terk etme)."""
     sqlcipher3 = _sqlcipher()
+    etkin = password or SIFRESIZ_ANAHTAR
     try:
         con = sqlcipher3.connect(path, timeout=10)
     except Exception as exc:
         return {"ok": False, "neden": f"acilmadi: {exc}"}
     try:
         try:
-            con.execute(f"PRAGMA key='{_escape(password)}'")
+            con.execute(f"PRAGMA key='{_escape(etkin)}'")
             con.execute("SELECT count(*) FROM sqlite_master").fetchone()
         except Exception:
             return {"ok": False, "neden": "parola yanlis veya dosya bozuk"}

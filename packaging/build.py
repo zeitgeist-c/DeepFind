@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 import uuid
 
@@ -19,7 +20,26 @@ def main():
     import re
     assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
     stem = f"DeepFind-{__version__}"
-    if "--archive-only" not in sys.argv:
+    argv = sys.argv[1:]
+    aday = None
+    if "--aday" in argv:
+        aday = Path(argv[argv.index("--aday") + 1])
+        if not aday.is_absolute():
+            aday = ROOT / aday
+        aday.mkdir(parents=True, exist_ok=True)
+    asama = None
+    if "--asama" in argv:
+        asama = argv[argv.index("--asama") + 1]
+        assert asama in ("pyinstaller", "smoke", "iscc"), asama
+    etkilesimli = "--etkilesimli" in argv
+    if asama:
+        asamalari = [asama]
+    elif "--archive-only" in argv:
+        asamalari = ["smoke", "iscc"]
+    else:
+        asamalari = ["pyinstaller", "smoke", "iscc"]
+    cikti = aday if aday else ROOT / "dist"
+    if "pyinstaller" in asamalari:
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         from PySide6.QtWidgets import QApplication
         from deepfind.theme import app_icon
@@ -40,12 +60,24 @@ def main():
         subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--workpath", str(work),
                         "--distpath", str(work / "dist"),
                         str(ROOT / "packaging/DeepFind.spec")], cwd=ROOT, env=build_env, check=True)
-        package_target = ROOT / "dist" / stem
+        package_target = cikti / stem
         if package_target.exists():
-            package_target.rename(work / ("previous-" + stem))
+            # Yeniden denemeli tasi: yeni cikan ikililerde virus tarayici /
+            # esitleme kilidi kisa sure tutabilir (WinError 5).
+            for _deneme in range(12):
+                try:
+                    package_target.rename(work / ("previous-" + stem))
+                    break
+                except PermissionError:
+                    if _deneme == 11:
+                        raise
+                    time.sleep(5)
         package_target.parent.mkdir(exist_ok=True)
         shutil.move(str(work / "dist" / stem), str(package_target))
-    package = ROOT / "dist" / stem
+        print(json.dumps({"pyinstaller": str(package_target)}, ensure_ascii=False))
+    if asama == "pyinstaller":
+        return
+    package = cikti / stem
     assert (package / (stem + ".exe")).is_file()
     (package / (stem + ".bat")).write_text(
         f'@echo off\nchcp 65001 >nul\ncd /d "%~dp0"\nstart "" "%~dp0{stem}.exe" %*\n',
@@ -87,56 +119,82 @@ def main():
     if not any(model_root.glob("*.onnx")):
         raise RuntimeError("RapidOCR ONNX modelleri pakette bulunamadı")
     # Package smoke: does the installed EXE really open and run the OCR chain?
-    import tempfile
-    smoke_report = Path(tempfile.gettempdir()) / f"deepfind-smoke-{__version__}.json"
-    if smoke_report.exists():
-        smoke_report.unlink()
-    proc = subprocess.run([str(package / (stem + ".exe")), "--package-smoke", str(smoke_report)],
-                          capture_output=True, text=True, timeout=900)
-    try:
-        rapor = json.loads(smoke_report.read_text(encoding="utf-8"))
-    except Exception:
-        rapor = {"ok": False, "stage": f"rapor-okunamadi exit={proc.returncode}"}
-    if proc.returncode != 0 or not rapor.get("ok"):
-        raise RuntimeError(f"paket dumanı başarısız: {rapor} | {(proc.stderr or '')[-500:]}")
+    if "smoke" in asamalari:
+        import tempfile
+        smoke_report = Path(tempfile.gettempdir()) / f"deepfind-smoke-{__version__}.json"
+        if smoke_report.exists():
+            smoke_report.unlink()
+        proc = subprocess.run([str(package / (stem + ".exe")), "--package-smoke", str(smoke_report)],
+                              capture_output=True, text=True, timeout=900)
+        try:
+            rapor = json.loads(smoke_report.read_text(encoding="utf-8"))
+        except Exception:
+            rapor = {"ok": False, "stage": f"rapor-okunamadi exit={proc.returncode}"}
+        if proc.returncode != 0 or not rapor.get("ok"):
+            raise RuntimeError(f"paket dumanı başarısız: {rapor} | {(proc.stderr or '')[-500:]}")
     for name in ("README.md", "LICENSE"):
         if (ROOT / name).is_file():
             shutil.copyfile(ROOT / name, package / name)
     (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    destination = ROOT / (stem + ".zip")
+    destination = (aday if aday else ROOT) / (stem + ".zip")
     with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in package.rglob("*"):
             if path.is_file():
                 archive.write(path, path.relative_to(package.parent))
     digest = hashlib.sha256(destination.read_bytes()).hexdigest()
     print(json.dumps({"package": str(destination), "sha256": digest}, ensure_ascii=False))
-    # Kurulum (Inno Setup): taze kurulumlar icin tek EXE.
-    (ROOT / "packaging" / "ver.iss").write_text(
-        f'#define AppVersion "{__version__}"\n', encoding="utf-8")
-    iscc = os.environ.get("INNO_ISCC", r"C:\tmp\Inno\ISCC.exe")
-    if not Path(iscc).is_file():
-        for aday in (r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-                     r"C:\Program Files\Inno Setup 6\ISCC.exe"):
-            if Path(aday).is_file():
-                iscc = aday
-                break
-    subprocess.run([iscc, str(ROOT / "packaging/DeepFind.iss")],
-                   cwd=str(ROOT / "packaging"), check=True, timeout=600)
-    kurulum = ROOT / (stem + ".exe")
-    assert kurulum.is_file(), "kurulum EXE uretilemedi"
-    print(json.dumps({"setup": str(kurulum),
-                      "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
-                     ensure_ascii=False))
-    subprocess.run([iscc, '/DUpdatePackage', str(ROOT / 'packaging/DeepFind.iss')],
-                   cwd=str(ROOT / 'packaging'), check=True, timeout=600)
-    from deepfind.model_indir import MODEL_SHA256
-    incremental = ROOT / (stem + '.deepfind')
-    with zipfile.ZipFile(incremental, 'w', zipfile.ZIP_DEFLATED) as archive:
-        archive.write(ROOT / 'build/update-installer' / (stem + '.exe'), stem + '.exe')
-        archive.writestr('manifest.json', json.dumps({'program':'DeepFind', 'version':__version__,
-                                                     'model_sha256':MODEL_SHA256},ensure_ascii=False))
-    print(json.dumps({'incremental':str(incremental), 'size':incremental.stat().st_size,
-                      'sha256':hashlib.sha256(incremental.read_bytes()).hexdigest()},ensure_ascii=False))
+    if "iscc" in asamalari:
+        # Kurulum (Inno Setup): taze kurulumlar icin tek EXE.
+        iscc = os.environ.get("INNO_ISCC", r"C:\tmp\Inno\ISCC.exe")
+        if not Path(iscc).is_file():
+            for yol in (r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+                        r"C:\Program Files\Inno Setup 6\ISCC.exe",
+                        r"C:\Users\mahmu\AppData\Local\Programs\Inno Setup 6\ISCC.exe"):
+                if Path(yol).is_file():
+                    iscc = yol
+                    break
+        if aday:
+            # Yerel aday: yayim dosyalarina dokunulmaz; test AppId ile
+            # build/test-installer altina kurulur, ayni taze aday paketlenir.
+            # --etkilesimli: TestRunAlways YOK (normal skipifsilent [Run]) ve ayri
+            # cikti; etkilesimli kabulde kutucuk davranisi uretimle birebir olur.
+            if etkilesimli:
+                outdir = aday / "kurulum"
+                outdir.mkdir(parents=True, exist_ok=True)
+                kurulacak = [iscc, "/DTestInstall", f"/DAdayKaynak={package}",
+                             "/O" + str(outdir),
+                             str(ROOT / "packaging/DeepFind.iss")]
+            else:
+                kurulacak = [iscc, "/DTestInstall", "/DTestRunAlways",
+                             f"/DAdayKaynak={package}",
+                             str(ROOT / "packaging/DeepFind.iss")]
+            subprocess.run(kurulacak, cwd=str(ROOT / "packaging"), check=True, timeout=600)
+            kurulum = (aday / "kurulum" / (stem + ".exe")) if etkilesimli \
+                else (ROOT / "build" / "test-installer" / (stem + ".exe"))
+            assert kurulum.is_file(), "aday kurulum EXE uretilemedi"
+            print(json.dumps({"aday_kurulum": str(kurulum),
+                              "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
+                             ensure_ascii=False))
+        else:
+            (ROOT / "packaging" / "ver.iss").write_text(
+                f'#define AppVersion "{__version__}"\n', encoding="utf-8")
+            subprocess.run([iscc, str(ROOT / "packaging/DeepFind.iss")],
+                           cwd=str(ROOT / "packaging"), check=True, timeout=600)
+            kurulum = ROOT / (stem + ".exe")
+            assert kurulum.is_file(), "kurulum EXE uretilemedi"
+            print(json.dumps({"setup": str(kurulum),
+                              "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
+                             ensure_ascii=False))
+            subprocess.run([iscc, '/DUpdatePackage', str(ROOT / 'packaging/DeepFind.iss')],
+                           cwd=str(ROOT / 'packaging'), check=True, timeout=600)
+            from deepfind.model_indir import MODEL_SHA256
+            incremental = ROOT / (stem + '.deepfind')
+            with zipfile.ZipFile(incremental, 'w', zipfile.ZIP_DEFLATED) as archive:
+                archive.write(ROOT / 'build/update-installer' / (stem + '.exe'), stem + '.exe')
+                archive.writestr('manifest.json', json.dumps({'program':'DeepFind', 'version':__version__,
+                                                             'model_sha256':MODEL_SHA256},ensure_ascii=False))
+            print(json.dumps({'incremental':str(incremental), 'size':incremental.stat().st_size,
+                              'sha256':hashlib.sha256(incremental.read_bytes()).hexdigest()},ensure_ascii=False))
 
 
 if __name__ == "__main__":

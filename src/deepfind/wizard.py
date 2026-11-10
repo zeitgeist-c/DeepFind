@@ -61,7 +61,7 @@ class Sihirbaz(QWizard):
         self.setOption(QWizard.HaveCustomButton1)
         from PySide6.QtWidgets import QMenu
         self.tema.hide()
-        self.theme_button = QPushButton(t("Tema") + ": " + t("Sistem teması"))
+        self.theme_button = QPushButton()
         menu = QMenu(self.theme_button)
         self._theme_menu = menu
         for index, caption in enumerate((t("Sistem teması"), t("Açık tema"), t("Koyu tema"))):
@@ -71,6 +71,9 @@ class Sihirbaz(QWizard):
         self.tema.currentIndexChanged.connect(self._tema_degistir)
         saved_theme = QSettings(identity.APP_IDENTITY, "Appearance").value("theme", "sistem")
         self.tema.setCurrentIndex(max(0, self.tema.findData(saved_theme)))
+        # Dugme etiketi QWizard kanaliyla yazilir: ilk gosterimde dogrudan
+        # setText ile yazilan silinir, setButtonText kalir.
+        self._tema_etiket()
         self.secim["tema"] = self.tema.currentData()
         rail = QFrame()
         rail.setObjectName("rail")
@@ -109,6 +112,8 @@ class Sihirbaz(QWizard):
         self.dil_secici.setMinimumWidth(_genislik + 64)
         self.dil_secici.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.dil_secici.view().setMinimumWidth(self.dil_secici.minimumWidth())
+        # Kapali kutuda alt/ust kirpma olmasin (QSS 7px padding + cerceve payi).
+        self.dil_secici.setMinimumHeight(_metin.height() + 18)
         self.dil_secici.setAccessibleName(t("Arayüz dili"))
         _kayitli = resolve_language(QSettings(identity.APP_IDENTITY, "Appearance").value("language", "en"))
         self.dil_secici.setCurrentIndex(max(0, self.dil_secici.findData(_kayitli)))
@@ -304,11 +309,16 @@ class Sihirbaz(QWizard):
         previous.deleteLater()
         self._mesaj(t("Klasör listesi yenilendi. Eklediğiniz klasörler korundu."))
 
+    def _tema_etiket(self):
+        """Tema dugme etiketini QWizard kanaliyla yaz (dogrudan setText ilk gosterimde silinir)."""
+        self.setButtonText(QWizard.CustomButton1,
+                           t("Tema") + ": " + self.tema.currentText())
+
     def _tema_degistir(self):
         from . import theme
         from PySide6.QtWidgets import QApplication
         self.secim["tema"] = self.tema.currentData()
-        self.theme_button.setText(t("Tema") + ": " + self.tema.currentText())
+        self._tema_etiket()
         theme.apply(QApplication.instance(), self.tema.currentData())
 
     def _dil_degistir(self):

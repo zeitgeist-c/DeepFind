@@ -31,7 +31,20 @@ def _open_db(args):
         print("HATA: kasa eski sifreli bicimde; once 'kasa-donustur' ile donusturun.",
               flush=True)
         raise SystemExit(3)
-    ensure_current(con)
+    except Exception:
+        # Penceresiz pakette islenmemis hata masaustunde iletisim kutusu acar;
+        # temiz cikis ver, iz birakma.
+        print("HATA: kasa acilmadi (yolu ve erisimi kontrol edin).", flush=True)
+        raise SystemExit(3)
+    try:
+        ensure_current(con)
+    except Exception:
+        try:
+            con.close()
+        except Exception:
+            pass
+        print("HATA: kasa acilmadi (sema/butunluk).", flush=True)
+        raise SystemExit(3)
     return con
 
 
@@ -93,6 +106,14 @@ def cmd_donustur(args) -> int:
         return 2
     if not _v.is_encrypted(args.kasa):
         print("Kasa zaten sifresiz bicimde; islem gerekmedi.", flush=True)
+        return 0
+    try:
+        sessiz = _vc.passwordless_convert(args.kasa)
+    except Exception:
+        sessiz = None
+    if sessiz is not None:
+        print(f"Donustu (parolasiz kurulum sessiz yukseltildi): {sessiz['kasa']} "
+              f"(eski sifreli yedek: {sessiz['rollback']})", flush=True)
         return 0
     pw = getpass.getpass("Mevcut kasa parolasi (yalniz donusum icin istenir): ")
     try:

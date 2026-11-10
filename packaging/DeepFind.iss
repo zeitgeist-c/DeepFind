@@ -118,7 +118,11 @@ japanese.FetchModel=初回起動時にセマンティック検索モデルをダ
 korean.FetchModel=첫 실행 시 시맨틱 검색 모델 다운로드(약 296 MB, 오프라인 검색용)
 
 [Files]
+#ifdef AdayKaynak
+Source: "{#AdayKaynak}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
+#else
 Source: "..\dist\{#AppName}-{#AppVersion}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
 #ifndef UpdatePackage
 #ifndef TestPrevious
 ; Model ayri indirilir (ilk acilis veya Ayarlar); kurulum paketinde tasinmaz.
@@ -143,7 +147,13 @@ Name: "{group}\{#AppName} kaldır"; Filename: "{uninstallexe}"
 ; installs and surfaced as an internal error. explorer.exe relays the request
 ; to the already running (non-elevated) shell, so the app still starts as the
 ; normal user while Setup only needs a plain process start.
-Filename: "{sys}\explorer.exe"; Parameters: """{app}\{#AppName}-{#AppVersion}.exe"""; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+#ifdef TestRunAlways
+; Kabul kontrolu: sessiz kurulumda bile [Run] komutunu gercek Setup motoru
+; isletir; etkilesimli kurulumdaki isaretli dugmenin tetikledigi komutla aynidir.
+Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppName}-{#AppVersion}.exe"""; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall
+#else
+Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppName}-{#AppVersion}.exe"""; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+#endif
 
 [UninstallDelete]
 Type: files; Name: "{#ModelDir}\embeddinggemma-2-Q8_0.gguf"
