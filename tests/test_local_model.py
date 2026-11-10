@@ -126,7 +126,10 @@ def test_installer_handoff_uses_managed_path(tmp_path,monkeypatch):
     script=installer.spawn_installer(123,setup,current,str(tmp_path/'vault with spaces.db'))
     assert script.parent==updates
     text=script.read_text(encoding='utf-8-sig')
-    assert 'Wait-Process -Id 123' in text and 'ExitCode -ne 0' in text
+    assert 'PID_ESKI = 123' in text and '.Path' in text
+    assert '$kur.ExitCode -ne 0' in text
+    assert 'robocopy' in text and 'rollback-0.10.0' in text
+    assert 'verified:' in text and 'restored' in text
     assert '/DIR=' in text and str(current.parent) in text
     assert calls and '-File' in calls[0][0][0]
 

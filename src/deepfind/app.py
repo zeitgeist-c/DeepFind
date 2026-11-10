@@ -487,10 +487,36 @@ class AnaPencere(QMainWindow):
         if sonuc == "ok":
             self._toast_goster(t("Güncelleme tamamlandı: DeepFind {__version__}.", __version__=__version__))
             self.durum.showMessage(t("DeepFind {__version__} güncellendi.", __version__=__version__), 8000)
+        elif sonuc.startswith("verified:"):
+            self._toast_goster(t("Güncelleme doğrulandı: DeepFind {surum}.", surum=sonuc.split(":", 1)[1]))
+            self.durum.showMessage(t("DeepFind {__version__} güncellendi.", __version__=__version__), 8000)
         elif sonuc == "fallback":
             self._toast_goster(t("Güncelleme taşınamadı; geçici klasörden çalışıyorsunuz."))
-        elif sonuc == "install_failed":
-            self._toast_goster(t("Güncelleme kurulamadı veya yönetici onayı iptal edildi. Ayarlar → Güncellemeler'den yeniden deneyin."))
+        elif sonuc in ("install_failed", "restored"):
+            self._toast_goster(t("Güncelleme tamamlanamadı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin."))
+        elif sonuc == "uac_cancelled":
+            self._toast_goster(t("Yönetici onayı iptal edildi; eski sürüm çalışıyor. Yeniden denemek için Ayarlar → Güncellemeler."))
+        elif sonuc == "timeout":
+            self._toast_goster(t("Güncelleme zaman aşımına uğradı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin."))
+
+    def _guncelleme_dogrulandi_yaz(self):
+        """Verify a restarted instance after an update and stamp it.
+
+        The watcher script waits for this stamp: only a new version opened
+        from the install path with the same vault readable counts as success.
+        Without the stamp the script restores the old version."""
+        try:
+            if self.con is None:
+                return
+            update_mod.dogrulandi_yaz(__version__, sys.executable, self.kasa_yolu)
+        except update_mod.UpdateError as error:
+            diagnostics.record("update_verify_failed", str(error))
+            return
+        except OSError as error:
+            diagnostics.record("update_verify_failed", type(error).__name__)
+            return
+        diagnostics.record("update_verified", __version__)
+        self._toast_goster(t("Güncelleme doğrulandı: DeepFind {__version__}.", __version__=__version__))
 
     # -- updates: from the public release repo, under user control --
     def _guncelleme_yapilabilir(self):
@@ -4177,6 +4203,10 @@ def main(kasa_yolu=None, sifre=None):
     if opening is not None:
         opening.close()
     diagnostics.record("main_window_ready")
+    if "--restarted" in sys.argv:
+        # Update watcher waits for the verified stamp: same vault is open
+        # (AnaPencere created it above), stamp follows after paint.
+        QTimer.singleShot(10000, pen._guncelleme_dogrulandi_yaz)
     try:
         return app.exec()
     finally:

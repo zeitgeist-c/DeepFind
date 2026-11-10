@@ -154,6 +154,10 @@ def main():
                     iscc = yol
                     break
         if aday:
+            # Sürüm damgası her Inno derlemesinde tazelenir; yoksa önceki
+            # üretim/bayat ver.iss aday kurulum adını bozar.
+            (ROOT / "packaging" / "ver.iss").write_text(
+                f'#define AppVersion "{__version__}"\n', encoding="utf-8")
             # Yerel aday: yayim dosyalarina dokunulmaz; test AppId ile
             # build/test-installer altina kurulur, ayni taze aday paketlenir.
             # --etkilesimli: TestRunAlways YOK (normal skipifsilent [Run]) ve ayri

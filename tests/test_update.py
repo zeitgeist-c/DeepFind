@@ -359,5 +359,141 @@ class AkisTestleri(unittest.TestCase):
         self.assertFalse(pencere.update_indir_btn.isHidden())
 
 
+class TamExeGeriDonusu(unittest.TestCase):
+    def test_kucuk_paket_uygunsuzsa_tam_exe_secilir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            info = update.UpdateInfo(
+                version="9.9.9", asset_name="DeepFind-9.9.9.deepfind",
+                download_url="https://x/y", sha256="0" * 64, size=1, page_url="")
+            tam = update.UpdateInfo(
+                version="9.9.9", asset_name="DeepFind-9.9.9.exe",
+                download_url="https://x/e", sha256="0" * 64, size=2, page_url="")
+            hedef = Path(tmp) / "Updates" / "DeepFind-9.9.9.exe"
+            with mock.patch.object(update, "updates_dir", return_value=Path(tmp) / "Updates"), \
+                 mock.patch.object(update, "prepare_incremental",
+                                   side_effect=update.UpdateError("Model uyuşmuyor; tam kurulum gerekli.")), \
+                 mock.patch.object(update, "tam_exe_bilgi", return_value=tam), \
+                 mock.patch.object(update, "download",
+                                   side_effect=lambda i, d, **k: (d.parent.mkdir(parents=True, exist_ok=True), d.write_bytes(b"MZ"), d)[-1]), \
+                 mock.patch("deepfind.update.windows_file_version", return_value=(9, 9, 9)):
+                sonuc = update.prepare(info)
+            self.assertEqual(sonuc, hedef)
+            self.assertEqual(hedef.read_bytes(), b"MZ")
+
+    def test_baska_hata_geri_donus_yapmaz(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            info = update.UpdateInfo(
+                version="9.9.9", asset_name="DeepFind-9.9.9.deepfind",
+                download_url="https://x/y", sha256="0" * 64, size=1, page_url="")
+            with mock.patch.object(update, "updates_dir", return_value=Path(tmp)), \
+                 mock.patch.object(update, "prepare_incremental",
+                                   side_effect=update.UpdateError("İndirme yarıda kesildi.")), \
+                 mock.patch.object(update, "tam_exe_bilgi") as tam:
+                with self.assertRaises(update.UpdateError):
+                    update.prepare(info)
+            tam.assert_not_called()
+
+
+class KuruluZipReddi(unittest.TestCase):
+    def test_kurulu_program_zip_ile_calisma_reddedilir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kok = Path(tmp)
+            kurulu = kok / "kurulu"
+            kurulu.mkdir()
+            (kurulu / "unins000.exe").write_bytes(b"MZ")
+            calisan = kurulu / "DeepFind-9.9.8.exe"
+            calisan.write_bytes(b"MZ")
+            hazir = kok / "Updates" / "DeepFind-9.9.9"
+            hazir.mkdir(parents=True)
+            (hazir / "DeepFind-9.9.9.exe").write_bytes(b"MZ")
+            with mock.patch("deepfind.update.subprocess.Popen") as popen:
+                with self.assertRaises(update.UpdateError):
+                    update.spawn_swap(4242, hazir, calisan, str(kok / "kasa.db"))
+            popen.assert_not_called()
+            self.assertFalse(hazir.exists())
+
+
+class KanalTesti(unittest.TestCase):
+    def test_ozel_kanal_cevre_degiskeniyle_secilir(self):
+        import importlib
+        with mock.patch.dict(os.environ, {"DEEPFIND_UPDATE_URL": "file:///tmp/kanal.json"}):
+            yeniden = importlib.reload(update)
+            try:
+                self.assertEqual(yeniden.API_LATEST, "file:///tmp/kanal.json")
+            finally:
+                importlib.reload(update)
+
+
+class DogrulamaDamgasi(unittest.TestCase):
+    def _duzen(self, tmp):
+        kok = Path(tmp) / "kurulu"
+        kok.mkdir()
+        (kok / "unins000.exe").write_bytes(b"MZ")
+        exe = kok / "DeepFind-9.9.9.exe"
+        exe.write_bytes(b"MZ")
+        kasa = Path(tmp) / "deepfind.db"
+        kasa.write_bytes(b"kasa")
+        return kok, exe, kasa
+
+    def test_yeni_surum_yoldan_acilip_kasayi_okuyunca_damga(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _kok, exe, kasa = self._duzen(tmp)
+            with mock.patch.object(update, "updates_dir", return_value=Path(tmp)):
+                update.dogrulandi_yaz("9.9.9", exe, kasa)
+            damga = Path(tmp) / "son-guncelleme.txt"
+            self.assertEqual(damga.read_text(encoding="utf-8"), "verified:9.9.9")
+
+    def test_yol_disi_acilis_damga_yazmaz(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _kok, _exe, kasa = self._duzen(tmp)
+            dis = Path(tmp) / "baska.exe"
+            dis.write_bytes(b"MZ")
+            with mock.patch.object(update, "updates_dir", return_value=Path(tmp)):
+                with self.assertRaises(update.UpdateError):
+                    update.dogrulandi_yaz("9.9.9", dis, kasa)
+            self.assertFalse((Path(tmp) / "son-guncelleme.txt").exists())
+
+    def test_kasa_yoksa_damga_yazmaz(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _kok, exe, _kasa = self._duzen(tmp)
+            with mock.patch.object(update, "updates_dir", return_value=Path(tmp)):
+                with self.assertRaises(update.UpdateError):
+                    update.dogrulandi_yaz("9.9.9", exe, Path(tmp) / "yok.db")
+            self.assertFalse((Path(tmp) / "son-guncelleme.txt").exists())
+
+
+class KurulumBetigi(unittest.TestCase):
+    def _betik(self, tmp):
+        from deepfind import installer as _kur
+        kok = Path(tmp) / "kurulu"
+        kok.mkdir()
+        (kok / "unins000.exe").write_bytes(b"MZ")
+        calisan = kok / "DeepFind-9.9.8.exe"
+        calisan.write_bytes(b"MZ")
+        kurulum = Path(tmp) / "Updates" / "DeepFind-9.9.9.exe"
+        kurulum.parent.mkdir(parents=True)
+        kurulum.write_bytes(b"MZ")
+        with mock.patch.object(_kur, "windows_file_version",
+                               side_effect=[(9, 9, 9), (9, 9, 8)]), \
+             mock.patch.object(_kur.subprocess, "Popen") as popen:
+            betik = _kur.spawn_installer(4242, kurulum, calisan, str(Path(tmp) / "kasa.db"))
+        return betik.read_text(encoding="utf-8-sig"), popen
+
+    def test_betik_kapanis_anlik_goruntu_geri_donus_dogrulama_icerir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            govde, popen = self._betik(tmp)
+            self.assertIn("PID_ESKI = 4242", govde)
+            self.assertIn(".Path", govde)                       # resim dogrulamali bekleme
+            self.assertIn("robocopy", govde)                    # anlik goruntu + geri yukleme
+            self.assertIn("rollback-9.9.8", govde)
+            self.assertIn("uac_cancelled", govde)
+            self.assertIn("verified:", govde)
+            self.assertIn("YENI_SURUM", govde)
+            self.assertIn("restored", govde)
+            self.assertIn("timeout", govde)
+            self.assertIn("9.9.9", govde)
+            self.assertEqual(popen.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

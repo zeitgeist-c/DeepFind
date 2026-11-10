@@ -1,4 +1,11 @@
-"""Installer handoff keeps AppId, shortcuts and uninstall registration consistent."""
+"""Installer handoff keeps AppId, shortcuts and uninstall registration consistent.
+
+The watcher script closes the app, its launcher and its own engine safely,
+snapshots the install dir for rollback, runs the verified setup elevated,
+then launches the new EXE and waits for its verified stamp. Until that stamp
+appears the old version can be restored; failures relaunch the old version
+so the user can retry from inside the app.
+"""
 from pathlib import Path
 import ctypes
 import os
@@ -40,29 +47,105 @@ def spawn_installer(pid, setup, current, vault):
     setup, current = Path(setup).resolve(), Path(current).resolve()
     destination = install_directory(current)
     version = '.'.join(map(str,windows_file_version(setup)))
+    old_version = '.'.join(map(str,windows_file_version(current)))
     new_exe = destination / f'DeepFind-{version}.exe'
+    rollback = setup.parent / f'rollback-{old_version}'
+    stamp = setup.parent / 'son-guncelleme.txt'
     script = setup.parent / 'deepfind-install.ps1'
     def quote(text): return "'" + str(text).replace("'", "''") + "'"
     # Start-Process needs a correctly quoted single argument string for Inno.
     arguments = ('/SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="' + str(destination)
                  + '" /LOG="' + str(setup.parent / 'kurulum.log') + '"')
     source = f'''$ErrorActionPreference = 'Stop'
+$PID_ESKI = {int(pid)}
+$KURULU = {quote(current)}
+$HEDEF = {quote(destination)}
+$KURULUM = {quote(setup)}
+$YENI = {quote(new_exe)}
+$ESKI_SURUM = {quote(old_version)}
+$YENI_SURUM = {quote(version)}
+$GERI = {quote(rollback)}
+$DAMGA = {quote(stamp)}
+$KASA = {quote(vault)}
+$ARGSLAR = {quote(arguments)}
+function Damga($deger) {{ Set-Content -LiteralPath $DAMGA -Value $deger -Encoding UTF8 }}
+function Resim($p) {{ try {{ (Get-Process -Id $p -ErrorAction Stop).Path }} catch {{ '' }} }}
+function EskiMi($p) {{
+  $yol = Resim($p)
+  if (-not $yol) {{ return $false }}
+  return ($yol -eq $KURULU) -or ($yol -like ($HEDEF + '\\*'))
+}}
+function EskiCalistir {{
+  $hedef = $KURULU
+  if (-not (Test-Path -LiteralPath $hedef -PathType Leaf)) {{ return }}
+  try {{
+    $surum = (Get-Item -LiteralPath $hedef).VersionInfo.ProductVersion
+    if ($surum -notlike ($ESKI_SURUM + '*')) {{ return }}
+    Start-Process -FilePath $hedef -ArgumentList @('--restarted', '--kasa', $KASA)
+  }} catch {{ }}
+}}
 try {{
-  if (Get-Process -Id {int(pid)} -ErrorAction SilentlyContinue) {{
-    Wait-Process -Id {int(pid)} -Timeout 300 -ErrorAction Stop
+  $son = (Get-Date).AddSeconds(300)
+  while ((Get-Process -Id $PID_ESKI -ErrorAction SilentlyContinue) -and (EskiMi($PID_ESKI)) -and ((Get-Date) -lt $son)) {{ Start-Sleep -Seconds 2 }}
+  if ((Get-Process -Id $PID_ESKI -ErrorAction SilentlyContinue) -and (EskiMi($PID_ESKI))) {{
+    Damga('timeout')
+    EskiCalistir
+    exit 0
   }}
-  $install = Start-Process -FilePath {quote(setup)} -ArgumentList {quote(arguments)} -Verb RunAs -Wait -PassThru
-  if ($install.ExitCode -ne 0) {{ throw 'Kurulum tamamlanamadı' }}
-  if (-not (Test-Path -LiteralPath {quote(new_exe)} -PathType Leaf)) {{ throw 'Yeni program bulunamadı' }}
-  Set-Content -LiteralPath {quote(setup.parent/'son-guncelleme.txt')} -Value 'ok' -Encoding UTF8
-  Start-Process -FilePath {quote(new_exe)} -ArgumentList @('--restarted', '--kasa', {quote('"'+str(vault)+'"')})
+  $son = (Get-Date).AddSeconds(60)
+  while (((Get-Date) -lt $son) -and @(Get-Process -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like ($HEDEF + '\\*') }}).Count -gt 0) {{ Start-Sleep -Seconds 2 }}
+  if (@(Get-Process -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like ($HEDEF + '\\*') }}).Count -gt 0) {{
+    Damga('timeout')
+    EskiCalistir
+    exit 0
+  }}
+  if (Test-Path -LiteralPath $GERI) {{ Remove-Item -LiteralPath $GERI -Recurse -Force -ErrorAction SilentlyContinue }}
+  robocopy $HEDEF $GERI /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
+  try {{
+    $kur = Start-Process -FilePath $KURULUM -ArgumentList $ARGSLAR -Verb RunAs -Wait -PassThru
+  }} catch {{
+    if ($_.Exception.HResult -eq -2147023673 -or $_.FullyQualifiedErrorId -like '*Cancelled*') {{
+      Damga('uac_cancelled')
+    }} else {{
+      Damga('install_failed')
+    }}
+    EskiCalistir
+    exit 0
+  }}
+  if ($kur.ExitCode -ne 0) {{
+    robocopy $GERI $HEDEF /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
+    Damga('install_failed')
+    EskiCalistir
+    exit 0
+  }}
+  if (-not (Test-Path -LiteralPath $YENI -PathType Leaf)) {{
+    robocopy $GERI $HEDEF /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
+    Damga('install_failed')
+    EskiCalistir
+    exit 0
+  }}
+  Start-Process -FilePath $YENI -ArgumentList @('--restarted', '--kasa', $KASA)
+  $son = (Get-Date).AddSeconds(180)
+  $dogrulandi = $false
+  while ((Get-Date) -lt $son) {{
+    if ((Test-Path -LiteralPath $DAMGA -PathType Leaf) -and ((Get-Content -LiteralPath $DAMGA -Raw -ErrorAction SilentlyContinue) -like ('verified:' + $YENI_SURUM + '*'))) {{
+      $dogrulandi = $true
+      break
+    }}
+    Start-Sleep -Seconds 2
+  }}
+  if ($dogrulandi) {{
+    Remove-Item -LiteralPath $DAMGA -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $GERI -Recurse -Force -ErrorAction SilentlyContinue
+    exit 0
+  }}
+  Get-Process -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq $YENI }} | Stop-Process -Force -ErrorAction SilentlyContinue
+  robocopy $GERI $HEDEF /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
+  Damga('restored')
+  EskiCalistir
 }} catch {{
-  Set-Content -LiteralPath {quote(setup.parent/'son-guncelleme.txt')} -Value 'install_failed' -Encoding UTF8
-  $recover = {quote(current)}
-  if (-not (Test-Path -LiteralPath $recover)) {{ $recover = {quote(new_exe)} }}
-  if ((Test-Path -LiteralPath $recover) -and -not (Get-Process -Id {int(pid)} -ErrorAction SilentlyContinue)) {{
-    Start-Process -FilePath $recover -ArgumentList @('--restarted', '--kasa', {quote('"'+str(vault)+'"')})
-  }}
+  try {{ Damga('install_failed') }} catch {{ }}
+  try {{ EskiCalistir }} catch {{ }}
 }}
 Remove-Item -LiteralPath $PSCommandPath -Force
 '''

@@ -27,7 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 RELEASE_REPO = "zeitgeist-c/DeepFind"
-API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
+import os as _os
+API_LATEST = _os.environ.get("DEEPFIND_UPDATE_URL") or f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 from .version import __version__
 from .installer import windows_file_version, spawn_installer
 from . import paths
@@ -66,7 +67,7 @@ def is_newer(candidate: str, current: str) -> bool:
     return parse_version(candidate) > parse_version(current)
 
 
-def parse_release(payload: dict) -> UpdateInfo:
+def parse_release(payload: dict, kucuk_izinli: bool = True) -> UpdateInfo:
     """Select a verified installer; ZIP assets are only for older clients."""
     tag = str(payload.get("tag_name") or "")
     version = tag[1:] if tag.startswith("v") else tag
@@ -80,7 +81,7 @@ def parse_release(payload: dict) -> UpdateInfo:
     adaylar = {f'DeepFind-{version}.exe'}
     from .model_indir import paylasilan_hazir
     incremental = paylasilan_hazir()
-    if incremental:
+    if incremental and kucuk_izinli:
         adaylar.update({f'DeepFind-{version}.zip', f'DeepFind-{version}.deepfind'})
     def priority(asset):
         name = str(asset.get('name',''))
@@ -229,14 +230,39 @@ no unverified package stays on disk."""
         raise UpdateError(t("Paket açılamadı.")) from exc
 
 
+def tam_exe_bilgi() -> UpdateInfo:
+    """Re-read the channel and select only the verified full installer.
+
+    Used when the small package turns out unsuitable: the app picks the
+    full EXE itself instead of sending the user to the browser."""
+
+    request = urllib.request.Request(API_LATEST, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        raise UpdateError(t("Güncelleme sunucusuna ulaşılamadı.")) from exc
+    return parse_release(payload, kucuk_izinli=False)
+
+
 def prepare(info: UpdateInfo, progress=None, cancel=None) -> Path:
     """Download + open + verify; return the folder ready to settle.
 
-When opening/verification fails the downloaded ZIP dies too: a halted or
-broken package leaves no residue on disk."""
+    When opening/verification fails the downloaded ZIP dies too: a halted or
+    broken package leaves no residue on disk.
+
+    When the small package turns out unsuitable, the verified full installer
+    is picked automatically (no browser round-trip)."""
     klasor = updates_dir()
     if info.asset_name.endswith('.deepfind'):
-        return prepare_incremental(info, klasor, progress, cancel)
+        try:
+            return prepare_incremental(info, klasor, progress, cancel)
+        except UpdateError as hata:
+            if "tam kurulum gerekli" not in str(hata):
+                raise
+            log.info("kucuk paket uygun degil, tam EXE seciliyor")
+            tam = tam_exe_bilgi()
+            return prepare(tam, progress, cancel)
     if info.asset_name.lower().endswith('.exe'):
         target = klasor / f'DeepFind-{info.version}.exe'
         download(info, target, progress=progress, cancel=cancel)
@@ -291,13 +317,18 @@ def spawn_swap(old_pid: int, hazir_klasor: Path, calisan_exe: Path,
 
 Windows never relocates a running EXE: the script waits until this process exits,
 moves the ready folder next to the running program, launches the new EXE with
-a normal vault-independent launch, and deletes itself. When the move fails
-(read-only folder) it launches from the temp copy and reports it
-via `son-guncelleme.txt`."""
+a normal vault-independent launch, and deletes itself. Installed programs never
+take this path (a ZIP cannot install); they go through spawn_installer."""
     hazir_klasor = Path(hazir_klasor)
     if hazir_klasor.is_file() and hazir_klasor.suffix.lower() == '.exe':
         return spawn_installer(old_pid, hazir_klasor, Path(calisan_exe), kasa_yolu)
     calisan_exe = Path(calisan_exe)
+    if (calisan_exe.resolve().parent / "unins000.exe").is_file():
+        # Installed program + ZIP-only package: there is no installer inside,
+        # and running from the temp copy is not an update. Refuse cleanly;
+        # the old version keeps running untouched.
+        shutil.rmtree(hazir_klasor, ignore_errors=True)
+        raise UpdateError(t("Bu yayın kurulu programı güncelleyemez; tam kurulum bekleniyor."))
     hedef_ust = calisan_exe.resolve().parent
     yeni_exe = hedef_ust / hazir_klasor.name / f"{hazir_klasor.name}.exe"
     gecici_exe = hazir_klasor / f"{hazir_klasor.name}.exe"
@@ -344,6 +375,27 @@ via `son-guncelleme.txt`."""
                      cwd=str(betik.parent), close_fds=True)
     log.info("swap armed: pid=%s yeni=%s", old_pid, yeni_exe)
     return betik
+
+
+def dogrulandi_yaz(surum: str, exe_yolu: str | Path, kasa_yolu: str | Path) -> None:
+    """Record a verified restart: the new version runs from the install path
+    and the same vault was opened.
+
+    Raises UpdateError when the running EXE is outside the install directory
+    or the vault file is missing; nothing is written then, so the watcher
+    script restores the old version instead of reporting success."""
+
+    from .installer import install_directory
+    exe = Path(exe_yolu).resolve()
+    kok = install_directory(exe)
+    try:
+        exe.relative_to(kok)
+    except ValueError:
+        raise UpdateError("Yeni sürüm kurulum yolundan açılmadı.")
+    if not Path(kasa_yolu).is_file():
+        raise UpdateError("Güncelleme sonrası kasa açılamadı.")
+    yol = updates_dir() / "son-guncelleme.txt"
+    yol.write_text(f"verified:{surum}", encoding="utf-8")
 
 
 def son_sonuc(temizle: bool = True) -> str:
