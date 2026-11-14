@@ -1170,6 +1170,63 @@ def test_scan_has_known_total_two_percentages_and_phase_eta(pencere):
     finally:pencere.isci=None
 
 
+@pytest.mark.parametrize('downloaded', [False, True])
+def test_manual_scan_prepares_model_before_inventory(pencere, monkeypatch, tmp_path, downloaded):
+    from deepfind import coordinator, model_ui
+
+    scopes = []
+    prompts = []
+    root = str(tmp_path / 'Seçilen klasör')
+    readiness = {'hazir': False, 'kod': 'MODEL_MISSING', 'yardim': 'Model eksik'}
+
+    def scan(_con, _db, path, **kwargs):
+        scopes.append(path)
+        return {'found': 0, 'scope_complete': True, 'run_id': -1,
+                'result': 'complete', 'complete': True}
+
+    def download(_window, *, tarama, sebep):
+        assert tarama and sebep == readiness['yardim']
+        assert not scopes
+        prompts.append(sebep)
+        if downloaded:
+            readiness.update(hazir=True, kod=None, yardim='')
+        return downloaded
+
+    monkeypatch.setattr(coordinator, 'embedding_hazirlik', lambda stop: readiness.copy())
+    monkeypatch.setattr(coordinator, 'run_scan', scan)
+    monkeypatch.setattr(model_ui, 'indir_penceresi', download)
+    pencere._tara_baslat(roots=[root])
+    deadline = time.monotonic() + 5
+    while pencere.isci_thread is not None:
+        _app().processEvents()
+        time.sleep(0.01)
+        assert time.monotonic() < deadline
+    assert len(prompts) == 1
+    assert scopes == ([root, root] if downloaded else [])
+
+
+def test_partial_scan_shows_model_help_and_clears_running_status(pencere):
+    import datetime
+    import time
+    from types import SimpleNamespace
+
+    reason = 'Anlamsal arama modeli bulunamadı.'
+    stats = {'result': 'partial', 'reason_help': reason, 'phase_key': 'finalize',
+             'inventory_ready': True, 'documents_total': 5, 'documents_done': 0}
+    pencere.scan_started = datetime.datetime.now()
+    pencere._scan_elapsed = time.monotonic()
+    pencere.isci = SimpleNamespace(snapshot=lambda: stats)
+    try:
+        pencere._scan_clock_update()
+        assert 'Son kontroller sürüyor.' in pencere.scan_clock.text()
+        pencere._tara_bitti(stats)
+        assert reason in pencere.scan_progress_detail.text()
+        assert 'Son kontroller sürüyor.' not in pencere.scan_clock.text()
+        assert not pencere.scan_details_toggle.isChecked()
+    finally:
+        pencere.isci = None
+
+
 def test_inaccessible_inventory_is_labelled_as_partial(pencere):
     pencere._scan_progress({'inventory_ready':True,'inventory_complete':False,
         'documents_total':10,'documents_done':10,'found':10,'stage':'Son kontroller'})

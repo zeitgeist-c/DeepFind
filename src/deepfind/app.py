@@ -127,6 +127,7 @@ class TaramaIsci(QObject):
         self.kasa_yolu = kasa_yolu
         self._sifre = sifre
         self.kokler = kokler
+        self.check_readiness = False
         self._dur = threading.Event()
         self.paused = threading.Event()
         self._progress_lock = threading.Lock()
@@ -187,6 +188,12 @@ class TaramaIsci(QObject):
         con = None
         inventories = []
         try:
+            if self.check_readiness:
+                readiness = coordinator.embedding_hazirlik(self.stop_requested)
+                if not readiness['hazir']:
+                    self.bitti.emit(dict(result='blocked', reason_code=readiness['kod'],
+                                         reason_help=readiness['yardim']))
+                    return
             from .migrate import ensure_current
             con = vault.open_vault(self.kasa_yolu)
             try:
@@ -2744,7 +2751,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self.scope_path.setText(path)
 
     def _tara_baslat(self, checked=False, *, automatic=False, roots=None):
-        if self._locked or self.con is None or self._kaldir_thread is not None or self._haric_thread is not None:
+        if (self._locked or self._exiting or self.con is None
+                or getattr(self, '_scan_repair_open', False)
+                or self._kaldir_thread is not None or self._haric_thread is not None):
             return
         if self.isci_thread is not None:
             if not automatic:
@@ -2792,6 +2801,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         migrate.set_setting(self.con, "tarama_ele_alinan_gun", dt.date.today().isoformat())
         self.isci_thread = QThread(self)
         self.isci = TaramaIsci(self.kasa_yolu, self._sifre, kokler)
+        self.isci.check_readiness = True
+        self._scan_automatic = automatic
+        self._scan_blocker = None
         self.isci.moveToThread(self.isci_thread)
         self.isci_thread.started.connect(self.isci.kos)
         self.isci.ilerleme.connect(self._scan_progress)
@@ -2818,7 +2830,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         diagnostics.record("scan_started", "automatic" if automatic else "manual")
         self.tarama_bar.show()
         self.tarama_bar.setRange(0,0)
-        self.scan_progress_detail.setText(t('Dosya listesi oluşturuluyor…'))
+        self.scan_progress_detail.setText(t('Hazırlanıyor'))
         self.scan_phase_bar.hide()
         self.duraklat_btn.setText(t("Duraklat"))
         self.duraklat_btn.setEnabled(True)
@@ -2834,7 +2846,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             _kutu.setEnabled(False)
         if getattr(self, "tum_turler_btn", None) is not None:
             self.tum_turler_btn.setEnabled(False)
-        self.tarama_bilgi.setText(f"Tarama başladı • {len(kokler)} klasör")
+        self.tarama_bilgi.setText(t('Hazırlanıyor'))
         self.popup_scope.setText(f"{len(kokler)} kaynak • " + " | ".join(kokler))
         if not automatic:
             self._scan_show()
@@ -2846,9 +2858,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         except ValueError:
             return False
 
-    def _scan_clock_update(self):
+    def _scan_clock_update(self, *, finished=False):
         data = {}
-        if self.isci is not None:
+        if not finished and self.isci is not None:
             data = self.isci.snapshot()
             if data:
                 self._scan_progress(data)
@@ -2934,10 +2946,24 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         if self.con is None or self._locked:
             return
         self.scan_timer.stop()
-        self._scan_clock_update()
+        self._scan_clock_update(finished=True)
+        if st.get('result') == 'blocked':
+            self._scan_blocker = st
+            result = t("Tarama başlatılamadı.")
+            self._scan_progress(dict(st, stage=result))
+            self.tarama_bar.hide()
+            self.scan_phase_bar.hide()
+            self.tarama_bilgi.setText(result)
+            self.scan_progress_detail.setText(st['reason_help'])
+            self.durum.showMessage(st['reason_help'])
+            return
         result = {"cancelled": "Tarama iptal edildi", "complete": t("Tarama tamamlandı"),
                   "partial": t("Tarama kısmen tamamlandı")}.get(st.get("result"), "Tarama durdu")
         self._scan_progress(dict(st,stage=result))
+        reason = st.get('reason_help')
+        if reason:
+            details = self.scan_progress_detail.text()
+            self.scan_progress_detail.setText(f'{details}\n{reason}' if details else reason)
         self._scan_metrics_update(st)
         self.tarama_bilgi.setText(result)
         self.popup_status.setText(result)
@@ -2958,9 +2984,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
                                  f"Güncel/atlanan {st.get('skipped',0):,} • İşlem hatası {st.get('failed',0):,} • OCR hatası {st.get('ocr_failed',0):,}")
         self.retry_scan.setVisible(bool(st.get('pending') or st.get('failed') or st.get('ocr_failed')))
         self.scan_log.appendPlainText(result)
-        if st.get('reason_help'):
-            self.scan_log.appendPlainText(st['reason_help'])
-        if not st.get('done'):
+        if reason:
+            self.scan_log.appendPlainText(reason)
+        elif not st.get('done'):
             self.scan_log.appendPlainText(t("Yeni içerik işlenmedi. Dosyalar güncel olabilir veya bekleyen/erişilemeyen işler bulunabilir; yukarıdaki aşama ve hata kayıtlarını kontrol edin."))
         migrate.set_setting(self.con, "son_tarama", dt.datetime.now().isoformat(timespec="seconds"))
         if st.get("complete"):
@@ -2973,6 +2999,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         if self._locked:
             return
         self.scan_timer.stop()
+        self._scan_clock_update(finished=True)
         self.tarama_bar.hide()
         self.scan_phase_bar.hide()
         self.tarama_bilgi.setText(t("Tarama tamamlanamadı. Bugün otomatik tekrar denenmeyecek."))
@@ -3024,6 +3051,33 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.scan_timer.stop()
         if thread is not None:
             thread.deleteLater()
+        blocker = getattr(self, '_scan_blocker', None)
+        self._scan_blocker = None
+        if blocker and not self._scan_automatic and not self._exiting:
+            self._scan_readiness_prompt(blocker, list(self._scan_roots))
+
+    def _scan_readiness_prompt(self, blocker, roots):
+        code = blocker['reason_code']
+        if code == 'CANCELLED':
+            return
+        self._scan_repair_open = True
+        self.scan_dialog.hide()
+        try:
+            if code in ('MODEL_MISSING', 'MODEL_CORRUPT'):
+                from . import model_ui
+                ready = model_ui.indir_penceresi(self, tarama=True, sebep=blocker['reason_help'])
+            else:
+                prompt = QMessageBox(QMessageBox.Warning, t("Tarama"), blocker['reason_help'],
+                                     QMessageBox.Cancel, self)
+                settings = prompt.addButton(t("Ayarlar"), QMessageBox.ActionRole)
+                prompt.exec()
+                if prompt.clickedButton() == settings:
+                    self.nav.setCurrentRow(EKRAN_ADLARI.index("Ayarlar"))
+                ready = False
+        finally:
+            self._scan_repair_open = False
+        if ready:
+            self._tara_baslat(roots=roots)
 
     # -- canli izleme --
     def _izleme_baslat(self):

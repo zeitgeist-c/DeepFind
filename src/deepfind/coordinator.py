@@ -484,10 +484,10 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
 def _sebep_yardim(kod):
     """Kullanıcının ne yapabileceğini söyler; sabit sözcükler, kayıt-güvenli."""
     return {
-        'MODEL_MISSING': t("Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin; metin araması çalışmaya devam eder."),
+        'MODEL_MISSING': t("Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin."),
         'MODEL_CORRUPT': t("Model dosyası doğrulamadan geçemedi. Ayarlar → 'Anlamsal arama modelini indir' ile yeniden indirin."),
         'ENGINE_MISSING': t("Çalışma motoru bulunamadı. Ayarlar → çalışma motorunu değiştirip 'Motoru yeniden başlat'a basın."),
-        'ENGINE_START_ERROR': t("Vektör motoru açılamadı; klasik arama etkin. Ayarlar → 'Motoru yeniden başlat'ı deneyin."),
+        'ENGINE_START_ERROR': t("Vektör motoru açılamadı. Ayarlar → 'Motoru yeniden başlat'ı deneyin."),
         'ENGINE_TIMEOUT': t("Vektör motoru zaman aşımına uğradı. Sakin bir anda yeniden tarayın veya CPU motorunu seçin."),
         'CANCELLED': t("Hazırlık iptal edildi."),
     }.get(kod or '', '')

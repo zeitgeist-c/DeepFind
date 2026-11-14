@@ -358,6 +358,30 @@ def test_gercek_oturum_zaman_asimi_taramada_engine_timeout(tmp_path, monkeypatch
     assert sonuc["result"] == "partial"
 
 
+def test_successful_download_continues_scan_without_closing_manually(monkeypatch):
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QCheckBox
+    from deepfind import model_indir, model_ui
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(model_indir, 'gerekli_mi', lambda: True)
+    monkeypatch.setattr(model_indir, 'indir', lambda *a, **kw: 'dogrulanmis.gguf')
+
+    def start():
+        app.activeModalWidget().findChild(QCheckBox).setChecked(True)
+        _dugme(app, 'İndirmeyi başlat').click()
+
+    timeout = QTimer()
+    timeout.setSingleShot(True)
+    timeout.timeout.connect(lambda: app.activeModalWidget().close())
+    timeout.start(5000)
+    QTimer.singleShot(100, start)
+    try:
+        assert model_ui.indir_penceresi(None, tarama=True)
+    finally:
+        timeout.stop()
+
+
 def test_indir_penceresi_acilir(monkeypatch):
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     from PySide6.QtCore import QTimer

@@ -7,7 +7,7 @@ import shutil
 
 import pytest
 
-from deepfind import identity, migration, paths
+from deepfind import engine, identity, migration, paths
 
 BYTES = b"SQLite format 3\x00not-a-real-vault"
 
@@ -16,6 +16,15 @@ BYTES = b"SQLite format 3\x00not-a-real-vault"
 def sandbox(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     return tmp_path
+
+
+def test_model_and_vault_share_windows_user_data_root(sandbox, monkeypatch):
+    local = sandbox / "Kullanıcı Alanı"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.chdir(sandbox)
+    base = local / "DeepFind"
+    assert paths.vault_db() == base / "Data" / "deepfind.db"
+    assert engine.user_model_path() == base / "models" / engine.MODEL_DOSYA
 
 
 def _old_layout(root):

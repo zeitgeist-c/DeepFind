@@ -62,6 +62,10 @@ def vault_db() -> Path:
     return data_root() / "Data" / "deepfind.db"
 
 
+def model_dir() -> Path:
+    return data_root() / "models"
+
+
 def legacy_vault_db() -> Path:
     """The pre-rename vault filename, inside whichever folder is in use.
 

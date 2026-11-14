@@ -147,14 +147,14 @@ No fixed height is ever used: when the column shortens, a fixed box overflows
 and collides with the texts below. This component keeps the aspect ratio; the box never
 goes under its minimum measure, it takes the extra space itself."""
 
-    def __init__(self, parent=None, minimum=(180, 200), maximum_height=420):
+    def __init__(self, parent=None, minimum=(180, 0), maximum_height=420):
         super().__init__(parent)
         self.setObjectName("thumbBox")
         self.setAlignment(Qt.AlignCenter)
         self.setAccessibleName(t("Seçili evrak önizlemesi"))
         self.setMinimumSize(*minimum)
         self.setMaximumHeight(maximum_height)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         self._kaynak = None
 
     def gorsel_ata(self, pixmap):

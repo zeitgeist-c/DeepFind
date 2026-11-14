@@ -56,7 +56,7 @@ def shared_model_path():
 
 
 def user_model_path():
-    return Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData/Local'))) / 'DeepFind' / 'models' / MODEL_DOSYA
+    return paths.model_dir() / MODEL_DOSYA
 
 
 def status():

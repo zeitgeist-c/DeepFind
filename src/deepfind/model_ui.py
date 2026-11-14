@@ -25,7 +25,7 @@ def install(window, layout):
     layout.addWidget(window.model_backend)
     window.model_retry = QPushButton(t('Motoru yeniden başlat'))
     layout.addWidget(window.model_retry)
-    detail = label('Model kurulumla gelir. İnternet veya API anahtarı olmadan arar. '
+    detail = label(t("Model, çevrimdışı aramanın çalışması için gerekir; bir kez indirilir.") + ' '
                    'CPU, Vulkan ve CUDA motorları kurulumun içindedir.', 'ikincil')
     detail.setWordWrap(True)
     layout.addWidget(detail)
@@ -98,7 +98,7 @@ class _IndirmeIsci(QObject):
             self.hata.emit(f'{t("İndirme tamamlanamadı.")} {exc}')
 
 
-def indir_penceresi(ebeveyn):
+def indir_penceresi(ebeveyn, *, tarama=False, sebep=""):
     """Model indirme penceresi: amac, boyut, lisans, ilerleme, iptal, yeniden deneme."""
     from . import model_indir as _mi
     from .theme import app_icon
@@ -107,10 +107,18 @@ def indir_penceresi(ebeveyn):
     pencere.setWindowIcon(app_icon())
     pencere.setMinimumWidth(460)
     k = QVBoxLayout(pencere)
+    if sebep:
+        bilgi = label(sebep, "ikincil")
+        bilgi.setWordWrap(True)
+        k.addWidget(bilgi)
     k.addWidget(label(t("Model, çevrimdışı aramanın çalışması için gerekir; bir kez indirilir."), "ikincil"))
     lisans = QCheckBox(t("Model lisansını (Apache-2.0) kabul ediyorum"))
     k.addWidget(lisans)
-    durum = QLabel(t("Model hazır.") if not _mi.gerekli_mi() else "")
+    try:
+        hazir = not _mi.gerekli_mi()
+    except OSError:
+        hazir = False
+    durum = QLabel(t("Model hazır.") if hazir else "")
     durum.setWordWrap(True)
     k.addWidget(durum)
     bar = QProgressBar()
@@ -121,8 +129,12 @@ def indir_penceresi(ebeveyn):
     iptal = QPushButton(t("İptal"))
     yinele = QPushButton(t("Yeniden dene"))
     kapat = QPushButton(t("Kapat"))
+    devam = QPushButton(t("Taramayı başlat"))
+    devam.setVisible(tarama and hazir)
+    devam.clicked.connect(pencere.accept)
     for dugme in (baslat, iptal, yinele, kapat):
         k.addWidget(dugme)
+    k.addWidget(devam)
     yinele.hide()
     isci = _IndirmeIsci()
     kanal = QThread(pencere)
@@ -132,10 +144,14 @@ def indir_penceresi(ebeveyn):
                                          bar.setValue(int(d * 100 / to)) if to else bar.setRange(0, 0),
                                          durum.setText(t("Model indiriliyor…"))))
     def _tamam(yol):
+        nonlocal hazir
+        hazir = True
         kanal.quit()
         bar.setValue(100)
         durum.setText(t("Model indirildi ve doğrulandı."))
         baslat.hide(); iptal.hide(); yinele.hide()
+        if tarama and not isci._dur.is_set():
+            kanal.finished.connect(pencere.accept)
     def _bozuk(mesaj):
         kanal.quit()
         durum.setText(mesaj)
@@ -185,15 +201,11 @@ def indir_penceresi(ebeveyn):
             pencere._kapatma_saati = None
         kanal.quit()
         kanal.wait(3000)
-        if getattr(pencere, "_kabulle_kapat", True):
-            pencere.accept()
-        else:
-            QDialog.reject(pencere)
+        QDialog.reject(pencere)
 
-    def _guvenli_kapat(kabul=True):
+    def _guvenli_kapat():
         """Kapat/Esc/çarpı: iptal ister, kapanış işçi bitince GUI'de olur."""
         if kanal.isRunning():
-            pencere._kabulle_kapat = kabul
             if getattr(pencere, "_kapaniyor", False):
                 return
             isci.iptal()
@@ -209,15 +221,12 @@ def indir_penceresi(ebeveyn):
         else:
             kanal.quit()
             kanal.wait(3000)
-            if kabul:
-                pencere.accept()
-            else:
-                QDialog.reject(pencere)
+            QDialog.reject(pencere)
 
     def _kapatma_olayi(olay):
         if kanal.isRunning():
             olay.ignore()
-            _guvenli_kapat(kabul=True)
+            _guvenli_kapat()
         else:
             kanal.quit()
             kanal.wait(3000)
@@ -226,13 +235,13 @@ def indir_penceresi(ebeveyn):
     baslat.clicked.connect(_baslat)
     iptal.clicked.connect(lambda: isci.iptal())
     yinele.clicked.connect(_yinele)
-    kapat.clicked.connect(lambda: _guvenli_kapat(kabul=True))
-    pencere.reject = lambda: _guvenli_kapat(kabul=False)
+    kapat.clicked.connect(_guvenli_kapat)
+    pencere.reject = _guvenli_kapat
     pencere.closeEvent = _kapatma_olayi
-    if not _mi.gerekli_mi():
+    if hazir:
         baslat.hide(); iptal.hide()
     else:
         baslat.setEnabled(True)
-    lisans.toggled.connect(lambda acik: baslat.setEnabled(acik) if _mi.gerekli_mi() else None)
+    lisans.toggled.connect(baslat.setEnabled)
     baslat.setEnabled(False)
-    pencere.exec()
+    return pencere.exec() == QDialog.Accepted and hazir

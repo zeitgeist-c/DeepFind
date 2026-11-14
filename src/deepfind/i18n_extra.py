@@ -125,14 +125,15 @@ EN = {
         "Admin approval was cancelled; the old version is running. To retry, go to Settings → Updates.",
     "Güncelleme zaman aşımına uğradı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin.":
         "Update timed out; the old version is kept. Retry from Settings → Updates.",
-    "Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin; metin araması çalışmaya devam eder.":
-        "Semantic search model not found. Download it from Settings → 'Download semantic search model'; text search keeps working.",
+    "Tarama başlatılamadı.": "Scan could not start.",
+    "Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin.":
+        "Semantic search model not found. Download it from Settings → 'Download semantic search model'.",
     "Model dosyası doğrulamadan geçemedi. Ayarlar → 'Anlamsal arama modelini indir' ile yeniden indirin.":
         "Model file failed verification. Download it again from Settings → 'Download semantic search model'.",
     "Çalışma motoru bulunamadı. Ayarlar → çalışma motorunu değiştirip 'Motoru yeniden başlat'a basın.":
         "Compute engine not found. In Settings, change the engine, then press 'Restart engine'.",
-    "Vektör motoru açılamadı; klasik arama etkin. Ayarlar → 'Motoru yeniden başlat'ı deneyin.":
-        "Vector engine failed to start; classic search is active. Try Settings → 'Restart engine'.",
+    "Vektör motoru açılamadı. Ayarlar → 'Motoru yeniden başlat'ı deneyin.":
+        "Vector engine failed to start. Try Settings → 'Restart engine'.",
     "Vektör motoru zaman aşımına uğradı. Sakin bir anda yeniden tarayın veya CPU motorunu seçin.":
         "Vector engine timed out. Rescan at a quiet moment or select the CPU engine.",
     "Hazırlık iptal edildi.":
@@ -278,14 +279,15 @@ DE = {
         "Admin-Bestätigung abgebrochen; die alte Version läuft. Zum Wiederholen Einstellungen → Updates.",
     "Güncelleme zaman aşımına uğradı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin.":
         "Update abgelaufen; die alte Version bleibt erhalten. Erneut versuchen unter Einstellungen → Updates.",
-    "Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin; metin araması çalışmaya devam eder.":
-        "Modell für semantische Suche nicht gefunden. Unter Einstellungen → „Modell für semantische Suche laden“ herunterladen; Textsuche läuft weiter.",
+    "Tarama başlatılamadı.": "Scan konnte nicht gestartet werden.",
+    "Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin.":
+        "Modell für semantische Suche nicht gefunden. Unter Einstellungen → „Modell für semantische Suche laden“ herunterladen.",
     "Model dosyası doğrulamadan geçemedi. Ayarlar → 'Anlamsal arama modelini indir' ile yeniden indirin.":
         "Modelldatei hat die Prüfung nicht bestanden. Unter Einstellungen → „Modell für semantische Suche laden“ erneut laden.",
     "Çalışma motoru bulunamadı. Ayarlar → çalışma motorunu değiştirip 'Motoru yeniden başlat'a basın.":
         "Compute-Engine nicht gefunden. Unter Einstellungen die Engine wechseln und „Engine neu starten“ drücken.",
-    "Vektör motoru açılamadı; klasik arama etkin. Ayarlar → 'Motoru yeniden başlat'ı deneyin.":
-        "Vektor-Engine startet nicht; klassische Suche ist aktiv. Einstellungen → „Engine neu starten“ versuchen.",
+    "Vektör motoru açılamadı. Ayarlar → 'Motoru yeniden başlat'ı deneyin.":
+        "Vektor-Engine startet nicht. Einstellungen → „Engine neu starten“ versuchen.",
     "Vektör motoru zaman aşımına uğradı. Sakin bir anda yeniden tarayın veya CPU motorunu seçin.":
         "Vektor-Engine abgelaufen. In einer ruhigen Minute erneut scannen oder CPU-Engine wählen.",
     "Hazırlık iptal edildi.":
