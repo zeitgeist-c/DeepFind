@@ -160,7 +160,10 @@ def cmd_ara(args) -> int:
     con = _open_db(args)
     kw = {"year": args.yil, "ext": args.tur} if (args.yil or args.tur) else {}
     from deepfind import embed
-    embed.isit_oturumu()
+    try:
+        embed.isit_oturumu()
+    except (InterruptedError, TimeoutError):
+        pass
     try:
         out = rank.search_semantic(con, args.sorgu, limit=int(args.limit), **kw)
     finally:

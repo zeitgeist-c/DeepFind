@@ -123,12 +123,14 @@ def test_installer_handoff_uses_managed_path(tmp_path,monkeypatch):
     calls=[]
     monkeypatch.setattr(installer,'windows_file_version',lambda _:(0,10,0))
     monkeypatch.setattr(installer.subprocess,'Popen',lambda *a,**k:calls.append((a,k)))
-    script=installer.spawn_installer(123,setup,current,str(tmp_path/'vault with spaces.db'))
+    recovery=updates/'DeepFind-0.9.0.exe'; recovery.write_bytes(b'synthetic')
+    script=installer.spawn_installer(123,setup,current,str(tmp_path/'vault with spaces.db'),
+                                     recovery=(recovery, 'a' * 64))
     assert script.parent==updates
     text=script.read_text(encoding='utf-8-sig')
     assert 'PID_ESKI = 123' in text and '.Path' in text
     assert '$kur.ExitCode -ne 0' in text
-    assert 'robocopy' in text and 'rollback-0.10.0' in text
+    assert 'Get-FileHash -LiteralPath $GERI' in text and 'robocopy' not in text
     assert 'verified:' in text and 'restored' in text
     assert '/DIR=' in text and str(current.parent) in text
     assert calls and '-File' in calls[0][0][0]
@@ -184,3 +186,22 @@ def test_closed_window_cannot_start_model(monkeypatch):
     def unexpected(*a,**k):raise AssertionError('native process must not start')
     monkeypatch.setattr(engine,'Oturum',unexpected)
     assert engine.isit_oturumu(cancel=lambda:True) is None
+
+
+def test_motor_seciminde_zaman_asimi_korunur(tmp_path, monkeypatch):
+    kok = tmp_path / "motorlar"
+    for b in ("cpu", "vulkan", "cuda"):
+        (kok / b).mkdir(parents=True)
+        (kok / b / "llama-server.exe").write_bytes(b"x")
+    monkeypatch.setattr(engine, "asset_root", lambda: kok)
+    monkeypatch.setattr(engine, "cuda_root", lambda: kok / "cuda")
+    gorulen = []
+    def patlayan_start(self, exe, backend, zaman_asimi=90):
+        gorulen.append(zaman_asimi)
+        raise TimeoutError("Model yükleme zaman aşımı")
+    monkeypatch.setattr(engine.Oturum, "_start", patlayan_start)
+    with pytest.raises(RuntimeError, match="zaman aşımı"):
+        engine.Oturum(str(tmp_path / "m.gguf"), backend="auto", zaman_asimi=30)
+    assert len(gorulen) == 3
+    assert all(z <= 30 for z in gorulen)
+    assert gorulen == sorted(gorulen, reverse=True)

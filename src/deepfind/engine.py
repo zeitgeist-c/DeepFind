@@ -26,6 +26,7 @@ MODEL_DOSYA = 'embeddinggemma-2-Q8_0.gguf'
 _LOCK = threading.RLock()
 _SESSION = None
 _STATUS = {'state': 'Bekliyor', 'backend': '', 'error': ''}
+_STATUS_CODE = ''
 _BACKEND = 'auto'
 _START_LOCK = threading.Lock()
 _GENERATION = 0
@@ -62,6 +63,20 @@ def status():
     return dict(_STATUS)
 
 
+def status_code():
+    """Machine-readable readiness outcome: '' when ready/unknown.
+
+    Fixed vocabulary (never paths or secrets): MODEL_MISSING, MODEL_CORRUPT,
+    ENGINE_MISSING, ENGINE_START_ERROR, ENGINE_TIMEOUT, CANCELLED.
+    """
+    return _STATUS_CODE
+
+
+def _kod_koy(kod):
+    global _STATUS_CODE
+    _STATUS_CODE = kod
+
+
 def cuda_root():
     """CUDA motor dizini: once paket ici, yoksa eski kullanici dizini."""
     paketlenmis = asset_root() / 'cuda'
@@ -96,6 +111,7 @@ def close():
         _GENERATION += 1
         old, _SESSION = _SESSION, None
         _STATUS.update(state=t('Bekliyor'), backend='', device='', error='')
+        _kod_koy('')
     if old is not None: old.close()
 
 
@@ -114,7 +130,7 @@ def hazir_oturum(yol=None):
     return None
 
 
-def isit_oturumu(yol=None, cancel=None):
+def isit_oturumu(yol=None, cancel=None, zaman_asimi=90):
     global _SESSION
     generation = _GENERATION
     with _START_LOCK:
@@ -127,24 +143,43 @@ def isit_oturumu(yol=None, cancel=None):
             _SESSION = None
         if not Path(yol or _varsayilan_model_yolu()).is_file():
             _STATUS.update(state=t('Model eksik'), error=t('Kurulumu onarın; model dosyası bulunamadı.'))
+            _kod_koy('MODEL_MISSING')
             return None
         _STATUS.update(state=t('Model yükleniyor'), error='')
+        _kod_koy('')
         try:
             if yol is None:
                 from .model_indir import gerekli_mi
                 if gerekli_mi():
+                    _kod_koy('MODEL_CORRUPT')
                     raise ValueError('Model dosyasının SHA-256 doğrulaması başarısız; kurulumu onarın.')
-            new = Oturum(yol, backend=_BACKEND, cancel=cancelled)
+            new = Oturum(yol, backend=_BACKEND, cancel=cancelled, zaman_asimi=zaman_asimi)
             with _LOCK:
                 if cancelled():
                     new.close()
+                    _kod_koy('CANCELLED')
                     return None
                 _SESSION = new
+                _kod_koy('')
                 _STATUS.update(state=t('Hazır'), backend=new.backend, device=new.device, error=new.fallback)
                 return new
+        except InterruptedError as exc:
+            if generation == _GENERATION:
+                _kod_koy('CANCELLED')
+                _STATUS.update(state=t('Klasik arama etkin'), error=str(exc))
+            return None
         except Exception as exc:
             if generation == _GENERATION:
-                _STATUS.update(state=t('Klasik arama etkin'), error=str(exc))
+                ileti = str(exc)
+                if 'zaman aşımı' in ileti or 'timed out' in ileti.lower():
+                    _kod_koy('ENGINE_TIMEOUT')
+                elif isinstance(exc, ValueError) and 'SHA-256' in ileti:
+                    _kod_koy('MODEL_CORRUPT')
+                elif 'motor kurulu değil' in ileti or 'bulunamadı' in ileti:
+                    _kod_koy('ENGINE_MISSING')
+                else:
+                    _kod_koy('ENGINE_START_ERROR')
+                _STATUS.update(state=t('Klasik arama etkin'), error=ileti)
             return None
 
 
@@ -188,12 +223,13 @@ def _own_process(process):
 
 
 class Oturum:
-    def __init__(self, model_yolu=None, *, backend='auto', cancel=None):
+    def __init__(self, model_yolu=None, *, backend='auto', cancel=None, zaman_asimi=90):
         self.model = str(Path(model_yolu or _varsayilan_model_yolu()).resolve())
         self._kilit = threading.RLock()
         self.proc = None
         self.fallback = ''
         self.cancel = cancel
+        self._son = time.monotonic() + max(zaman_asimi, 1)
         errors = []
         for choice in (['cuda', 'vulkan', 'cpu'] if backend == 'auto' else [backend]):
             if cancel and cancel(): raise InterruptedError('Model yüklemesi iptal edildi')
@@ -203,15 +239,20 @@ class Oturum:
                 if backend != 'auto': errors.append(f'{choice}: motor kurulu değil')
                 continue
             try:
-                self._start(exe, choice)
+                kalan = self._son - time.monotonic()
+                if kalan <= 0:
+                    raise TimeoutError('Model yükleme zaman aşımı')
+                self._start(exe, choice, zaman_asimi=kalan)
                 self.backend, self.fallback = choice, '; '.join(errors)
                 return
             except Exception as exc:
+                # Zaman aşımı dahil her _start hatası birleştirilir; bilgi metinde
+                # üst katmana taşınır, sonraki motora geçiş sürer.
                 self.close()
                 errors.append(f'{choice}: {exc}')
         raise RuntimeError('; '.join(errors) or 'Embedding motoru bulunamadı')
 
-    def _start(self, exe, backend):
+    def _start(self, exe, backend, zaman_asimi=90):
         flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
         child_env = os.environ.copy()
         common = asset_root() / 'common'
@@ -238,7 +279,7 @@ class Oturum:
         self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL, creationflags=flags, cwd=exe.parent, env=child_env)
         self._job = _own_process(self.proc)
-        deadline = time.monotonic() + 90
+        deadline = time.monotonic() + max(zaman_asimi, 1)
         while time.monotonic() < deadline:
             if self.cancel and self.cancel(): raise InterruptedError('Model yüklemesi iptal edildi')
             if not self.alive(): raise RuntimeError('Model süreci açılamadı')

@@ -111,6 +111,50 @@ EN = {
         "No file type selected. Tick at least one type on the Scan page to start scanning.",
     "Pencerenin açık, koyu veya sistem görünümü. Üst çubuktaki seçimle aynıdır.":
         "Light, dark or system look of the window. Same as the top-bar choice.",
+    "Güncelleme doğrulandı: DeepFind {__version__}.":
+        "Update verified: DeepFind {__version__}.",
+    "Güncelleme doğrulandı: DeepFind {surum}.":
+        "Update verified: DeepFind {surum}.",
+    "Güncelleme tamamlanamadı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin.":
+        "Update failed; the old version is kept. Retry from Settings → Updates.",
+    "Önceki sürüm yedeklenemediği için kurulum başlamadı.":
+        "Setup did not start because the previous version could not be backed up.",
+    "Önceki sürüm geri yüklenemedi. Doğrulanmış geri dönüş paketi saklandı.":
+        "The previous version could not be restored. A verified fallback package was kept.",
+    "Yönetici onayı iptal edildi; eski sürüm çalışıyor. Yeniden denemek için Ayarlar → Güncellemeler.":
+        "Admin approval was cancelled; the old version is running. To retry, go to Settings → Updates.",
+    "Güncelleme zaman aşımına uğradı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin.":
+        "Update timed out; the old version is kept. Retry from Settings → Updates.",
+    "Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin; metin araması çalışmaya devam eder.":
+        "Semantic search model not found. Download it from Settings → 'Download semantic search model'; text search keeps working.",
+    "Model dosyası doğrulamadan geçemedi. Ayarlar → 'Anlamsal arama modelini indir' ile yeniden indirin.":
+        "Model file failed verification. Download it again from Settings → 'Download semantic search model'.",
+    "Çalışma motoru bulunamadı. Ayarlar → çalışma motorunu değiştirip 'Motoru yeniden başlat'a basın.":
+        "Compute engine not found. In Settings, change the engine, then press 'Restart engine'.",
+    "Vektör motoru açılamadı; klasik arama etkin. Ayarlar → 'Motoru yeniden başlat'ı deneyin.":
+        "Vector engine failed to start; classic search is active. Try Settings → 'Restart engine'.",
+    "Vektör motoru zaman aşımına uğradı. Sakin bir anda yeniden tarayın veya CPU motorunu seçin.":
+        "Vector engine timed out. Rescan at a quiet moment or select the CPU engine.",
+    "Hazırlık iptal edildi.":
+        "Preparation cancelled.",
+    "Model eksik; anlamsal dizin atlandı":
+        "Model missing; semantic index skipped",
+    "Model doğrulanamadı; anlamsal dizin atlandı":
+        "Model not verified; semantic index skipped",
+    "Çalışma motoru eksik; anlamsal dizin atlandı":
+        "Compute engine missing; semantic index skipped",
+    "Vektör motoru açılamadı; anlamsal dizin atlandı":
+        "Vector engine failed to start; semantic index skipped",
+    "Vektör motoru zaman aşımı; anlamsal dizin atlandı":
+        "Vector engine timeout; semantic index skipped",
+    "Hazırlık iptal edildi":
+        "Preparation cancelled",
+    "İndirme durduruluyor…":
+        "Stopping download…",
+    "Bu yayın kurulu programı güncelleyemez; tam kurulum bekleniyor.":
+        "This release cannot update the installed program; waiting for a full setup.",
+    "Önceki sürümün kurucusu doğrulanamadı; güncelleme başlatılmadı.":
+        "The previous version installer could not be verified; update not started.",
 }
 
 DE = {
@@ -220,6 +264,50 @@ DE = {
         "Kein Dateityp ausgewählt. Zum Start mindestens einen Typ auf der Scan-Seite anhaken.",
     "Pencerenin açık, koyu veya sistem görünümü. Üst çubuktaki seçimle aynıdır.":
         "Helles, dunkles oder System-Aussehen des Fensters. Wie die Auswahl in der oberen Leiste.",
+    "Güncelleme doğrulandı: DeepFind {__version__}.":
+        "Update verifiziert: DeepFind {__version__}.",
+    "Güncelleme doğrulandı: DeepFind {surum}.":
+        "Update verifiziert: DeepFind {surum}.",
+    "Güncelleme tamamlanamadı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin.":
+        "Update fehlgeschlagen; die alte Version bleibt erhalten. Erneut versuchen unter Einstellungen → Updates.",
+    "Önceki sürüm yedeklenemediği için kurulum başlamadı.":
+        "Setup nicht gestartet, da die Vorgängerversion nicht gesichert werden konnte.",
+    "Önceki sürüm geri yüklenemedi. Doğrulanmış geri dönüş paketi saklandı.":
+        "Die Vorgängerversion konnte nicht wiederhergestellt werden. Ein geprüftes Fallback-Paket wurde behalten.",
+    "Yönetici onayı iptal edildi; eski sürüm çalışıyor. Yeniden denemek için Ayarlar → Güncellemeler.":
+        "Admin-Bestätigung abgebrochen; die alte Version läuft. Zum Wiederholen Einstellungen → Updates.",
+    "Güncelleme zaman aşımına uğradı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin.":
+        "Update abgelaufen; die alte Version bleibt erhalten. Erneut versuchen unter Einstellungen → Updates.",
+    "Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin; metin araması çalışmaya devam eder.":
+        "Modell für semantische Suche nicht gefunden. Unter Einstellungen → „Modell für semantische Suche laden“ herunterladen; Textsuche läuft weiter.",
+    "Model dosyası doğrulamadan geçemedi. Ayarlar → 'Anlamsal arama modelini indir' ile yeniden indirin.":
+        "Modelldatei hat die Prüfung nicht bestanden. Unter Einstellungen → „Modell für semantische Suche laden“ erneut laden.",
+    "Çalışma motoru bulunamadı. Ayarlar → çalışma motorunu değiştirip 'Motoru yeniden başlat'a basın.":
+        "Compute-Engine nicht gefunden. Unter Einstellungen die Engine wechseln und „Engine neu starten“ drücken.",
+    "Vektör motoru açılamadı; klasik arama etkin. Ayarlar → 'Motoru yeniden başlat'ı deneyin.":
+        "Vektor-Engine startet nicht; klassische Suche ist aktiv. Einstellungen → „Engine neu starten“ versuchen.",
+    "Vektör motoru zaman aşımına uğradı. Sakin bir anda yeniden tarayın veya CPU motorunu seçin.":
+        "Vektor-Engine abgelaufen. In einer ruhigen Minute erneut scannen oder CPU-Engine wählen.",
+    "Hazırlık iptal edildi.":
+        "Vorbereitung abgebrochen.",
+    "Model eksik; anlamsal dizin atlandı":
+        "Modell fehlt; semantischer Index übersprungen",
+    "Model doğrulanamadı; anlamsal dizin atlandı":
+        "Modell nicht geprüft; semantischer Index übersprungen",
+    "Çalışma motoru eksik; anlamsal dizin atlandı":
+        "Compute-Engine fehlt; semantischer Index übersprungen",
+    "Vektör motoru açılamadı; anlamsal dizin atlandı":
+        "Vektor-Engine startet nicht; semantischer Index übersprungen",
+    "Vektör motoru zaman aşımı; anlamsal dizin atlandı":
+        "Vektor-Engine abgelaufen; semantischer Index übersprungen",
+    "Hazırlık iptal edildi":
+        "Vorbereitung abgebrochen",
+    "İndirme durduruluyor…":
+        "Download wird gestoppt…",
+    "Bu yayın kurulu programı güncelleyemez; tam kurulum bekleniyor.":
+        "Diese Version kann das installierte Programm nicht aktualisieren; Vollinstallation wird erwartet.",
+    "Önceki sürümün kurucusu doğrulanamadı; güncelleme başlatılmadı.":
+        "Das Installationsprogramm der Vorgängerversion konnte nicht geprüft werden; Update nicht gestartet.",
 }
 
 ES = {

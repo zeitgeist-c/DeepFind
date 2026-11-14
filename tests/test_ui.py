@@ -934,6 +934,89 @@ def test_haric_ve_kok_mutasyonlari_scan_kilidini_sayar(tmp_path):
     con.close()
 
 
+def _hata_kasasi(tmp_path):
+    from deepfind import vault, schema
+    from deepfind.migrate import ensure_current
+    db = str(tmp_path / "hata-k.db")
+    kok = str(tmp_path / "arsiv")
+    os.makedirs(kok, exist_ok=True)
+    con = vault.open_vault(db, PW)
+    schema.ensure_schema(con)
+    ensure_current(con)
+    fid = con.execute("INSERT INTO files(path,name,ext) VALUES (?,?,?)",
+                      (kok + "\\a.pdf", "a.pdf", ".pdf")).lastrowid
+    kendi = con.execute("INSERT INTO scan_runs(root,started_at,result) VALUES (?,?,NULL)",
+                        (kok, 1)).lastrowid
+    yabanci = con.execute("INSERT INTO scan_runs(root,started_at,result) VALUES (?,?,NULL)",
+                          ("C:\\baska", 1)).lastrowid
+    con.execute("INSERT INTO scan_manifest VALUES (?,?,?,?)", (kendi, fid, 2, 3))
+    con.execute("INSERT INTO scan_manifest VALUES (?,?,?,?)", (yabanci, fid, 4, 5))
+    con.commit()
+    con.close()
+    return db, kok, kendi, yabanci
+
+
+def test_isci_hata_kendi_kayitlarini_kapatir_yabanciya_dokunmaz(tmp_path, monkeypatch):
+    """İşçi hatasında: kilit altında yalnız kendi run_id kapanır (error), yabancı açık kalır."""
+    from deepfind.app import TaramaIsci
+    db, kok, kendi, yabanci = _hata_kasasi(tmp_path)
+    def sahte_run_scan(con_, kasa, kok_, **kw):
+        if kw.get("inventory_only"):
+            return {"run_id": kendi, "found": 1, "scope_complete": True}
+        raise RuntimeError("synthetic")
+    monkeypatch.setattr(coordinator, "run_scan", sahte_run_scan)
+    isci = TaramaIsci(db, PW, [kok])
+    hatalar, biten = [], []
+    isci.hata.connect(hatalar.append)
+    isci.bitti.connect(lambda d: biten.append(d))
+    isci.kos()
+    assert hatalar == ["RuntimeError: synthetic"] and not biten
+    con = vault.open_vault(db, PW)
+    try:
+        satir = con.execute("SELECT result, error_code FROM scan_runs WHERE run_id=?", (kendi,)).fetchone()
+        assert satir == ("error", "WORKER_ERROR")
+        assert con.execute("SELECT count(*) FROM scan_manifest WHERE run_id=?", (kendi,)).fetchone()[0] == 0
+        assert con.execute("SELECT finished_at FROM scan_runs WHERE run_id=?", (yabanci,)).fetchone()[0] is None
+        assert con.execute("SELECT count(*) FROM scan_manifest WHERE run_id=?", (yabanci,)).fetchone()[0] == 1
+    finally:
+        con.close()
+
+
+def test_isci_hata_kilit_mesgulse_temizligi_erteler(tmp_path, monkeypatch):
+    """Kilit başkasındayken işçi hatası: temizlik ertelenir, kayıtlar açık kalır."""
+    from deepfind.app import TaramaIsci
+    db, kok, kendi, yabanci = _hata_kasasi(tmp_path)
+    def sahte_run_scan(con_, kasa, kok_, **kw):
+        raise RuntimeError("synthetic")
+    monkeypatch.setattr(coordinator, "run_scan", sahte_run_scan)
+    isci = TaramaIsci(db, PW, [kok])
+    hatalar = []
+    isci.hata.connect(hatalar.append)
+    with coordinator.ScanLock(db):
+        isci.kos()
+    assert hatalar == ["AlreadyRunning: baska bir tarama aktif"]
+    con = vault.open_vault(db, PW)
+    try:
+        assert con.execute("SELECT finished_at FROM scan_runs WHERE run_id=?", (kendi,)).fetchone()[0] is None
+        assert con.execute("SELECT finished_at FROM scan_runs WHERE run_id=?", (yabanci,)).fetchone()[0] is None
+    finally:
+        con.close()
+
+
+def test_tara_hata_veritabanina_dokunmaz(pencere, monkeypatch):
+    """Arayüz hata yolu yalnız bilgi verir; açık kayıtları kapatma işçinindir."""
+    from PySide6.QtWidgets import QMessageBox
+    uyarilar = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: uyarilar.append(a[-1]))
+    con = pencere.con
+    con.execute("INSERT INTO scan_runs(root,started_at,result) VALUES (?,?,NULL)", ("C:\\yabanci", 1))
+    con.commit()
+    pencere._scan_roots = ["C:\\yabanci"]
+    pencere._tara_hata("synthetic-failure")
+    assert uyarilar == ["synthetic-failure"]
+    assert con.execute("SELECT count(*) FROM scan_runs WHERE finished_at IS NULL").fetchone()[0] == 1
+
+
 def test_kurulum_tema_ve_toplu_klasor_islemleri(tmp_path):
     from deepfind.wizard import Sihirbaz
     from PySide6.QtCore import QCoreApplication, QEvent

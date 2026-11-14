@@ -184,47 +184,65 @@ class TaramaIsci(QObject):
         self._dur.set()
 
     def kos(self):
+        con = None
+        inventories = []
         try:
             from .migrate import ensure_current
             con = vault.open_vault(self.kasa_yolu)
-            inventories = []
             try:
                 ensure_current(con)
                 toplam = {}
                 all_complete = True
                 with coordinator.ScanLock(self.kasa_yolu):
-                    inventory_totals = {}
-                    for kok in self.kokler:
-                        if self._dur.is_set(): break
-                        st = coordinator.run_scan(con,self.kasa_yolu,kok,stop=self.stop_requested,
-                            guarded=True,inventory_only=True,fresh_inventory=True,lock_held=True,
-                            progress=lambda data:self.report_progress(data,inventory_totals))
-                        inventories.append((kok,st))
-                        inventory_totals['found'] = inventory_totals.get('found',0)+st['found']
-                    if not self._dur.is_set():
-                        self._document_total = sum(st['found'] for _,st in inventories)
-                        self._inventory_complete = all(st['scope_complete'] for _,st in inventories)
-                        for kok, inventory in inventories:
+                    try:
+                        inventory_totals = {}
+                        for kok in self.kokler:
                             if self._dur.is_set(): break
                             st = coordinator.run_scan(con,self.kasa_yolu,kok,stop=self.stop_requested,
-                                guarded=True,prepared=inventory,lock_held=True,
-                                progress=lambda data:self.report_progress(data,toplam))
-                            all_complete = all_complete and bool(st.get('complete'))
-                            for key in ('found','done','changed','unstable','failed','missing','ocr_done',
-                                        'ocr_deferred','ocr_failed','embed_done','hashed','skipped','pending','documents_done'):
-                                toplam[key] = toplam.get(key,0)+st.get(key,0)
-                            toplam['result'] = st.get('result','')
-                    else:
-                        toplam.update(inventory_totals)
-                    toplam['documents_total'] = self._document_total or 0
-                    toplam['inventory_ready'] = self._document_total is not None
-                    toplam['inventory_complete'] = self._inventory_complete
-                    toplam["complete"] = all_complete and not self._dur.is_set()
-                    if not toplam["complete"] and toplam.get("result") == "complete":
-                        toplam["result"] = "partial"
-                    if self._dur.is_set():
-                        toplam["result"] = "cancelled"
-                diagnostics.record("scan_finished", toplam.get("result", "unknown"))
+                                guarded=True,inventory_only=True,fresh_inventory=True,lock_held=True,
+                                progress=lambda data:self.report_progress(data,inventory_totals))
+                            inventories.append((kok,st))
+                            inventory_totals['found'] = inventory_totals.get('found',0)+st['found']
+                        if not self._dur.is_set():
+                            self._document_total = sum(st['found'] for _,st in inventories)
+                            self._inventory_complete = all(st['scope_complete'] for _,st in inventories)
+                            for kok, inventory in inventories:
+                                if self._dur.is_set(): break
+                                st = coordinator.run_scan(con,self.kasa_yolu,kok,stop=self.stop_requested,
+                                    guarded=True,prepared=inventory,lock_held=True,
+                                    progress=lambda data:self.report_progress(data,toplam))
+                                all_complete = all_complete and bool(st.get('complete'))
+                                for key in ('found','done','changed','unstable','failed','missing','ocr_done',
+                                            'ocr_deferred','ocr_failed','embed_done','hashed','skipped','pending','documents_done'):
+                                    toplam[key] = toplam.get(key,0)+st.get(key,0)
+                                toplam['result'] = st.get('result','')
+                                for rk in ('reason_code','reason_stage','reason_help'):
+                                    if st.get(rk) and not toplam.get(rk):
+                                        toplam[rk] = st[rk]
+                        else:
+                            toplam.update(inventory_totals)
+                        toplam['documents_total'] = self._document_total or 0
+                        toplam['inventory_ready'] = self._document_total is not None
+                        toplam['inventory_complete'] = self._inventory_complete
+                        toplam["complete"] = all_complete and not self._dur.is_set()
+                        if not toplam["complete"] and toplam.get("result") == "complete":
+                            toplam["result"] = "partial"
+                        if self._dur.is_set():
+                            toplam["result"] = "cancelled"
+                    except Exception:
+                        # Hata temizliği kilit altında, bağlantı açıkken, yalnız bu işçinin run_id'leriyle.
+                        try:
+                            for _, inventory in inventories:
+                                rid = inventory['run_id']
+                                con.execute('DELETE FROM scan_manifest WHERE run_id=?', (rid,))
+                                con.execute("UPDATE scan_runs SET finished_at=?,result='error',error_code='WORKER_ERROR' "
+                                            "WHERE run_id=? AND finished_at IS NULL", (int(time.time()),rid))
+                            con.commit()
+                        except Exception:
+                            diagnostics.record('scan_inventory_cleanup_failed')
+                        raise
+                diagnostics.record("scan_finished",
+                    f"{toplam.get('result', 'unknown')} {toplam.get('reason_stage') or ''} {toplam.get('reason_code') or ''}".strip())
                 self.bitti.emit(dict(toplam))
             finally:
                 try:
@@ -236,11 +254,30 @@ class TaramaIsci(QObject):
                     con.commit()
                 except Exception:
                     diagnostics.record('scan_inventory_cleanup_failed')
-                con.close()
+                # Bağlantı dış finally'de kapanır; dış except yedeği açık bağlantıyla çalışır.
         except Exception as e:  # noqa: BLE001 - worker hatasi arayuze tasinir
             diagnostics.record("scan_error", type(e).__name__)
+            try:
+                if con is not None:
+                    # Hata temizliği kilit altında, yalnız bu işçinin run_id'leriyle yapılır.
+                    with coordinator.ScanLock(self.kasa_yolu):
+                        for _, inventory in inventories:
+                            rid = inventory['run_id']
+                            con.execute('DELETE FROM scan_manifest WHERE run_id=?', (rid,))
+                            con.execute("UPDATE scan_runs SET finished_at=?,result='error',error_code='WORKER_ERROR' "
+                                        "WHERE run_id=? AND finished_at IS NULL", (int(time.time()),rid))
+                        con.commit()
+            except coordinator.AlreadyRunning:
+                diagnostics.record('scan_cleanup_deferred_lock_busy')
+            except Exception:
+                diagnostics.record('scan_inventory_cleanup_failed')
             self.hata.emit(f"{type(e).__name__}: {e}")
         finally:
+            try:
+                if con is not None:
+                    con.close()
+            except Exception:
+                pass
             self._sifre = "x" * 32
 
 
@@ -363,7 +400,7 @@ Cancel is a threading.Event: the download loop polls it on every chunk,
 a half file is deleted."""
     denetlendi = Signal(object)      # UpdateInfo or None (current)
     ilerleme = Signal(int, int)      # inen bayt, toplam bayt
-    hazir = Signal(str, str)         # version, folder ready to settle
+    hazir = Signal(str, str, object) # version, prepared path, recovery installer
     hata = Signal(str)
 
     def __init__(self, gorev, current="", info=None, parent=None):
@@ -383,7 +420,12 @@ a half file is deleted."""
             else:
                 klasor = update_mod.prepare(self.info, progress=self._ilerleme,
                                             cancel=self.iptal)
-                self.hazir.emit(self.info.version, str(klasor))
+                recovery = None
+                if klasor.is_file() and klasor.suffix.lower() == ".exe":
+                    recovery = update_mod.prepare_recovery(Path(sys.executable),
+                                                          progress=self._ilerleme, cancel=self.iptal)
+                if not self.iptal.is_set():
+                    self.hazir.emit(self.info.version, str(klasor), recovery)
         except update_mod.UpdateError as error:
             if str(error) == "cancelled":
                 return
@@ -455,7 +497,12 @@ class AnaPencere(QMainWindow):
         try:
             from . import embed as _embed
 
-            threading.Thread(target=lambda: _embed.isit_oturumu(cancel=lambda: self._locked or self._exiting), daemon=True).start()
+            def _model_isit():
+                try:
+                    _embed.isit_oturumu(cancel=lambda: self._locked or self._exiting)
+                except (InterruptedError, TimeoutError):
+                    pass
+            threading.Thread(target=_model_isit, daemon=True).start()
         except Exception:
             diagnostics.record('model_warmup_start_failed')
         self._schedule_timer = QTimer(self)
@@ -494,6 +541,10 @@ class AnaPencere(QMainWindow):
             self._toast_goster(t("Güncelleme taşınamadı; geçici klasörden çalışıyorsunuz."))
         elif sonuc in ("install_failed", "restored"):
             self._toast_goster(t("Güncelleme tamamlanamadı; eski sürüm korunuyor. Ayarlar → Güncellemeler'den yeniden deneyin."))
+        elif sonuc == "backup_failed":
+            self._toast_goster(t("Önceki sürüm yedeklenemediği için kurulum başlamadı."))
+        elif sonuc == "restore_failed":
+            self._toast_goster(t("Önceki sürüm geri yüklenemedi. Doğrulanmış geri dönüş paketi saklandı."))
         elif sonuc == "uac_cancelled":
             self._toast_goster(t("Yönetici onayı iptal edildi; eski sürüm çalışıyor. Yeniden denemek için Ayarlar → Güncellemeler."))
         elif sonuc == "timeout":
@@ -636,12 +687,12 @@ class AnaPencere(QMainWindow):
             f"Güncelleme indiriliyor… {round(done / (1024 * 1024))} / "
             f"{round(total / (1024 * 1024))} MB")
 
-    def _guncelleme_hazir(self, surum, klasor):
+    def _guncelleme_hazir(self, surum, klasor, recovery=None):
         # The watcher script first waits for this process to exit, then opens the new EXE.
         # If the script cannot be installed the app must not quit: show the error, fall back to download.
         try:
             update_mod.spawn_swap(os.getpid(), Path(klasor), Path(sys.executable),
-                                  self.kasa_yolu)
+                                  self.kasa_yolu, recovery=recovery)
         except OSError as error:
             diagnostics.record("update_spawn_failed", type(error).__name__)
             self.update_indir_btn.setVisible(True)
@@ -2890,12 +2941,25 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self._scan_metrics_update(st)
         self.tarama_bilgi.setText(result)
         self.popup_status.setText(result)
+        # Terminal durum: çubuk son yüzdeyi ham bırakmaz, sonucu üstünde taşır.
+        self.scan_phase_bar.hide()
+        if st.get('inventory_ready') and st.get('documents_total'):
+            total = st.get('documents_total', 0)
+            done = st.get('documents_done', 0)
+            self.tarama_bar.setRange(0, 100)
+            self.tarama_bar.setValue(min(100, int(done * 100 / total)) if total else 0)
+            self.tarama_bar.setFormat(f'{result} • %p%')
+            self.tarama_bar.show()
+        else:
+            self.tarama_bar.hide()
         self._scan_state("idle")
         self.scan_counts.setText(f"Bulunan {st.get('found',0):,} • İşlenen {st.get('done',0):,} • "
                                  f"Bekleyen {st.get('pending',0):,} • OCR {st.get('ocr_done',0):,} • "
                                  f"Güncel/atlanan {st.get('skipped',0):,} • İşlem hatası {st.get('failed',0):,} • OCR hatası {st.get('ocr_failed',0):,}")
         self.retry_scan.setVisible(bool(st.get('pending') or st.get('failed') or st.get('ocr_failed')))
         self.scan_log.appendPlainText(result)
+        if st.get('reason_help'):
+            self.scan_log.appendPlainText(st['reason_help'])
         if not st.get('done'):
             self.scan_log.appendPlainText(t("Yeni içerik işlenmedi. Dosyalar güncel olabilir veya bekleyen/erişilemeyen işler bulunabilir; yukarıdaki aşama ve hata kayıtlarını kontrol edin."))
         migrate.set_setting(self.con, "son_tarama", dt.datetime.now().isoformat(timespec="seconds"))
@@ -2915,12 +2979,8 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.scan_log.appendPlainText(msg)
         self.popup_status.setText(t("Tarama tamamlanamadı."))
         self._scan_state("idle")
+        # Kayıt kapatma işçinindir (kendi run_id'leri, kilit altında); arayüz DB'ye dokunmaz.
         if self.con is not None:
-            self.con.execute(
-                "UPDATE scan_runs SET result='error', finished_at=?, error_code='WORKER_ERROR' "
-                "WHERE finished_at IS NULL", (int(time.time()),)
-            )
-            self.con.commit()
             self._scan_history_refresh()
         QMessageBox.warning(self, t("Tarama"), msg)
 

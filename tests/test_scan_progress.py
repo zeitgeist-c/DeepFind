@@ -33,6 +33,8 @@ def test_worker_counts_all_roots_once_and_reuses_snapshot(tmp_path, monkeypatch)
     from deepfind import gom,embed
     from semantic_helpers import FixedSession
     monkeypatch.setattr(gom,'model_var_mi',lambda:True)
+    from deepfind import model_indir as mi
+    monkeypatch.setattr(mi,'gerekli_mi',lambda *a,**k:False)  # sahte model gecerli sayilir
     monkeypatch.setattr(embed,'isit_oturumu',lambda **kwargs:FixedSession())
     roots=[tmp_path/'first',tmp_path/'second'];files(roots[0],2);files(roots[1],3)
     path=str(tmp_path/'vault.db');password='synthetic-counted-scan-1234'

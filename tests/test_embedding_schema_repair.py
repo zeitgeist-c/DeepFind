@@ -47,7 +47,7 @@ def test_incorrect_vector_dimensions_are_backfilled(tmp_path, monkeypatch):
     monkeypatch.setattr(gom,'model_var_mi',lambda:True)
     class Model:
         def encode(self,texts,**kwargs):return np.ones((len(texts),embed.DIM),dtype=np.float32)/16
-    monkeypatch.setattr(embed,'isit_oturumu',lambda:Model())
+    monkeypatch.setattr(embed,'isit_oturumu',lambda *a,**k:Model())
     result=coordinator.run_scan(con,path,str(root), require_vectors=False)
     assert result['complete'] and result['documents_done']==1 and result['embed_done']==1
     assert con.execute('SELECT dim,length(vec) FROM embeddings').fetchone()==(embed.DIM,4*embed.DIM)
@@ -75,7 +75,7 @@ def test_scan_repairs_old_vault_and_really_extracts_and_embeds(tmp_path, monkeyp
     monkeypatch.setattr(gom,'model_var_mi',lambda:True)
     class Model:
         def encode(self,texts,**kwargs):return np.ones((len(texts),embed.DIM),dtype=np.float32)/16
-    monkeypatch.setattr(embed,'isit_oturumu',lambda:Model())
+    monkeypatch.setattr(embed,'isit_oturumu',lambda *a,**k:Model())
     result=coordinator.run_scan(con,path,str(root), require_vectors=False)
     assert result['complete'] and result['documents_done']==result['documents_total']==3
     assert con.execute('SELECT count(*) FROM embeddings WHERE model_ver=? AND dim=?',(embed.MODEL_VER,embed.DIM)).fetchone()[0] == 3

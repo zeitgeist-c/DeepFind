@@ -1,6 +1,6 @@
 """Local model settings; work stays off the GUI thread."""
 import threading
-from PySide6.QtCore import QTimer, Signal, QObject
+from PySide6.QtCore import QThread, QTimer, Signal, QObject
 from PySide6.QtWidgets import (QComboBox, QPushButton, QDialog, QVBoxLayout,
                                QProgressBar, QCheckBox, QLabel)
 from . import archive_ui, engine, migrate
@@ -101,7 +101,6 @@ class _IndirmeIsci(QObject):
 def indir_penceresi(ebeveyn):
     """Model indirme penceresi: amac, boyut, lisans, ilerleme, iptal, yeniden deneme."""
     from . import model_indir as _mi
-    from PySide6.QtWidgets import QThread
     from .theme import app_icon
     pencere = QDialog(ebeveyn)
     pencere.setWindowTitle(t("Anlamsal arama modelini indir (~296 MB)"))
@@ -143,14 +142,93 @@ def indir_penceresi(ebeveyn):
         baslat.hide(); iptal.hide(); yinele.show()
     isci.bitti.connect(_tamam)
     isci.hata.connect(_bozuk)
-    baslat.clicked.connect(lambda: (lisans.setEnabled(False), baslat.setEnabled(False),
-                                    durum.setText(t("Model indiriliyor…")), kanal.start()) if lisans.isChecked()
-                           else durum.setText(t("Model lisansını (Apache-2.0) kabul ediyorum")))
+
+    def _baslat():
+        if not lisans.isChecked():
+            durum.setText(t("Model lisansını (Apache-2.0) kabul ediyorum"))
+            return
+        if kanal.isRunning():
+            return
+        isci._dur.clear()
+        lisans.setEnabled(False)
+        baslat.setEnabled(False)
+        yinele.hide()
+        bar.setRange(0, 100)
+        bar.setValue(0)
+        durum.setText(t("Model indiriliyor…"))
+        kanal.start()
+
+    def _yinele():
+        if kanal.isRunning():
+            return
+        kanal.quit()
+        kanal.wait(3000)
+        yinele.hide()
+        baslat.setEnabled(False)
+        iptal.show()
+        isci._dur.clear()
+        bar.setRange(0, 100)
+        bar.setValue(0)
+        durum.setText(t("Model indiriliyor…"))
+        kanal.start()
+
+    def _kapanisi_denetle():
+        """GUI iş parçacığı: işçi bitmeden pencere yok edilmez."""
+        if kanal.isRunning():
+            return
+        saat = getattr(pencere, "_kapatma_saati", None)
+        if saat is not None:
+            try:
+                saat.stop()
+            except Exception:
+                pass
+            pencere._kapatma_saati = None
+        kanal.quit()
+        kanal.wait(3000)
+        if getattr(pencere, "_kabulle_kapat", True):
+            pencere.accept()
+        else:
+            QDialog.reject(pencere)
+
+    def _guvenli_kapat(kabul=True):
+        """Kapat/Esc/çarpı: iptal ister, kapanış işçi bitince GUI'de olur."""
+        if kanal.isRunning():
+            pencere._kabulle_kapat = kabul
+            if getattr(pencere, "_kapaniyor", False):
+                return
+            isci.iptal()
+            for dugme in (baslat, iptal, yinele, kapat):
+                dugme.setEnabled(False)
+            yinele.hide()
+            durum.setText(t("İndirme durduruluyor…"))
+            pencere._kapaniyor = True
+            pencere._kapatma_saati = QTimer(pencere)
+            pencere._kapatma_saati.setInterval(100)
+            pencere._kapatma_saati.timeout.connect(_kapanisi_denetle)
+            pencere._kapatma_saati.start()
+        else:
+            kanal.quit()
+            kanal.wait(3000)
+            if kabul:
+                pencere.accept()
+            else:
+                QDialog.reject(pencere)
+
+    def _kapatma_olayi(olay):
+        if kanal.isRunning():
+            olay.ignore()
+            _guvenli_kapat(kabul=True)
+        else:
+            kanal.quit()
+            kanal.wait(3000)
+            olay.accept()
+
+    baslat.clicked.connect(_baslat)
     iptal.clicked.connect(lambda: isci.iptal())
-    yinele.clicked.connect(lambda: (yinele.hide(), baslat.setEnabled(False),
-                                    durum.setText(t("Model indiriliyor…")),
-                                    kanal.start() if kanal.isFinished() else None))
-    kapat.clicked.connect(lambda: (isci.iptal(), kanal.quit(), kanal.wait(3000), pencere.accept()))
+    yinele.clicked.connect(_yinele)
+    kapat.clicked.connect(lambda: _guvenli_kapat(kabul=True))
+    pencere.reject = lambda: _guvenli_kapat(kabul=False)
+    pencere.closeEvent = _kapatma_olayi
     if not _mi.gerekli_mi():
         baslat.hide(); iptal.hide()
     else:

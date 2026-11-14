@@ -6,7 +6,7 @@ is a false positive here). Never deleted, flagged with `noqa`."""
 import numpy as np
 from .engine import (MODEL_VER, DIM, SORGU_ONEKI, BELGE_ONEKI,  # noqa: F401
     VARSAYILAN_TOPLU, VARSAYILAN_UZUNLUK, Oturum,  # noqa: F401
-    hazir_oturum, isit_oturumu, status, set_backend, close,  # noqa: F401
+    hazir_oturum, isit_oturumu, status, status_code, set_backend, close,  # noqa: F401
     _varsayilan_model_yolu)  # noqa: F401
 
 def isle(hiddens: np.ndarray, maske: np.ndarray, kirp: int = DIM) -> np.ndarray:

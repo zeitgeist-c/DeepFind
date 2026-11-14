@@ -481,6 +481,68 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
     return "done"
 
 
+def _sebep_yardim(kod):
+    """Kullanıcının ne yapabileceğini söyler; sabit sözcükler, kayıt-güvenli."""
+    return {
+        'MODEL_MISSING': t("Anlamsal arama modeli bulunamadı. Ayarlar → 'Anlamsal arama modelini indir' ile indirin; metin araması çalışmaya devam eder."),
+        'MODEL_CORRUPT': t("Model dosyası doğrulamadan geçemedi. Ayarlar → 'Anlamsal arama modelini indir' ile yeniden indirin."),
+        'ENGINE_MISSING': t("Çalışma motoru bulunamadı. Ayarlar → çalışma motorunu değiştirip 'Motoru yeniden başlat'a basın."),
+        'ENGINE_START_ERROR': t("Vektör motoru açılamadı; klasik arama etkin. Ayarlar → 'Motoru yeniden başlat'ı deneyin."),
+        'ENGINE_TIMEOUT': t("Vektör motoru zaman aşımına uğradı. Sakin bir anda yeniden tarayın veya CPU motorunu seçin."),
+        'CANCELLED': t("Hazırlık iptal edildi."),
+    }.get(kod or '', '')
+
+
+def _sebep_kisa(kod):
+    return {
+        'MODEL_MISSING': t('Model eksik; anlamsal dizin atlandı'),
+        'MODEL_CORRUPT': t('Model doğrulanamadı; anlamsal dizin atlandı'),
+        'ENGINE_MISSING': t('Çalışma motoru eksik; anlamsal dizin atlandı'),
+        'ENGINE_START_ERROR': t('Vektör motoru açılamadı; anlamsal dizin atlandı'),
+        'ENGINE_TIMEOUT': t('Vektör motoru zaman aşımı; anlamsal dizin atlandı'),
+        'CANCELLED': t('Hazırlık iptal edildi'),
+    }.get(kod or '', '')
+
+
+def embedding_hazirlik(stop=None):
+    """Model + motor ön denetimi: envanter ve belge işlemeden önce çağrılır.
+
+    Dönüş: {'hazir': bool, 'kod': str|None, 'kisa': str, 'yardim': str}.
+    Başarısızlık taramayı durdurmaz; metin dizini sürer, vektörler atlanır.
+    embed modülü kullanılır: birim testleri fake oturumu buradan verir.
+    """
+    from . import embed as eng
+    from . import gom as gom_mod
+    from . import model_indir as mi
+    if stop and stop():
+        return {'hazir': False, 'kod': 'CANCELLED', 'kisa': _sebep_kisa('CANCELLED'),
+                'yardim': _sebep_yardim('CANCELLED')}
+    if not gom_mod.model_var_mi():
+        return {'hazir': False, 'kod': 'MODEL_MISSING', 'kisa': _sebep_kisa('MODEL_MISSING'),
+                'yardim': _sebep_yardim('MODEL_MISSING')}
+    try:
+        bozuk = mi.gerekli_mi()
+    except OSError:
+        bozuk = True
+    if bozuk:
+        return {'hazir': False, 'kod': 'MODEL_CORRUPT', 'kisa': _sebep_kisa('MODEL_CORRUPT'),
+                'yardim': _sebep_yardim('MODEL_CORRUPT')}
+    try:
+        ot = eng.isit_oturumu(cancel=stop)
+    except TimeoutError:
+        return {'hazir': False, 'kod': 'ENGINE_TIMEOUT', 'kisa': _sebep_kisa('ENGINE_TIMEOUT'),
+                'yardim': _sebep_yardim('ENGINE_TIMEOUT')}
+    except InterruptedError:
+        ot = None
+    if ot is not None:
+        return {'hazir': True, 'kod': None, 'kisa': '', 'yardim': ''}
+    if stop and stop():
+        return {'hazir': False, 'kod': 'CANCELLED', 'kisa': _sebep_kisa('CANCELLED'),
+                'yardim': _sebep_yardim('CANCELLED')}
+    kod = eng.status_code() or 'ENGINE_START_ERROR'
+    return {'hazir': False, 'kod': kod, 'kisa': _sebep_kisa(kod), 'yardim': _sebep_yardim(kod)}
+
+
 def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress=None, limit=None,
              *, inventory_only=False, prepared=None, lock_held=False, fresh_inventory=False, require_vectors=True) -> dict:
     """Tam tarama: kesif + kuyruk isleme. stop(): duraklat/iptal bayragi.
@@ -524,7 +586,13 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         seen = set()
         documents = None
         stats.update(inventory_ready=False, phase_key='inventory', phase_done=0, phase_total=0,
-                     documents_done=0, documents_total=0)
+                     documents_done=0, documents_total=0, embedding_ready=True, reason_code=None,
+                     reason_stage='', reason_help='')
+        # Envanter ve belge işlemeden önce model + motor hazırlığı (madde 2).
+        # prepared ikinci çağrıda eski nedeni taşır; taze denetim her turda yeniden koşar.
+        hazirlik = {'hazir': True, 'kod': None, 'kisa': '', 'yardim': ''}
+        scan_sutunlar = {r[1] for r in con.execute("PRAGMA table_info(scan_runs)")}
+        hata_sutunu = 'error_code' in scan_sutunlar
         if prepared:
             stats.update(prepared)
             con.execute('DELETE FROM scan_selected')
@@ -537,6 +605,11 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             # Aktif tur yoksa secim bos kalir: bu turda isleme alinmaz.
             seen = {r[0] for r in con.execute('SELECT f.path FROM files f JOIN scan_manifest m ON m.file_id=f.file_id WHERE m.run_id=?', (run_id,))}
             con.commit()
+        if require_vectors:
+            # Taze denetim prepared içindeki eski nedeni ezer; sıcak oturumda ucuzdur.
+            hazirlik = embedding_hazirlik(stop)
+            stats.update(embedding_ready=hazirlik['hazir'], reason_code=hazirlik['kod'],
+                         reason_stage='model-hazirlik', reason_help=hazirlik['yardim'])
         last_report = 0.0
         last_checkpoint = 0.0
 
@@ -545,15 +618,27 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             now = time.monotonic()
             if not force and now - last_checkpoint < 5:
                 return
-            con.execute(
-                "UPDATE scan_runs SET updated_at=?, stage=?, found=?, done=?, pending=?, "
-                "failed=?, ocr_done=?, ocr_failed=? WHERE run_id=?",
-                (int(time.time()), stage, stats["found"], stats["done"],
-                 con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
-                             "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0],
-                 stats["failed"], stats["ocr_done"],
-                 stats["ocr_failed"], run_id),
-            )
+            # Neden kodu yokken error_code'a dokunulmaz: örn. HASH_ERROR korunur.
+            if hata_sutunu and stats.get("reason_code") is not None:
+                con.execute(
+                    "UPDATE scan_runs SET updated_at=?, stage=?, found=?, done=?, pending=?, "
+                    "failed=?, ocr_done=?, ocr_failed=?, error_code=? WHERE run_id=?",
+                    (int(time.time()), stage, stats["found"], stats["done"],
+                     con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
+                                 "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0],
+                     stats["failed"], stats["ocr_done"],
+                     stats["ocr_failed"], stats.get("reason_code"), run_id),
+                )
+            else:
+                con.execute(
+                    "UPDATE scan_runs SET updated_at=?, stage=?, found=?, done=?, pending=?, "
+                    "failed=?, ocr_done=?, ocr_failed=? WHERE run_id=?",
+                    (int(time.time()), stage, stats["found"], stats["done"],
+                     con.execute("SELECT count(*) FROM jobs WHERE status IN ('pending','running') "
+                                 "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0],
+                     stats["failed"], stats["ocr_done"],
+                     stats["ocr_failed"], run_id),
+                )
             con.commit()
             last_checkpoint = now
 
@@ -702,7 +787,11 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         if inventory_only:
             stats['result'] = 'cancelled' if stop and stop() else 'partial'
             if stats['result'] == 'cancelled':
-                con.execute("UPDATE scan_runs SET finished_at=?,result='cancelled' WHERE run_id=?", (int(time.time()),run_id))
+                if hata_sutunu and stats.get('reason_code') is not None:
+                    con.execute("UPDATE scan_runs SET finished_at=?,result='cancelled',error_code=? WHERE run_id=?",
+                                (int(time.time()), stats.get('reason_code'), run_id))
+                else:
+                    con.execute("UPDATE scan_runs SET finished_at=?,result='cancelled' WHERE run_id=?", (int(time.time()),run_id))
                 con.commit()
             report('Dosya listesi hazır', root, force=True)
             return stats
@@ -762,7 +851,9 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             report(t("OCR işleniyor"), path, r)
         if ocr_session is not None:
             ocr_session.kill()
-        if gom_mod.model_var_mi():
+        # require_vectors=False yalnızca çıkarma tanılamasıdır; GUI her zaman True kullanır.
+        vektor_aktif = hazirlik['hazir'] if require_vectors else gom_mod.model_var_mi()
+        if vektor_aktif:
             from .embed import MODEL_VER, DIM
             rows = con.execute("SELECT f.file_id,f.size,f.mtime_ns FROM files f "
                 "JOIN scan_selected sel ON sel.file_id=f.file_id WHERE EXISTS("
@@ -774,11 +865,19 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
             con.commit()
         phase('embedding','embed')
         # Shared native process isolates driver failures without duplicate model loads.
-        if gom_mod.model_var_mi():
+        if vektor_aktif:
             from . import embed as embedding
-            ot = embedding.isit_oturumu()
+            kod = None
+            try:
+                ot = embedding.isit_oturumu(cancel=stop)
+            except TimeoutError:
+                ot = None
+                kod = 'ENGINE_TIMEOUT'
             if ot is None:
-                report('Vektör motoru açılamadı; anlamsal dizin tamamlanmadı', root, force=True)
+                kod = kod or embedding.status_code() or 'ENGINE_START_ERROR'
+                stats.update(embedding_ready=False, reason_code=stats.get('reason_code') or kod,
+                             reason_stage='embedding', reason_help=_sebep_yardim(kod))
+                report(_sebep_kisa(kod), root, kod, force=True)
             while ot is not None:
                 if stop and stop():
                     stats['result'] = 'cancelled'
@@ -801,8 +900,11 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 if outcome == 'done': stats['embed_done'] += 1
                 if outcome in ('retry', 'dead'): stats['failed'] += 1
                 report('Vektör işleniyor', str(fid), outcome)
+        elif require_vectors and hazirlik['kod']:
+            report(hazirlik['kisa'], root, hazirlik['kod'], force=True)
         stats.update(phase_key='finalize', phase_done=0, phase_total=0)
         # --- kopya hash (arka plan; sinirli; kaynagi bir kez daha okur) ---
+        kapanis_hatasi = None
         try:
             from . import dup as dup_mod
             if not (stop and stop()):
@@ -810,6 +912,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 stats["hashed"] = dup_mod.verify_pending(con, scoped=True, stop=stop).get("verified", 0)
         except Exception as error:
             stats["failed"] += 1
+            kapanis_hatasi = 'HASH_ERROR'
             con.execute("UPDATE scan_runs SET error_code='HASH_ERROR' WHERE run_id=?", (run_id,))
             con.commit()
             report(t("Kopya doğrulaması tamamlanamadı"), root, type(error).__name__, force=True)
@@ -842,7 +945,12 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                                        "AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
         checkpoint("Bitti", force=True)
         report(t("Tarama tamamlandı") if stats["complete"] else t("Tarama durdu"), root, force=True)
-        con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?",
-                    (int(time.time()), stats["result"], run_id))
+        kapanis_kodu = stats.get("reason_code") or kapanis_hatasi
+        if hata_sutunu and kapanis_kodu is not None:
+            con.execute("UPDATE scan_runs SET finished_at=?, result=?, error_code=? WHERE run_id=?",
+                        (int(time.time()), stats["result"], kapanis_kodu, run_id))
+        else:
+            con.execute("UPDATE scan_runs SET finished_at=?, result=? WHERE run_id=?",
+                        (int(time.time()), stats["result"], run_id))
         con.commit()
     return stats

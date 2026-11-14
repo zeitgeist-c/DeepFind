@@ -83,6 +83,26 @@ def run(report_path):
             fid=con.execute('SELECT file_id FROM files').fetchone()[0]
             embedding_jobs.isle_dosya(con,fid,lambda texts:session.encode(texts,gorev='belge'))
             con.close()
+            checkpoint('model-download-dialog')
+            from PySide6.QtCore import QTimer as _KapatSaat
+            from PySide6.QtWidgets import QPushButton as _Dugme
+            from . import model_ui as _mui
+            _gerekli = _mi.gerekli_mi
+            _mi.gerekli_mi = lambda *a, **k: True  # modelsiz ilk açılış kolu
+            try:
+                def _kapat_dugmesi():
+                    dlg = app.activeModalWidget()
+                    assert dlg is not None, 'indirme penceresi açılmadı'
+                    for dugme in dlg.findChildren(_Dugme):
+                        if 'Kapat' in dugme.text() or 'Close' in dugme.text():
+                            dugme.click()
+                            return
+                    raise AssertionError('Kapat düğmesi yok')
+                _KapatSaat.singleShot(1500, _kapat_dugmesi)
+                _mui.indir_penceresi(None)  # QThread ImportError verirse burada patlar
+                assert app.activeModalWidget() is None
+            finally:
+                _mi.gerekli_mi = _gerekli
             checkpoint("window")
             pen = AnaPencere(db, password)
             pen.show()
@@ -298,7 +318,7 @@ def run(report_path):
                 assert time.monotonic()<deadline
             checkpoint("actual-first-run")
             from .startup_smoke import run as startup_run
-            startup_run(temp)
+            report["kaynak_smoke"] = bool(startup_run(temp))
             checkpoint('background-startup-migration')
             from .startup import OpeningDialog
             from .migrate import ensure_current
@@ -342,7 +362,8 @@ def run(report_path):
                                            'search-workbench-local-model-settings-backups','paged-archive-files','image-ocr-indexed',
                                            'background-startup-migration', 'root-remove-worker', 'exclusion-worker',
                                            'vektor-model-durumu', 'real-semantic-search', 'model-stays-open-without-lock',
-                                           'startup-index-once', 'startup-counted-progress',
+                                           'startup-index-once', 'startup-counted-progress', 'kaynak-smoke',
+                                           'model-download-dialog',
                                            'scan-inventory-and-percentages', 'scan-pause-resume',
                                            'legacy-embedding-schema-repair', 'no-dictionary-maintenance'])
     except Exception as error:
