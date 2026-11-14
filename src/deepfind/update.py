@@ -30,7 +30,7 @@ RELEASE_REPO = "zeitgeist-c/DeepFind"
 import os as _os
 API_LATEST = _os.environ.get("DEEPFIND_UPDATE_URL") or f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 from .version import __version__
-from .installer import windows_file_version, spawn_installer
+from .installer import is_installed_exe, windows_file_version, spawn_installer
 from . import paths
 from .theme import t
 USER_AGENT = f"DeepFind/{__version__}"
@@ -80,8 +80,7 @@ def parse_release(payload: dict, kucuk_izinli: bool = True) -> UpdateInfo:
     # migration. ZIP remains a release asset for pre-0.10 clients only.
     adaylar = {f'DeepFind-{version}.exe'}
     from .model_indir import paylasilan_hazir
-    incremental = paylasilan_hazir()
-    if incremental and kucuk_izinli:
+    if kucuk_izinli and paylasilan_hazir():
         adaylar.update({f'DeepFind-{version}.zip', f'DeepFind-{version}.deepfind'})
     def priority(asset):
         name = str(asset.get('name',''))
@@ -311,8 +310,37 @@ def prepare_incremental(info, directory, progress=None, cancel=None):
         archive.unlink(missing_ok=True)
 
 
+def prepare_recovery(current: Path, progress=None, cancel=None) -> tuple[Path, str] | None:
+    """Prepare the exact installed release before offering to close the app."""
+    if not is_installed_exe(current):
+        return None
+    version_parts = windows_file_version(current)
+    version = ".".join(map(str, version_parts))
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{RELEASE_REPO}/releases/tags/v{version}",
+        headers={"User-Agent": USER_AGENT},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+        if payload.get("draft") or payload.get("prerelease"):
+            raise UpdateError("Geri dönüş için kararlı kurulum paketi bulunamadı.")
+        info = parse_release(payload, kucuk_izinli=False)
+        if info.version != version:
+            raise UpdateError("Geri dönüş paketinin yayın sürümü kurulu sürümle eşleşmiyor.")
+        path = updates_dir() / f"recovery-{version}-{info.sha256.lower()}.exe"
+        if not path.is_file() or _sha256_of(path).lower() != info.sha256.lower():
+            download(info, path, progress=progress, cancel=cancel)
+        if windows_file_version(path) != version_parts:
+            raise UpdateError("Geri dönüş kurucusunun dosya sürümü doğrulanamadı.")
+        path.touch(exist_ok=True)
+        return path, info.sha256
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        raise UpdateError(t("Önceki sürümün kurucusu doğrulanamadı; güncelleme başlatılmadı.")) from exc
+
+
 def spawn_swap(old_pid: int, hazir_klasor: Path, calisan_exe: Path,
-               kasa_yolu: str) -> Path:
+               kasa_yolu: str, recovery=None) -> Path:
     """Install the watcher script that swaps the running version for the fresh copy.
 
 Windows never relocates a running EXE: the script waits until this process exits,
@@ -321,7 +349,7 @@ a normal vault-independent launch, and deletes itself. Installed programs never
 take this path (a ZIP cannot install); they go through spawn_installer."""
     hazir_klasor = Path(hazir_klasor)
     if hazir_klasor.is_file() and hazir_klasor.suffix.lower() == '.exe':
-        return spawn_installer(old_pid, hazir_klasor, Path(calisan_exe), kasa_yolu)
+        return spawn_installer(old_pid, hazir_klasor, Path(calisan_exe), kasa_yolu, recovery=recovery)
     calisan_exe = Path(calisan_exe)
     if (calisan_exe.resolve().parent / "unins000.exe").is_file():
         # Installed program + ZIP-only package: there is no installer inside,
@@ -395,7 +423,9 @@ def dogrulandi_yaz(surum: str, exe_yolu: str | Path, kasa_yolu: str | Path) -> N
     if not Path(kasa_yolu).is_file():
         raise UpdateError("Güncelleme sonrası kasa açılamadı.")
     yol = updates_dir() / "son-guncelleme.txt"
-    yol.write_text(f"verified:{surum}", encoding="utf-8")
+    gecici = yol.with_suffix(".tmp")
+    gecici.write_text(f"verified:{surum}", encoding="utf-8")
+    gecici.replace(yol)
 
 
 def son_sonuc(temizle: bool = True) -> str:
@@ -404,7 +434,7 @@ def son_sonuc(temizle: bool = True) -> str:
 The stamp is deleted once read; the notice shows exactly once."""
     yol = updates_dir() / "son-guncelleme.txt"
     try:
-        metin = yol.read_text(encoding="utf-8", errors="replace").strip()
+        metin = yol.read_text(encoding="utf-8-sig", errors="replace").strip()
     except OSError:
         return ""
     if temizle:

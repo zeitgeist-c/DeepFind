@@ -25,7 +25,7 @@ OutputDir=..\build\test-installer
 #ifdef UpdatePackage
 OutputDir=..\build\update-installer
 #else
-OutputDir=..
+OutputDir=..\build\package-work\installer
 #endif
 #endif
 DefaultDirName={autopf}\{#AppName}
@@ -121,7 +121,11 @@ korean.FetchModel=첫 실행 시 시맨틱 검색 모델 다운로드(약 296 MB
 #ifdef AdayKaynak
 Source: "{#AdayKaynak}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
 #else
+#ifdef TestInstall
 Source: "..\dist\{#AppName}-{#AppVersion}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
+#else
+Source: "..\build\package-work\{#AppName}-{#AppVersion}\*"; DestDir: "{app}"; Excludes: "_internal\embedding\embeddinggemma-2-Q8_0.gguf"; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
 #endif
 #ifndef UpdatePackage
 #ifndef TestPrevious

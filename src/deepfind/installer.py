@@ -1,14 +1,13 @@
 """Installer handoff keeps AppId, shortcuts and uninstall registration consistent.
 
-The watcher script closes the app, its launcher and its own engine safely,
-snapshots the install dir for rollback, runs the verified setup elevated,
-then launches the new EXE and waits for its verified stamp. Until that stamp
-appears the old version can be restored; failures relaunch the old version
-so the user can retry from inside the app.
+The watcher waits for the application to exit, launches the verified setup
+elevated, and waits for the new version's startup stamp. For an installed copy,
+a failed upgrade can reinstall the verified previous release through UAC.
 """
 from pathlib import Path
 import ctypes
 import os
+import re
 import subprocess
 
 
@@ -43,19 +42,38 @@ def install_directory(current):
     return Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'DeepFind'
 
 
-def spawn_installer(pid, setup, current, vault):
+def is_installed_exe(current: Path) -> bool:
+    current = Path(current).resolve()
+    return any((parent / "unins000.exe").is_file()
+               for parent in (current.parent, current.parent.parent))
+
+
+def spawn_installer(pid, setup, current, vault, *, recovery=None):
     setup, current = Path(setup).resolve(), Path(current).resolve()
     destination = install_directory(current)
     version = '.'.join(map(str,windows_file_version(setup)))
-    old_version = '.'.join(map(str,windows_file_version(current)))
+    old_parts = windows_file_version(current)
+    old_version = ".".join(map(str, old_parts))
     new_exe = destination / f'DeepFind-{version}.exe'
-    rollback = setup.parent / f'rollback-{old_version}'
+    installed = is_installed_exe(current)
+    if installed and recovery is None:
+        raise OSError("The installed release has no verified recovery installer.")
+    recovery_path, recovery_hash = ("", "") if recovery is None else recovery
+    if recovery is not None:
+        recovery_path = Path(recovery_path).resolve(strict=True)
+        if (not re.fullmatch(r"[0-9a-fA-F]{64}", recovery_hash)
+                or recovery_path == setup
+                or windows_file_version(recovery_path) != old_parts):
+            raise OSError("The recovery installer does not match the installed release.")
     stamp = setup.parent / 'son-guncelleme.txt'
     script = setup.parent / 'deepfind-install.ps1'
     def quote(text): return "'" + str(text).replace("'", "''") + "'"
     # Start-Process needs a correctly quoted single argument string for Inno.
     arguments = ('/SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="' + str(destination)
                  + '" /LOG="' + str(setup.parent / 'kurulum.log') + '"')
+    recovery_arguments = ('/VERYSILENT /NORESTART /SUPPRESSMSGBOXES /NOCLOSEAPPLICATIONS '
+                          '/MERGETASKS="!fetchmodel" /DIR="' + str(destination)
+                          + '" /LOG="' + str(setup.parent / 'geri-kurulum.log') + '"')
     source = f'''$ErrorActionPreference = 'Stop'
 $PID_ESKI = {int(pid)}
 $KURULU = {quote(current)}
@@ -64,9 +82,12 @@ $KURULUM = {quote(setup)}
 $YENI = {quote(new_exe)}
 $ESKI_SURUM = {quote(old_version)}
 $YENI_SURUM = {quote(version)}
-$GERI = {quote(rollback)}
+$GERI = {quote(recovery_path)}
+$GERI_HASH = {quote(recovery_hash)}
+$GERI_ARGLAR = {quote(recovery_arguments)}
 $DAMGA = {quote(stamp)}
 $KASA = {quote(vault)}
+$ACILIS = '--restarted --kasa "' + $KASA + '"'
 $ARGSLAR = {quote(arguments)}
 function Damga($deger) {{ Set-Content -LiteralPath $DAMGA -Value $deger -Encoding UTF8 }}
 function Resim($p) {{ try {{ (Get-Process -Id $p -ErrorAction Stop).Path }} catch {{ '' }} }}
@@ -75,13 +96,41 @@ function EskiMi($p) {{
   if (-not $yol) {{ return $false }}
   return ($yol -eq $KURULU) -or ($yol -like ($HEDEF + '\\*'))
 }}
+function BeklenenSurum($yol, $surum) {{
+  if (-not (Test-Path -LiteralPath $yol -PathType Leaf)) {{ return $false }}
+  $v = (Get-Item -LiteralPath $yol -ErrorAction Stop).VersionInfo
+  return ('{{0}}.{{1}}.{{2}}' -f $v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart) -eq $surum
+}}
+function GeriYukle($basariDurumu) {{
+  if (-not $GERI) {{
+    Damga($basariDurumu)
+    EskiCalistir
+    return
+  }}
+  try {{
+    if ((Get-FileHash -LiteralPath $GERI -Algorithm SHA256).Hash -ine $GERI_HASH) {{
+      throw 'Recovery installer checksum mismatch'
+    }}
+    $geriKur = Start-Process -FilePath $GERI -ArgumentList $GERI_ARGLAR -Verb RunAs -Wait -PassThru
+    if (($geriKur.ExitCode -ne 0) -or (-not (BeklenenSurum $KURULU $ESKI_SURUM))) {{
+      throw 'Recovery installer did not restore the expected version'
+    }}
+    Damga($basariDurumu)
+    EskiCalistir
+  }} catch {{
+    Damga('restore_failed')
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show(
+      ("DeepFind geri yüklenemedi. Yönetici onayını kontrol edin. Kurulum paketi: " + $GERI),
+      "DeepFind", 'OK', 'Error') | Out-Null
+  }}
+}}
 function EskiCalistir {{
   $hedef = $KURULU
   if (-not (Test-Path -LiteralPath $hedef -PathType Leaf)) {{ return }}
   try {{
-    $surum = (Get-Item -LiteralPath $hedef).VersionInfo.ProductVersion
-    if ($surum -notlike ($ESKI_SURUM + '*')) {{ return }}
-    Start-Process -FilePath $hedef -ArgumentList @('--restarted', '--kasa', $KASA)
+    if (-not (BeklenenSurum $hedef $ESKI_SURUM)) {{ return }}
+    Start-Process -FilePath $hedef -ArgumentList ('--kasa "' + $KASA + '"')
   }} catch {{ }}
 }}
 try {{
@@ -99,8 +148,18 @@ try {{
     EskiCalistir
     exit 0
   }}
-  if (Test-Path -LiteralPath $GERI) {{ Remove-Item -LiteralPath $GERI -Recurse -Force -ErrorAction SilentlyContinue }}
-  robocopy $HEDEF $GERI /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
+  if ($GERI) {{
+    try {{
+      if ((Get-FileHash -LiteralPath $GERI -Algorithm SHA256).Hash -ine $GERI_HASH) {{
+        throw 'Recovery installer checksum mismatch'
+      }}
+    }} catch {{
+      Damga('backup_failed')
+      EskiCalistir
+      exit 0
+    }}
+  }}
+  if (Test-Path -LiteralPath $DAMGA) {{ Remove-Item -LiteralPath $DAMGA -Force }}
   try {{
     $kur = Start-Process -FilePath $KURULUM -ArgumentList $ARGSLAR -Verb RunAs -Wait -PassThru
   }} catch {{
@@ -113,22 +172,24 @@ try {{
     exit 0
   }}
   if ($kur.ExitCode -ne 0) {{
-    robocopy $GERI $HEDEF /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
-    Damga('install_failed')
-    EskiCalistir
+    GeriYukle 'install_failed'
     exit 0
   }}
-  if (-not (Test-Path -LiteralPath $YENI -PathType Leaf)) {{
-    robocopy $GERI $HEDEF /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
-    Damga('install_failed')
-    EskiCalistir
+  if (-not (BeklenenSurum $YENI $YENI_SURUM)) {{
+    GeriYukle 'install_failed'
     exit 0
   }}
-  Start-Process -FilePath $YENI -ArgumentList @('--restarted', '--kasa', $KASA)
+  try {{
+    Start-Process -FilePath $YENI -ArgumentList $ACILIS
+  }} catch {{
+    GeriYukle 'install_failed'
+    exit 0
+  }}
   $son = (Get-Date).AddSeconds(180)
   $dogrulandi = $false
   while ((Get-Date) -lt $son) {{
-    if ((Test-Path -LiteralPath $DAMGA -PathType Leaf) -and ((Get-Content -LiteralPath $DAMGA -Raw -ErrorAction SilentlyContinue) -like ('verified:' + $YENI_SURUM + '*'))) {{
+    $onay = Get-Content -LiteralPath $DAMGA -Raw -ErrorAction SilentlyContinue
+    if ($onay -and ($onay.Trim() -eq ('verified:' + $YENI_SURUM))) {{
       $dogrulandi = $true
       break
     }}
@@ -136,13 +197,14 @@ try {{
   }}
   if ($dogrulandi) {{
     Remove-Item -LiteralPath $DAMGA -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $GERI -Recurse -Force -ErrorAction SilentlyContinue
     exit 0
   }}
-  Get-Process -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq $YENI }} | Stop-Process -Force -ErrorAction SilentlyContinue
-  robocopy $GERI $HEDEF /MIR /R:2 /W:1 /NP /NFL /NDL | Out-Null
-  Damga('restored')
-  EskiCalistir
+  $aday = Get-Process -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq $YENI }}
+  if ($aday) {{
+    $aday | Stop-Process -Force -ErrorAction SilentlyContinue
+    $aday | Wait-Process -Timeout 15 -ErrorAction SilentlyContinue
+  }}
+  GeriYukle 'restored'
 }} catch {{
   try {{ Damga('install_failed') }} catch {{ }}
   try {{ EskiCalistir }} catch {{ }}

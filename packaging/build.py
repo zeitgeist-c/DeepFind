@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 import uuid
@@ -38,7 +39,75 @@ def main():
         asamalari = ["smoke", "iscc"]
     else:
         asamalari = ["pyinstaller", "smoke", "iscc"]
-    cikti = aday if aday else ROOT / "dist"
+    if aday is not None:
+        build(stem, aday, aday, asama, asamalari, etkilesimli)
+    elif asama or "--archive-only" in argv:
+        build(stem, ROOT / "build/package-work", None, asama, asamalari, etkilesimli)
+    else:
+        build_root = ROOT / "build"
+        build_root.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="package-", dir=build_root) as folder:
+            build(stem, Path(folder), None, asama, asamalari, etkilesimli)
+
+
+def sha256(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def finish_release(artifacts, staging):
+    import re
+
+    checksum = staging / f"SHA256-{__version__}.txt"
+    checksum.write_text(
+        "".join(f"{sha256(path)}  {path.name}\n" for path in artifacts),
+        encoding="utf-8",
+    )
+    release = ROOT / "release"
+    release.mkdir(exist_ok=True)
+    if release.is_symlink() or release.is_junction():
+        raise RuntimeError(f"Release directory must be inside the project: {release}")
+
+    managed = re.compile(r"(?:DeepFind-\d+\.\d+\.\d+\.(?:exe|zip|deepfind)|SHA256-\d+\.\d+\.\d+\.txt)")
+    previous = [path for path in release.iterdir()
+                if path.is_file() and not path.is_symlink() and managed.fullmatch(path.name)]
+    installed = []
+    backup = Path(tempfile.mkdtemp(prefix="previous-release-", dir=staging.parent))
+    try:
+        for path in previous:
+            path.rename(backup / path.name)
+        for path in (*artifacts, checksum):
+            target = release / path.name
+            if target.exists() or target.is_symlink():
+                raise FileExistsError(target)
+            path.rename(target)
+            installed.append(target)
+    except OSError:
+        try:
+            for target in reversed(installed):
+                target.rename(staging / target.name)
+            for path in backup.iterdir():
+                path.rename(release / path.name)
+        except OSError as error:
+            raise RuntimeError(f"Release recovery required. Previous files: {backup}") from error
+        backup.rmdir()
+        raise
+    result = {"release": str(release), "version": __version__,
+              "files": [path.name for path in (*artifacts, checksum)]}
+    # Keep a unique prior artifact until its backup can be verified.
+    for path in backup.iterdir():
+        replacement = release / path.name
+        if replacement.is_file() and sha256(replacement) == sha256(path):
+            path.unlink()
+    if any(backup.iterdir()):
+        result["previous_artifacts"] = str(backup)
+    else:
+        backup.rmdir()
+    print(json.dumps(result))
+
+
+def build(stem, cikti, aday, asama, asamalari, etkilesimli):
+    cikti.mkdir(parents=True, exist_ok=True)
     if "pyinstaller" in asamalari:
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         from PySide6.QtWidgets import QApplication
@@ -55,7 +124,7 @@ def main():
         build_env["PATH"] = os.pathsep.join(map(str, [Path(sys.executable).parent,
             Path(sys.base_prefix), Path(sys.base_prefix) / "DLLs",
             windows / "System32", windows]))
-        work = ROOT / "build" / ("pyinstaller-" + uuid.uuid4().hex)
+        work = cikti / ("pyinstaller-" + uuid.uuid4().hex)
         build_env["PYINSTALLER_CONFIG_DIR"] = str(work / "cache")
         subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--workpath", str(work),
                         "--distpath", str(work / "dist"),
@@ -136,12 +205,12 @@ def main():
         if (ROOT / name).is_file():
             shutil.copyfile(ROOT / name, package / name)
     (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    destination = (aday if aday else ROOT) / (stem + ".zip")
+    destination = cikti / (stem + ".zip")
     with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in package.rglob("*"):
             if path.is_file():
                 archive.write(path, path.relative_to(package.parent))
-    digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+    digest = sha256(destination)
     print(json.dumps({"package": str(destination), "sha256": digest}, ensure_ascii=False))
     if "iscc" in asamalari:
         # Kurulum (Inno Setup): taze kurulumlar icin tek EXE.
@@ -177,28 +246,36 @@ def main():
                 else (ROOT / "build" / "test-installer" / (stem + ".exe"))
             assert kurulum.is_file(), "aday kurulum EXE uretilemedi"
             print(json.dumps({"aday_kurulum": str(kurulum),
-                              "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
+                              "sha256": sha256(kurulum)},
                              ensure_ascii=False))
         else:
             (ROOT / "packaging" / "ver.iss").write_text(
                 f'#define AppVersion "{__version__}"\n', encoding="utf-8")
-            subprocess.run([iscc, str(ROOT / "packaging/DeepFind.iss")],
+            setup_dir = cikti / "installer"
+            update_dir = cikti / "update-installer"
+            setup_dir.mkdir(exist_ok=True)
+            update_dir.mkdir(exist_ok=True)
+            setup_script = str(ROOT / "packaging/DeepFind.iss")
+            source_arg = f"/DAdayKaynak={package}"
+            subprocess.run([iscc, source_arg, "/O" + str(setup_dir), setup_script],
                            cwd=str(ROOT / "packaging"), check=True, timeout=600)
-            kurulum = ROOT / (stem + ".exe")
+            kurulum = setup_dir / (stem + ".exe")
             assert kurulum.is_file(), "kurulum EXE uretilemedi"
             print(json.dumps({"setup": str(kurulum),
-                              "sha256": hashlib.sha256(kurulum.read_bytes()).hexdigest()},
+                              "sha256": sha256(kurulum)},
                              ensure_ascii=False))
-            subprocess.run([iscc, '/DUpdatePackage', str(ROOT / 'packaging/DeepFind.iss')],
+            subprocess.run([iscc, "/DUpdatePackage", source_arg, "/O" + str(update_dir), setup_script],
                            cwd=str(ROOT / 'packaging'), check=True, timeout=600)
             from deepfind.model_indir import MODEL_SHA256
-            incremental = ROOT / (stem + '.deepfind')
+            incremental = cikti / (stem + '.deepfind')
             with zipfile.ZipFile(incremental, 'w', zipfile.ZIP_DEFLATED) as archive:
-                archive.write(ROOT / 'build/update-installer' / (stem + '.exe'), stem + '.exe')
+                archive.write(update_dir / (stem + '.exe'), stem + '.exe')
                 archive.writestr('manifest.json', json.dumps({'program':'DeepFind', 'version':__version__,
                                                              'model_sha256':MODEL_SHA256},ensure_ascii=False))
             print(json.dumps({'incremental':str(incremental), 'size':incremental.stat().st_size,
-                              'sha256':hashlib.sha256(incremental.read_bytes()).hexdigest()},ensure_ascii=False))
+                              'sha256':sha256(incremental)},ensure_ascii=False))
+            if asama != "iscc":
+                finish_release((destination, kurulum, incremental), cikti)
 
 
 if __name__ == "__main__":

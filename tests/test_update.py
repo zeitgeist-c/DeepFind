@@ -462,6 +462,50 @@ class DogrulamaDamgasi(unittest.TestCase):
             self.assertFalse((Path(tmp) / "son-guncelleme.txt").exists())
 
 
+class RecoveryPackageTests(unittest.TestCase):
+    def test_installed_copy_fetches_exact_release_and_reuses_verified_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            current = root / "DeepFind-0.7.0.exe"
+            content = b"previous setup"
+            import hashlib
+            sha256 = hashlib.sha256(content).hexdigest()
+            asset = dict(GERCEK_YAYIN["assets"][0], digest=f"sha256:{sha256}")
+            release = dict(GERCEK_YAYIN, assets=[asset])
+            response = mock.MagicMock()
+            response.__enter__.return_value.read.return_value = json.dumps(release).encode()
+            with mock.patch.object(update, "is_installed_exe", return_value=True), \
+                 mock.patch.object(update, "windows_file_version", return_value=(0, 7, 0)), \
+                 mock.patch.object(update, "updates_dir", return_value=root), \
+                 mock.patch.object(update.urllib.request, "urlopen", return_value=response) as api, \
+                 mock.patch.object(update, "download",
+                                   side_effect=lambda _info, path, **_kw: path.write_bytes(content)) as download:
+                path, digest = update.prepare_recovery(current)
+                self.assertEqual(update.prepare_recovery(current), (path, digest))
+            self.assertEqual(path.read_bytes(), content)
+            self.assertEqual(digest, sha256)
+            self.assertTrue(api.call_args.args[0].full_url.endswith("/releases/tags/v0.7.0"))
+            self.assertEqual(download.call_count, 1)
+
+    def test_missing_recovery_release_stops_update(self):
+        with mock.patch.object(update, "is_installed_exe", return_value=True), \
+             mock.patch.object(update, "windows_file_version", return_value=(0, 7, 0)), \
+             mock.patch.object(update.urllib.request, "urlopen", side_effect=OSError("offline")):
+            with self.assertRaisesRegex(update.UpdateError, "güncelleme başlatılmadı"):
+                update.prepare_recovery(Path("DeepFind-0.7.0.exe"))
+
+    def test_installed_handoff_requires_recovery_package(self):
+        from deepfind import installer
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "unins000.exe").touch()
+            with mock.patch.object(installer, "windows_file_version", return_value=(0, 7, 0)), \
+                 mock.patch.object(installer.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(OSError, "no verified recovery"):
+                    installer.spawn_installer(123, root / "setup.exe", root / "DeepFind.exe", "vault")
+            popen.assert_not_called()
+
+
 class KurulumBetigi(unittest.TestCase):
     def _betik(self, tmp):
         from deepfind import installer as _kur
@@ -473,10 +517,13 @@ class KurulumBetigi(unittest.TestCase):
         kurulum = Path(tmp) / "Updates" / "DeepFind-9.9.9.exe"
         kurulum.parent.mkdir(parents=True)
         kurulum.write_bytes(b"MZ")
+        recovery = kurulum.parent / "DeepFind-9.9.8.exe"
+        recovery.write_bytes(b"MZ")
         with mock.patch.object(_kur, "windows_file_version",
-                               side_effect=[(9, 9, 9), (9, 9, 8)]), \
+                               side_effect=[(9, 9, 9), (9, 9, 8), (9, 9, 8)]), \
              mock.patch.object(_kur.subprocess, "Popen") as popen:
-            betik = _kur.spawn_installer(4242, kurulum, calisan, str(Path(tmp) / "kasa.db"))
+            betik = _kur.spawn_installer(4242, kurulum, calisan, str(Path(tmp) / "kasa.db"),
+                                         recovery=(recovery, "a" * 64))
         return betik.read_text(encoding="utf-8-sig"), popen
 
     def test_betik_kapanis_anlik_goruntu_geri_donus_dogrulama_icerir(self):
@@ -484,11 +531,16 @@ class KurulumBetigi(unittest.TestCase):
             govde, popen = self._betik(tmp)
             self.assertIn("PID_ESKI = 4242", govde)
             self.assertIn(".Path", govde)                       # resim dogrulamali bekleme
-            self.assertIn("robocopy", govde)                    # anlik goruntu + geri yukleme
-            self.assertIn("rollback-9.9.8", govde)
+            self.assertNotIn("robocopy", govde)
+            self.assertIn("Get-FileHash -LiteralPath $GERI", govde)
+            self.assertIn("Start-Process -FilePath $GERI -ArgumentList $GERI_ARGLAR -Verb RunAs -Wait", govde)
+            self.assertIn("BeklenenSurum $KURULU $ESKI_SURUM", govde)
             self.assertIn("uac_cancelled", govde)
             self.assertIn("verified:", govde)
             self.assertIn("YENI_SURUM", govde)
+            self.assertIn("$ACILIS", govde)
+            self.assertIn("restore_failed", govde)
+            self.assertLess(govde.index("backup_failed"), govde.index("$kur = Start-Process"))
             self.assertIn("restored", govde)
             self.assertIn("timeout", govde)
             self.assertIn("9.9.9", govde)
