@@ -1,16 +1,16 @@
 from PIL import Image
 from deepfind import ocr
 
-def test_entirely_white_page_skips_ocr_but_faint_ink_does_not(tmp_path,monkeypatch):
-    png=tmp_path/'page.png';image=Image.new('RGB',(100,100),'white');image.save(png)
+def test_entirely_white_page_skips_ocr_but_faint_ink_does_not(monkeypatch):
+    image=Image.new('RGB',(100,100),'white')
     monkeypatch.setattr(ocr,'engine_ok',lambda:(True,[]))
-    monkeypatch.setattr(ocr,'render_page_png',lambda *a:(str(png),300))
+    monkeypatch.setattr(ocr,'_render_page',lambda *a:image)
     calls=[]
-    monkeypatch.setattr(ocr,'recognize_png',lambda p:(calls.append(p) or ('silik',80,1)))
-    result=ocr.ocr_page('synthetic.pdf',0,str(tmp_path))
+    monkeypatch.setattr(ocr,'_recognize_image',lambda p:(calls.append(p) or ('silik',80,1)))
+    result=ocr.ocr_page('synthetic.pdf',0)
     assert result.method=='blank' and result.error_code is None and not calls
-    image.putpixel((50,50),(250,250,250));image.save(png)
-    assert ocr.ocr_page('synthetic.pdf',0,str(tmp_path)).method=='basic' and len(calls)==1
+    image.putpixel((50,50),(250,250,250))
+    assert ocr.ocr_page('synthetic.pdf',0).method=='basic' and len(calls)==1
 
 
 def test_old_empty_page_failure_is_retried_once_and_completes(tmp_path,monkeypatch):
@@ -27,7 +27,7 @@ def test_old_empty_page_failure_is_retried_once_and_completes(tmp_path,monkeypat
     con.execute("INSERT INTO ocr_coverage VALUES (?,?,1,'low','NO_TEXT')",(fid,rev))
     con.execute("UPDATE schema_meta SET v='rapid-1' WHERE k='ocr_version'");con.commit()
     assert ocr_setup.engine_backfill(con)==1
-    monkeypatch.setattr(ocr,'ocr_document',lambda *a:([ocr.OcrPage(1,method='blank')],None))
+    monkeypatch.setattr(ocr,'ocr_document',lambda *a:[ocr.OcrPage(1,method='blank')])
     monkeypatch.setattr(ocr,'ram_allows',lambda:True)
     monkeypatch.setattr(gom,'model_var_mi',lambda:False)
     job=q.claim(con,('ocr',))

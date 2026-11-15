@@ -159,6 +159,8 @@ def cmd_ara(args) -> int:
     _vault, _schema, _s3, _e4, _i5, _v1search, rank, history, _v9, _c10, _e11, _m4 = _load()
     con = _open_db(args)
     kw = {"year": args.yil, "ext": args.tur} if (args.yil or args.tur) else {}
+    if getattr(args, "zayif", False):
+        kw["zayiflari_goster"] = True
     from deepfind import embed
     try:
         embed.isit_oturumu()
@@ -179,14 +181,21 @@ def cmd_ara(args) -> int:
         print("Bos sorgu: son aramalar (A7).", flush=True)
         return 0
     if not out["results"]:
-        print("Sonuc yok.", flush=True)
+        if out.get("zayif_sadece"):
+            print("Guclu eslesme yok.", flush=True)
+        else:
+            print("Sonuc yok.", flush=True)
+        if out.get("gizlenen"):
+            print(f"{out['gizlenen']} zayif eslesme gizlendi (--zayif ile goster).",flush=True)
         if out["suggestions"]:
             print("Yakin oneriler: " + ", ".join(out["suggestions"]), flush=True)
         return 0
     for r in out["results"]:
         yer = r["label"] + (f" (sayfa {r['page']})" if r["page"] else "")
         print(f"- {r['name']} [{r['ext']}] @{yer} <{r['score_class']}> ({', '.join(r['why'])})"
-              f"\n  {r['snippet']}\n  {r['path']}", flush=True)
+              f"\n  {r['snippet']}\n  {r['path']}",flush=True)
+    if out.get("gizlenen"):
+        print(f"{out['gizlenen']} zayif eslesme gizlendi (ayrinti icin GUI).",flush=True)
     if out["suggestions"]:
         print("Yakin oneriler: " + ", ".join(out["suggestions"]), flush=True)
     return 0
@@ -269,6 +278,8 @@ def main(argv=None) -> int:
     p_a.add_argument("--limit", default="50")
     p_a.add_argument("--yil", default=None)
     p_a.add_argument("--tur", default=None)
+    p_a.add_argument("--zayif", action="store_true",
+                     help="Zayif eslesmeleri de goster (esik uygulanmaz)")
     p_h = sub.add_parser("haric-tut", help="Klasoru kapsam disi birak ve icerigini temizle")
     p_h.add_argument("kural")
     p_y = sub.add_parser("yedek-al", help="Sifreli indeks yedegi olustur")

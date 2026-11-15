@@ -15,7 +15,49 @@ def _terim_eslesir(terim, jetonlar):
     return False
 
 
+# Sayfa seciminde ayrinti kirilmasi icin durak kelimeler (V3).
+# Anlamsal bant disinda kalanlari elemez; yalniz yakin skorlar arasinda
+# sorgunun birden cok ayrintisini ayni baglamda karsilayani one cikarir.
+DURDUR = frozenset(("ve", "veya", "bir", "da", "de", "ki", "mı", "mi", "mu", "mü",
+    "ile", "için", "gibi", "kadar", "olan", "olarak", "hem", "ama", "fakat",
+    "çünkü", "diye", "sonra", "önce", "daha", "çok", "az", "ise", "ya",
+    "bu", "şu", "o", "ne", "her"))
+
+SAYFA_BANT = 0.02  # en iyi segmentin bu kadar gerisindeki adaylar kapsama yarisir
+
+
+def _sayfa_sec(terimler, adaylar, metinler):
+    """Dar bantta en cok ayrinti karsilayan sayfayi sec.
+
+    `adaylar`: [(benzerlik, seg_id, label, page), ...] (en iyi ilk).
+    `metinler`: {seg_id: raw_text}. Donus: (seg_id, label, page).
+    Skor disi birakilmaz; esitlikte yuksek benzerlik kazanir.
+    """
+    en_b = max(s for s, _, _, _ in adaylar)
+    yaris = [(s, i, e, p) for s, i, e, p in adaylar if s >= en_b - SAYFA_BANT - 1e-9]
+    en_iyi = (-1, -1.0)
+    sec = (yaris[0][1], yaris[0][2], yaris[0][3])
+    for s, i, e, p in yaris:
+        jetonlar = set(nz.tokens_folded(metinler.get(i, "")))
+        kapsama = sum(1 for t in terimler if _terim_eslesir(t, jetonlar))
+        if (kapsama, s) > en_iyi:
+            en_iyi = (kapsama, s)
+            sec = (i, e, p)
+    return sec
+
 HAVUZ = 500  # odaksal daraltma icin sabit aday havuzu (sayfadan bagimsiz)
+
+# Anlamsal kuyruk esigi: en iyi skordan bu kadar geride kalan elenir.
+# Vektor uzayinda alakasiz belgeler bile 0.7+ benzerlik verir (ortak yon),
+# bu yuzden mutlak esik degil, en iyiye gore bagil marj kullanilir.
+# En iyi sonuc her zaman korunur (en az 1 sonuc).
+ESIK_MARJ = 0.03
+
+# Karsiliksiz sorgu tabani: en iyi skor bunun altindaysa guclu eslesme yok
+# sayilir, liste bos doner (zayif adaylar ayrica istenebilir).
+# Kalibrasyon: 15 sorguluk gercek model olcumunde karsilikli sorgularin
+# en iyisi >=0.760, karsiliksiz sorgularin en iyisi <=0.725 cikti.
+MUTLAK_ESIK = 0.74
 
 
 def _dosya_metinleri(con, file_ids):
@@ -69,7 +111,7 @@ def _odakla(con, ordered, terimler):
 
 
 def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
-                    offset=0, tag=None, kodla=None):
+                    offset=0, tag=None, kodla=None, zayiflari_goster=False):
     from . import embed as embed_mod
     import numpy as np
     query=(query or '').strip()
@@ -110,6 +152,7 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
                          "JOIN segments s ON s.seg_id=e.seg_id JOIN files f ON f.file_id=s.file_id "
                          "WHERE " + ' AND '.join(filters), args)
     best = {}
+    adaylar = {}
     indexed = 0
     for fid,path,name,fext,state,error,sid,label,page,blob in cursor:
         if len(blob) != embed_mod.DIM * 4: continue
@@ -120,6 +163,11 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
         indexed += 1
         similarity = float(np.clip(np.dot(qvec, v / norm), -1.0, 1.0))
         if similarity <= 0: continue
+        # Sayfa kirilmasi yalniz ilk 12 adayi kullanir; bellek sabit tutulur.
+        liste = adaylar.setdefault(fid, [])
+        liste.append((similarity, sid, label, page))
+        if len(liste) > 12:
+            liste.remove(min(liste))
         if fid in best and best[fid][0] >= similarity: continue
         best[fid] = (similarity, (path,name,fext,state,error,sid,label,page))
 
@@ -127,7 +175,42 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
     # Kisi + belge turu birlikte aranir; genel dogal dil sorgusu kelime
     # zorunluluguna indirilmez (bk. _odakla).
     ordered=_odakla(con, ordered, nz.tokens_folded(query))
+    gizlenen = 0
+    zayif_sadece = False
+    if ordered and not zayiflari_goster:
+        if ordered[0][1][0] < MUTLAK_ESIK:
+            gizlenen = len(ordered)
+            ordered = []
+            zayif_sadece = True
+        else:
+            esik = ordered[0][1][0] - ESIK_MARJ
+            tutulan = [oge for oge in ordered if oge[1][0] >= esik - 1e-9]
+            gizlenen = len(ordered) - len(tutulan)
+            ordered = tutulan or ordered[:1]
     selected=ordered[offset:offset+limit]
+    # V3 sayfa kirilmasi: gosterilen her belgede, en iyiye yakin bantta
+    # sorgunun en cok ayrintisini karsilayan sayfa one cikar (belge sirasi ayni).
+    if selected:
+        ter = [t for t in nz.tokens_folded(query) if len(t) > 2 and t not in DURDUR]
+        sirali = {}
+        for fid, (_sim, _data) in selected:
+            sirali[fid] = sorted(adaylar.get(fid, []), reverse=True)[:12]
+        tum_sidler = [sid for liste in sirali.values() for s, sid, _e, _p in liste
+                      if s >= liste[0][0] - SAYFA_BANT - 1e-9]
+        metinler = {}
+        if tum_sidler:
+            yer = ",".join("?" * len(tum_sidler))
+            metinler = {r[0]: r[1] or "" for r in con.execute(
+                f"SELECT seg_id, raw_text FROM segments WHERE seg_id IN ({yer})", tum_sidler)}
+        yeni = []
+        for fid, (sim, data) in selected:
+            try:
+                sid, etiket, sayfa = _sayfa_sec(ter, sirali[fid], metinler)
+            except Exception:
+                sid, etiket, sayfa = data[5], data[6], data[7]
+            yeni.append((fid, (sim, (data[0], data[1], data[2], data[3],
+                                    data[4], sid, etiket, sayfa))))
+        selected = yeni
     # Page summary and years read in one query for the selected records; record
     # two queries per item (N+1) grew to 401 queries at limit=200.
     seg_idler = [data[5] for _fid, (_sim, data) in selected]
@@ -156,6 +239,7 @@ def search_semantic(con, query, year=None, ext=None, limit=50, folder=None,
             content_available=True))
     return dict(output,results=results,class_counts={'semantic':len(results)},
                 has_more=len(ordered)>offset+limit,indexed_documents=len(best),
+                gizlenen=gizlenen,zayif_sadece=zayif_sadece,
                 index_message='' if indexed else 'Bu kapsamda aranabilir içerik vektörü yok. Kaynaklarınızı tarayın.')
 
 def save_search(con, name: str, query: str, year=None, ext=None, folder=None) -> None:

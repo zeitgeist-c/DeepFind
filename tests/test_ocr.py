@@ -140,21 +140,16 @@ def test_motor_eksik_ocr_isi_ertelenir(tmp_path, monkeypatch):
     con.close()
 
 
-def test_ram_kapisi_ocr_erteler(tmp_path, monkeypatch):
+def test_ram_kapisi_ocr_erteler(monkeypatch):
     monkeypatch.setattr(ocr, "avail_ram", lambda: 1 * 1024**3)
     assert not ocr.ram_allows()
-    out, _wd = ocr.ocr_document("yok.pdf", [0], str(tmp_path))
+    out = ocr.ocr_document("yok.pdf", [0])
     assert out[0].method == "deferred" and out[0].error_code == "MEMORY_LIMIT"
 
 
 def test_bozuk_pdf_dosyayi_oldurmez(tmp_path, monkeypatch):
     monkeypatch.setattr(ocr, "engine_ok", lambda: (True, []))
-    wd = ocr.temp_dir(str(tmp_path))
-    try:
-        r = ocr.ocr_page(str(tmp_path / "bozuk.pdf"), 0, wd)
-    finally:
-        import shutil
-        shutil.rmtree(wd, ignore_errors=True)
+    r = ocr.ocr_page(str(tmp_path / "bozuk.pdf"), 0)
     assert r.method == "low" and r.error_code == "CORRUPT_DOCUMENT"
 
 
@@ -232,3 +227,22 @@ def test_rapid_kucuk_punto_turkce_tanimada(tmp_path):
     assert words >= 3
     assert "Gelir" in text and "Vergi" in text, text
     assert mean > 50, mean
+@motor_var
+def test_pdf_ocr_reports_page_boundaries_through_worker(tmp_path):
+    from reportlab.pdfgen.canvas import Canvas
+    from deepfind.workers import OcrSession
+
+    pdf = tmp_path / "blank.pdf"
+    canvas = Canvas(str(pdf))
+    for _ in range(2):
+        canvas.showPage()
+    canvas.save()
+    events = []
+    session = OcrSession()
+    try:
+        results = session.call("ocr", (str(pdf), [0, 1]),
+                                  progress=lambda page, done: events.append((page, done)))
+    finally:
+        session.kill()
+    assert [result.page for result in results] == [1, 2]
+    assert events == [(1, False), (1, True), (2, False), (2, True)]

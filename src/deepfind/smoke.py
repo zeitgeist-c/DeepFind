@@ -351,6 +351,26 @@ def run(report_path):
             assert verified.execute("SELECT count(*) FROM segments").fetchone()[0] == 601
             assert not verified.execute("SELECT 1 FROM sqlite_master WHERE name='docs_fts'").fetchone()
             verified.close()
+            checkpoint('update-installer-handoff')
+            from types import SimpleNamespace
+            from unittest.mock import patch
+            from .app import GuncellemeIsci
+            from . import update
+            setup = Path(temp) / 'candidate.exe'
+            setup.touch()
+            recovery = (Path(temp) / 'previous.exe', '0' * 64)
+            worker = GuncellemeIsci('indir', info=SimpleNamespace(version=__version__))
+            handoffs = []
+            errors = []
+            worker.hazir.connect(lambda *args: handoffs.append(args))
+            worker.hata.connect(errors.append)
+            # Patch I/O while requiring both functions to exist in the built app.
+            with patch.object(update, 'prepare', return_value=setup), patch.object(
+                update, 'prepare_recovery', return_value=recovery
+            ):
+                worker.kos()
+            assert not errors, errors
+            assert handoffs == [(__version__, str(setup), recovery)]
             from . import gom as _gom
             report["vektor_model"] = bool(_gom.model_var_mi())
             checkpoint('vektor-model-durumu')
@@ -365,7 +385,8 @@ def run(report_path):
                                            'startup-index-once', 'startup-counted-progress', 'kaynak-smoke',
                                            'model-download-dialog',
                                            'scan-inventory-and-percentages', 'scan-pause-resume',
-                                           'legacy-embedding-schema-repair', 'no-dictionary-maintenance'])
+                                           'legacy-embedding-schema-repair', 'no-dictionary-maintenance',
+                                           'update-installer-handoff'])
     except Exception as error:
         import traceback
         report["stage"] = current_stage

@@ -5,7 +5,7 @@ from .theme import t
 
 
 
-def _perform(kind, args):
+def _perform(kind, args, progress=None):
     if kind == "extract":
         from .extract import extract
         return extract(*args)
@@ -24,7 +24,7 @@ def _perform(kind, args):
             return dict(number=number,total=total,data=rgb.tobytes(),width=rgb.width,height=rgb.height)
     if kind == "ocr":
         from .ocr import ocr_document
-        return ocr_document(*args)
+        return ocr_document(*args, progress=progress)
     if kind == "thumb":
         return _thumb(*args)
     if kind == "pdf":
@@ -110,10 +110,19 @@ on multi-frame images (TIFF) the `sayfa` frame is picked."""
     return {"file": hedef, "width": image.width, "height": image.height}
 
 
+def _page_reporter(pipe):
+    import pickle
+
+    def report(page, finished):
+        pipe.send_bytes(pickle.dumps(("ocr_page", (page, finished))))
+
+    return report
+
+
 def _child(sender, kind, args):
     try:
         import pickle
-        payload = pickle.dumps((True, _perform(kind, args)))
+        payload = pickle.dumps((True, _perform(kind, args, _page_reporter(sender))))
         if len(payload) > 40 * 1024 * 1024:
             payload = pickle.dumps((False, "SIZE_LIMIT"))
         sender.send_bytes(payload)
@@ -124,26 +133,36 @@ def _child(sender, kind, args):
         sender.close()
 
 
-def run_work(kind, args, timeout=60, stop=None):
+def _receive(receiver, process, timeout, stop, progress):
     import pickle
+
+    deadline = time.monotonic() + timeout
+    while True:
+        if stop and stop():
+            raise InterruptedError(t("iş iptal edildi"))
+        if time.monotonic() >= deadline:
+            raise TimeoutError("PROCESS_TIMEOUT")
+        if receiver.poll(0.05):
+            status, result = pickle.loads(receiver.recv_bytes(40 * 1024 * 1024))
+            if status == "ocr_page":
+                if progress is not None:
+                    progress(*result)
+                continue
+            if not status:
+                raise RuntimeError(result)
+            return result
+        if not process.is_alive():
+            raise RuntimeError(t("çalışan beklenmedik biçimde kapandı"))
+
+
+def run_work(kind, args, timeout=60, stop=None, progress=None):
     context = mp.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(target=_child, args=(sender, kind, args), daemon=True)
     process.start()
     sender.close()
-    deadline = time.monotonic() + timeout
     try:
-        while not receiver.poll(0.05):
-            if stop and stop():
-                raise InterruptedError(t("iş iptal edildi"))
-            if time.monotonic() >= deadline:
-                raise TimeoutError("PROCESS_TIMEOUT")
-            if not process.is_alive():
-                raise RuntimeError(t("çalışan beklenmedik biçimde kapandı"))
-        ok, result = pickle.loads(receiver.recv_bytes(40 * 1024 * 1024))
-        if not ok:
-            raise RuntimeError(result)
-        return result
+        return _receive(receiver, process, timeout, stop, progress)
     finally:
         receiver.close()
         _terminate(process)
@@ -175,7 +194,7 @@ def _serve(req_reader, resp_writer):
         except (EOFError, OSError):
             break
         try:
-            payload = pickle.dumps((True, _perform(kind, args)))
+            payload = pickle.dumps((True, _perform(kind, args, _page_reporter(resp_writer))))
             if len(payload) > 40 * 1024 * 1024:
                 payload = pickle.dumps((False, "SIZE_LIMIT"))
         except Exception as error:
@@ -212,25 +231,19 @@ sets up a new session for the next job."""
     def alive(self) -> bool:
         return self.process is not None and self.process.is_alive()
 
-    def call(self, kind, args, timeout=600, stop=None):
+    def call(self, kind, args, timeout=600, stop=None, progress=None):
         if not self.alive():
             raise RuntimeError(t("çalışan beklenmedik biçimde kapandı"))
         self._req_w.send_bytes(self._pickle.dumps((kind, args)))
-        deadline = time.monotonic() + timeout
-        while not self._resp_r.poll(0.05):
-            if stop and stop():
+        try:
+            return _receive(self._resp_r, self.process, timeout, stop, progress)
+        except (InterruptedError, TimeoutError, OSError):
+            self.kill()
+            raise
+        except RuntimeError:
+            if not self.alive():
                 self.kill()
-                raise InterruptedError(t("iş iptal edildi"))
-            if time.monotonic() >= deadline:
-                self.kill()
-                raise TimeoutError("PROCESS_TIMEOUT")
-            if not self.process.is_alive():
-                self.kill()
-                raise RuntimeError(t("çalışan beklenmedik biçimde kapandı"))
-        ok, result = self._pickle.loads(self._resp_r.recv_bytes(40 * 1024 * 1024))
-        if not ok:
-            raise RuntimeError(result)
-        return result
+            raise
 
     def kill(self) -> None:
         if self.process is not None:

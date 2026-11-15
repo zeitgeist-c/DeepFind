@@ -5,6 +5,8 @@ missing here falls back to Turkish, which is what the audit tool reports.
 """
 
 EN = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: Reading page {page}.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: Finished processing page {page}.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "A language change takes effect on the next start.",
     "Çalışma motoru": "Compute engine",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "The choice is saved and the engine restarts.",
@@ -97,6 +99,12 @@ EN = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "CUDA engine was not found in this installation; repair the installation.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Your search data stays on this computer.",
     "Kasa: şifresiz\n": "Vault: password-free\n",
+    "Zayıf eşleşmeleri göster": "Show weak matches",
+    "Güçlü eşleşme bulunamadı": "No strong match found",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Use the button below for the closest weak candidates.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} weak matches hidden",
+    " • zayıf eşleşmeler gösteriliyor": " • showing weak matches",
+    "benzerlik skoru": "similarity score",
     "Dosya türleri": "File types",
     "Bu taramada işleme alınacak türler. Kapalı türdeki eski belgeler korunur.":
         "Types processed in this scan. Older documents of switched-off types are kept.",
@@ -159,6 +167,8 @@ EN = {
 }
 
 DE = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: Seite {page} wird gelesen.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: Verarbeitung von Seite {page} abgeschlossen.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "Eine Sprachänderung wirkt beim nächsten Start.",
     "Çalışma motoru": "Rechenmodul",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "Die Auswahl wird gespeichert und das Modul neu gestartet.",
@@ -251,6 +261,12 @@ DE = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "CUDA-Engine in dieser Installation nicht gefunden; Installation reparieren.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Ihre Suchdaten bleiben auf diesem Computer.",
     "Kasa: şifresiz\n": "Tresor: passwortfrei\n",
+    "Zayıf eşleşmeleri göster": "Schwache Treffer anzeigen",
+    "Güçlü eşleşme bulunamadı": "Keine starke Übereinstimmung gefunden",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Verwenden Sie die Schaltfläche unten für die nächsten schwachen Treffer.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} schwache Treffer ausgeblendet",
+    " • zayıf eşleşmeler gösteriliyor": " • schwache Treffer werden angezeigt",
+    "benzerlik skoru": "Ähnlichkeitswert",
     "Dosya türleri": "Dateitypen",
     "Bu taramada işleme alınacak türler. Kapalı türdeki eski belgeler korunur.":
         "In diesem Scan verarbeitete Typen. Ältere Dokumente abgeschalteter Typen bleiben erhalten.",
@@ -313,6 +329,8 @@ DE = {
 }
 
 ES = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: Leyendo la página {page}.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: Terminó el procesamiento de la página {page}.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "El cambio de idioma se aplica en el próximo inicio.",
     "Çalışma motoru": "Motor de cálculo",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "La elección se guarda y el motor se reinicia.",
@@ -405,9 +423,17 @@ ES = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "Motor CUDA no encontrado en esta instalación; repare la instalación.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Sus datos de búsqueda quedan en este equipo.",
     "Kasa: şifresiz\n": "Caja fuerte: sin contraseña\n",
+    "Zayıf eşleşmeleri göster": "Mostrar coincidencias débiles",
+    "Güçlü eşleşme bulunamadı": "No se encontró ninguna coincidencia sólida",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Use el botón siguiente para los candidatos débiles más cercanos.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} coincidencias débiles ocultas",
+    " • zayıf eşleşmeler gösteriliyor": " • mostrando coincidencias débiles",
+    "benzerlik skoru": "puntuación de similitud",
 }
 
 FR = {
+    "OCR: {page}. sayfa okunuyor.": "OCR : lecture de la page {page}.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR : traitement de la page {page} terminé.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "Le changement de langue prend effet au prochain démarrage.",
     "Çalışma motoru": "Moteur de calcul",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "Le choix est enregistré et le moteur redémarre.",
@@ -500,9 +526,17 @@ FR = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "Moteur CUDA introuvable dans cette installation ; réparez l’installation.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Vos données de recherche restent sur cet ordinateur.",
     "Kasa: şifresiz\n": "Coffre : sans mot de passe\n",
+    "Zayıf eşleşmeleri göster": "Afficher les correspondances faibles",
+    "Güçlü eşleşme bulunamadı": "Aucune correspondance forte trouvée",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Utilisez le bouton ci-dessous pour les candidats faibles les plus proches.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} correspondances faibles masquées",
+    " • zayıf eşleşmeler gösteriliyor": " • affichage des correspondances faibles",
+    "benzerlik skoru": "score de similarité",
 }
 
 IT = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: lettura della pagina {page}.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: elaborazione della pagina {page} terminata.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "La modifica della lingua ha effetto al prossimo avvio.",
     "Çalışma motoru": "Motore di calcolo",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "La scelta viene salvata e il motore si riavvia.",
@@ -595,9 +629,17 @@ IT = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "Motore CUDA non trovato in questa installazione; riparare l’installazione.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "I dati di ricerca restano su questo computer.",
     "Kasa: şifresiz\n": "Cassaforte: senza password\n",
+    "Zayıf eşleşmeleri göster": "Mostra le corrispondenze deboli",
+    "Güçlü eşleşme bulunamadı": "Nessuna corrispondenza forte trovata",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Usa il pulsante qui sotto per i candidati deboli più vicini.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} corrispondenze deboli nascoste",
+    " • zayıf eşleşmeler gösteriliyor": " • visualizzazione delle corrispondenze deboli",
+    "benzerlik skoru": "punteggio di similarità",
 }
 
 PB = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: lendo a página {page}.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: processamento da página {page} concluído.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "A troca de idioma vale na próxima inicialização.",
     "Çalışma motoru": "Motor de cálculo",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "A escolha é salva e o motor é reiniciado.",
@@ -690,9 +732,17 @@ PB = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "Mecanismo CUDA não encontrado nesta instalação; repare a instalação.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Seus dados de pesquisa ficam neste computador.",
     "Kasa: şifresiz\n": "Cofre: sem senha\n",
+    "Zayıf eşleşmeleri göster": "Mostrar correspondências fracas",
+    "Güçlü eşleşme bulunamadı": "Nenhuma correspondência forte encontrada",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Use o botão abaixo para os candidatos fracos mais próximos.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} correspondências fracas ocultas",
+    " • zayıf eşleşmeler gösteriliyor": " • mostrando correspondências fracas",
+    "benzerlik skoru": "pontuação de similaridade",
 }
 
 RU = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: чтение страницы {page}.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: обработка страницы {page} завершена.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "Смена языка вступит в силу при следующем запуске.",
     "Çalışma motoru": "Вычислительный движок",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "Выбор сохраняется, движок перезапускается.",
@@ -785,9 +835,17 @@ RU = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "Движок CUDA не найден в этой установке; восстановите установку.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Данные поиска хранятся на этом компьютере.",
     "Kasa: şifresiz\n": "Хранилище: без пароля\n",
+    "Zayıf eşleşmeleri göster": "Показать слабые совпадения",
+    "Güçlü eşleşme bulunamadı": "Сильных совпадений не найдено",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Используйте кнопку ниже для ближайших слабых кандидатов.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} слабых совпадений скрыто",
+    " • zayıf eşleşmeler gösteriliyor": " • показаны слабые совпадения",
+    "benzerlik skoru": "оценка сходства",
 }
 
 PL = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: odczyt strony {page}.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: zakończono przetwarzanie strony {page}.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "Zmiana języka zadziała przy następnym uruchomieniu.",
     "Çalışma motoru": "Silnik obliczeniowy",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "Wybór jest zapisywany, a silnik uruchamiany ponownie.",
@@ -880,9 +938,17 @@ PL = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "Nie znaleziono silnika CUDA w tej instalacji; napraw instalację.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Dane wyszukiwania zostają na tym komputerze.",
     "Kasa: şifresiz\n": "Sejf: bez hasła\n",
+    "Zayıf eşleşmeleri göster": "Pokaż słabe dopasowania",
+    "Güçlü eşleşme bulunamadı": "Nie znaleziono silnych dopasowań",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Użyj przycisku poniżej, aby zobaczyć najbliższych słabych kandydatów.",
+    " • {n} zayıf eşleşme gizlendi": " • ukryto {n} słabych dopasowań",
+    " • zayıf eşleşmeler gösteriliyor": " • wyświetlanie słabych dopasowań",
+    "benzerlik skoru": "wynik podobieństwa",
 }
 
 NL = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: pagina {page} wordt gelezen.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: verwerking van pagina {page} voltooid.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "Een taalwijziging geldt bij de volgende start.",
     "Çalışma motoru": "Rekenengine",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "De keuze wordt opgeslagen en de engine start opnieuw.",
@@ -975,9 +1041,17 @@ NL = {
     "CUDA motoru bu kurulumda bulunamadı; kurulumu onarın.": "CUDA-engine niet gevonden in deze installatie; herstel de installatie.",
     "Arama bilgileriniz bu bilgisayarda saklanır.": "Uw zoekgegevens blijven op deze computer.",
     "Kasa: şifresiz\n": "Kluis: zonder wachtwoord\n",
+    "Zayıf eşleşmeleri göster": "Zwakke overeenkomsten tonen",
+    "Güçlü eşleşme bulunamadı": "Geen sterke overeenkomst gevonden",
+    "En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın.": "Gebruik de onderstaande knop voor de dichtstbijzijnde zwakke kandidaten.",
+    " • {n} zayıf eşleşme gizlendi": " • {n} zwakke overeenkomsten verborgen",
+    " • zayıf eşleşmeler gösteriliyor": " • zwakke overeenkomsten worden getoond",
+    "benzerlik skoru": "overeenkomstscore",
 }
 
 ZH = {
+    "OCR: {page}. sayfa okunuyor.": "OCR：正在读取第 {page} 页。",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR：第 {page} 页处理完毕。",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "语言更改将在下次启动时生效。",
     "Çalışma motoru": "计算引擎",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "选择已保存，引擎将重新启动。",
@@ -1063,6 +1137,8 @@ ZH = {
 }
 
 JA = {
+    "OCR: {page}. sayfa okunuyor.": "OCR：{page} ページを読み取り中です。",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR：{page} ページの処理が完了しました。",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "言語の変更は次回の起動時に反映されます。",
     "Çalışma motoru": "演算エンジン",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "選択は保存され、エンジンが再起動します。",
@@ -1152,6 +1228,8 @@ JA = {
 }
 
 KO = {
+    "OCR: {page}. sayfa okunuyor.": "OCR: {page}페이지를 읽는 중입니다.",
+    "OCR: {page}. sayfanın işlemi bitti.": "OCR: {page}페이지 처리가 끝났습니다.",
     "Dil değişikliği bir sonraki açılışta geçerli olur.": "언어 변경은 다음 실행 시 적용됩니다.",
     "Çalışma motoru": "연산 엔진",
     "Seçim kaydedilir ve motor yeniden başlatılır.": "선택이 저장되고 엔진이 다시 시작됩니다.",

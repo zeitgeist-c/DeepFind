@@ -5,7 +5,7 @@ Contract:
 downloads — models ship inside the rapidocr package and read Turkish.
 - No wasteful OCR: a page with enough native text is skipped (OCR-01).
 - Engine/model gaps and memory: controlled deferral; content gaps stay visible.
-- Temp derivatives: controlled temp dir, cleanup after job/crash.
+- PDF pages are rendered and recognized in memory.
 - OCR jobs run in a spawn worker process (workers.run_work); the main UI never
 loads the model, the watcher thread kills processes breaching the limit."""
 from __future__ import annotations
@@ -123,9 +123,8 @@ def clean_stale(vault_dir: str, max_age_sec: int = 86400) -> int:
     return n
 
 
-def render_page_png(pdf_path: str, pageno_0: int, workdir: str,
-                    dpi: int | None = None) -> tuple:
-    """(png_yolu, kullanilan_dpi). Megapiksel sinirini asmamak icin DPI duser."""
+def _render_page(pdf_path: str, pageno_0: int):
+    """Render an RGB image with the existing DPI and megapixel limits."""
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(pdf_path)
     try:
@@ -136,7 +135,7 @@ def render_page_png(pdf_path: str, pageno_0: int, workdir: str,
             w_pt, h_pt = page.get_size()
         except Exception:
             w_pt, h_pt = 595.0, 842.0
-        for d in (RENDER_DPIS if dpi is None else (dpi,)):
+        for d in RENDER_DPIS:
             mp = (w_pt * d / 72.0) * (h_pt * d / 72.0) / 1e6
             if mp <= MAX_RENDER_MP:
                 use = d
@@ -144,10 +143,7 @@ def render_page_png(pdf_path: str, pageno_0: int, workdir: str,
         else:
             use = RENDER_DPIS[-1]
         scale = use / 72.0
-        bitmap = page.render(scale=scale).to_pil().convert("RGB")
-        out = os.path.join(workdir, f"p{pageno_0}.png")
-        bitmap.save(out)
-        return out, use
+        return page.render(scale=scale).to_pil().convert("RGB")
     finally:
         doc.close()
 
@@ -172,10 +168,15 @@ def _crop_content(img):
 
 def recognize_png(png_path: str) -> tuple:
     """PNG -> (metin, ort_conf_0_100, satir_sayisi). Motor hatasi RuntimeError."""
-    import numpy as np
     from PIL import Image
-    img = _crop_content(Image.open(png_path).convert("RGB"))
-    arr = np.asarray(img)[:, :, ::-1]  # RGB->BGR
+    with Image.open(png_path) as image:
+        return _recognize_image(image.convert("RGB"))
+
+
+def _recognize_image(image) -> tuple:
+    import numpy as np
+
+    arr = np.asarray(_crop_content(image))[:, :, ::-1]  # RGB->BGR
     result = rapid.run(arr)
     txts = [str(t).strip() for t in (getattr(result, "txts", None) or ()) if str(t).strip()]
     scores = [float(s) for s in (getattr(result, "scores", None) or ())]
@@ -184,7 +185,7 @@ def recognize_png(png_path: str) -> tuple:
     return text, mean, len(txts)
 
 
-def ocr_page(pdf_path: str, pageno_0: int, workdir: str) -> OcrPage:
+def ocr_page(pdf_path: str, pageno_0: int) -> OcrPage:
     """Tek sayfa: render + RapidOCR. Motor/model hatasinda kontrollu sonuc."""
     res = OcrPage(page=pageno_0 + 1)
     ok, missing = engine_ok()
@@ -194,24 +195,20 @@ def ocr_page(pdf_path: str, pageno_0: int, workdir: str) -> OcrPage:
         return res
     t0 = time.perf_counter()
     try:
-        png, _dpi = render_page_png(pdf_path, pageno_0, workdir)
+        image = _render_page(pdf_path, pageno_0)
     except Exception:
         res.method = "low"
         res.error_code = "CORRUPT_DOCUMENT"
         res.elapsed_ms = int((time.perf_counter() - t0) * 1000)
         return res
     try:
-        from PIL import Image
-        import numpy as np
-        with Image.open(png) as image:
-            pixels = np.asarray(image.convert('L'))
         # Only an entirely white page is blank. A single sparse line or
         # faint printed content must still go through OCR.
-        if np.count_nonzero(pixels < 255) == 0:
+        if image.convert("L").getextrema()[0] == 255:
             res.method = 'blank'
             res.elapsed_ms = int((time.perf_counter()-t0)*1000)
             return res
-        text, mean, words = recognize_png(png)
+        text, mean, words = _recognize_image(image)
     except RuntimeError as exc:
         import logging
         logging.getLogger("deepfind.ocr").warning("OCR sayfa motor hatasi: %s", exc)
@@ -231,22 +228,22 @@ def ocr_page(pdf_path: str, pageno_0: int, workdir: str) -> OcrPage:
     return res
 
 
-def ocr_document(pdf_path: str, pages_0: list, vault_dir: str) -> tuple:
-    """Belge duzeyi: RAM kapisi + motor kontrolu + kontrollu temp + sayfa siniri."""
+def ocr_document(pdf_path: str, pages_0: list, *, progress=None) -> list[OcrPage]:
+    """Process selected pages with memory, engine and page-limit checks."""
     if not ram_allows():
-        return [OcrPage(page=p + 1, method="deferred", error_code="MEMORY_LIMIT") for p in pages_0], None
+        return [OcrPage(page=p + 1, method="deferred", error_code="MEMORY_LIMIT") for p in pages_0]
     ok, missing = engine_ok()
     if not ok:
         code = "ENGINE_UNAVAILABLE" if missing == ["rapidocr-zinciri"] else "MODEL_MISSING"
-        return [OcrPage(page=p + 1, method="unavailable", error_code=code) for p in pages_0], None
-    wd = temp_dir(vault_dir)
-    try:
-        out = []
-        for i, p in enumerate(pages_0):
-            if i >= OCR_MAX_PAGES:
-                out.append(OcrPage(page=p + 1, method="deferred", error_code="PAGE_LIMIT"))
-                continue
-            out.append(ocr_page(pdf_path, p, wd))
-        return out, wd
-    finally:
-        _rmtree_tmp(wd)
+        return [OcrPage(page=p + 1, method="unavailable", error_code=code) for p in pages_0]
+    out = []
+    for i, p in enumerate(pages_0):
+        if i >= OCR_MAX_PAGES:
+            out.append(OcrPage(page=p + 1, method="deferred", error_code="PAGE_LIMIT"))
+            continue
+        if progress is not None:
+            progress(p + 1, False)
+        out.append(ocr_page(pdf_path, p))
+        if progress is not None:
+            progress(p + 1, True)
+    return out

@@ -372,7 +372,8 @@ def _process_job(con, job: dict, rules: list, vault_dir: str, root: str, stop=No
     return "done"
 
 
-def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, session=None) -> str:
+def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, session=None,
+                     progress=None) -> str:
     """Agir OCR fazi: ince sayfalari oku, ayni revizyona ocr_page segmentleri ekle.
 
     session: guarded modda tarama turu boyunca yeniden kullanilan isci (motoru
@@ -420,14 +421,16 @@ def _process_ocr_job(con, job: dict, vault_dir: str, stop=None, guarded=False, s
         # Sayfa render+OCR ~1-3 sn; butce sayfa basi 60 sn, tavan 30 dk.
         # Motor yuklenmesi oturumda bir kez odenir (session) ya da run_work'te.
         if session is not None:
-            results, _wd = session.call("ocr", (path, pages_0, vault_dir),
-                                        timeout=min(1800, max(120, len(pages_0) * 60)), stop=stop)
+            results = session.call("ocr", (path, pages_0),
+                                        timeout=min(1800, max(120, len(pages_0) * 60)), stop=stop,
+                                        progress=progress)
         else:
             from .workers import run_work
-            results, _wd = run_work("ocr", (path, pages_0, vault_dir),
-                                    timeout=min(1800, max(180, len(pages_0) * 60)), stop=stop)
+            results = run_work("ocr", (path, pages_0),
+                                    timeout=min(1800, max(180, len(pages_0) * 60)), stop=stop,
+                                    progress=progress)
     else:
-        results, _wd = ocr_mod.ocr_document(path, pages_0, vault_dir)
+        results = ocr_mod.ocr_document(path, pages_0)
     st = _stat_sig(path)
     if st is None or q.signature_of(*st) != sig:
         q.complete(con, job["job_id"])
@@ -827,9 +830,13 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 ocr_session = _taze_ocr_oturumu()
             path = con.execute("SELECT path FROM files WHERE file_id=?", (job["file_id"],)).fetchone()[0]
             report("OCR ile metin okunuyor", path, force=True)
+            def page_progress(page, finished):
+                if progress:
+                    emit_progress(progress, ocr_page=page, ocr_page_finished=finished,
+                                  path=path, timestamp=time.time())
             try:
                 r = _process_ocr_job(con, job, os.path.dirname(vault_path), stop, guarded,
-                                     ocr_session if guarded else None)
+                                     ocr_session if guarded else None, progress=page_progress)
             except InterruptedError:
                 con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job["job_id"],))
                 con.commit()

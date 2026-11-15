@@ -102,14 +102,16 @@ class AramaIsci(QThread):
             req = self.request
             q, year, ext, folder = req[0], req[1], req[2], req[3]
             tag = req[4] if len(req) > 4 else None
+            zayif = req[5] if len(req) > 5 else False
             out = rank.search_semantic(con, q, year=year, ext=ext, limit=50,
                                      folder=folder or None, offset=getattr(self,"offset",0),
-                                     tag=tag or None)
+                                     tag=tag or None, zayiflari_goster=bool(zayif))
             if not self.stop.is_set():
                 self.sonuc.emit({"request": self.request, "offset":getattr(self,'offset',0), "out": out})
         except Exception as error:
             if not self.stop.is_set():
-                self.sonuc.emit({"request": self.request, "error": type(error).__name__})
+                self.sonuc.emit({"request": self.request, "offset": getattr(self, "offset", 0),
+                                 "error": type(error).__name__})
         finally:
             if con is not None:
                 con.close()
@@ -150,6 +152,9 @@ class TaramaIsci(QObject):
             return data
 
     def report_progress(self, data, totals):
+        if 'ocr_page' in data:
+            self.ilerleme.emit(data)
+            return
         combined = dict(data, **{k: data.get(k, 0) + totals.get(k, 0)
                                for k in ("found", "done", "failed", "ocr_done", "ocr_failed", "skipped", "pending", "documents_done")})
         with self._progress_lock:
@@ -475,6 +480,10 @@ class AnaPencere(QMainWindow):
         self._job_pending={}
         self._job_generation=0
         self._search_offset=0
+        self._ilerleme=0
+        self._zayif_goster=False
+        self._sonuc_devami=False
+        self._sonuc_gizlenen=0
         self.setWindowTitle(f"DeepFind {__version__}")
         self.setWindowIcon(theme.app_icon())
         self.setMinimumSize(1000, 640)
@@ -1097,8 +1106,15 @@ so it walks every page on the stack."""
         more.clicked.connect(load); dialog.show(); load()
 
     def _search_next(self):
-        self._search_offset+=50
-        self._ara_simdi(reset=False)
+        if self._sonuc_devami:
+            self._search_offset=self._ilerleme
+            self._ara_simdi(reset=False)
+
+    def _zayif_ac(self):
+        if self._sonuc_gizlenen>0 and not self._zayif_goster:
+            self._zayif_goster=True
+            self._search_offset=self._ilerleme
+            self._ara_simdi(reset=False)
 
 
 
@@ -1391,7 +1407,12 @@ so it walks every page on the stack."""
         self.search_more.setProperty("kucuk", True)
         self.search_more.clicked.connect(self._search_next)
         self.search_more.hide()
+        self.zayif_btn = QPushButton(t("Zayıf eşleşmeleri göster"))
+        self.zayif_btn.setProperty("kucuk", True)
+        self.zayif_btn.clicked.connect(self._zayif_ac)
+        self.zayif_btn.hide()
         ok.addWidget(self.search_more)
+        ok.addWidget(self.zayif_btn)
         islik.addWidget(orta)
 
         # -- secili evrak sutunu --
@@ -1698,7 +1719,14 @@ so it walks every page on the stack."""
         if "yol" in alanlar:
             satirlar.append(sonuc["path"])
         if "tur" in alanlar:
-            satirlar.append(f"{tur}  •  {sonuc.get('label','')}" + (f"  •  {durum}" if durum else ""))
+            satir = f"{tur}  •  {sonuc.get('label','')}"
+            if durum:
+                satir += f"  •  {durum}"
+            skor = sonuc.get("score")
+            if isinstance(skor, (int, float)):
+                sayi = f"{skor/100:.2f}".replace(".", ",")
+                satir += f"  •  {t('benzerlik skoru')} {sayi}"
+            satirlar.append(satir)
         if "ozet" in alanlar:
             satirlar.append(ozet[:150])
         if "etiket" in alanlar and etiketler:
@@ -1868,6 +1896,13 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
 
     def _ara_simdi(self, reset=True):
         if reset: self._search_offset=0
+        if reset: self._zayif_goster=False
+        if reset:
+            self.search_more.hide()
+            self.zayif_btn.hide()
+            self._sonuc_gizlenen=0
+            self._sonuc_devami=False
+            self._ilerleme=0
         self._debounce.stop()
         if reset:
             self._thumblari_durdur()
@@ -1892,6 +1927,11 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self.sonuc_model.clear()
             self.sonuc_sayi.clear()
             self.sonuc_sayi.hide()
+            self.search_more.hide()
+            self.zayif_btn.hide()
+            self._sonuc_gizlenen=0
+            self._sonuc_devami=False
+            self._ilerleme=0
             self._secim_guncelle()
             self._sonuc_gorunumu(False)
             self.toplu_bar.hide()
@@ -1905,7 +1945,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         tur = self.tur_filtre.currentText()
         tur = None if tur == t("tümü") else tur
         etiket = self.etiket_filtre.text().strip().lower() or None
-        request = (q, yil, tur, self.sirket_filtre.text().strip().lower(), etiket)
+        request = (q, yil, tur, self.sirket_filtre.text().strip().lower(), etiket, self._zayif_goster)
         self._pending_search = request
         if self._search_thread is None:
             self._arama_baslat()
@@ -1933,26 +1973,43 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
     def _arama_bitti(self, message):
         if self._locked or self.con is None:
             return
-        q, yil, tur, kokf, etiket = message["request"]
+        q, yil, tur, kokf, etiket = message["request"][:5]
         current = (getattr(self, "_sorgu_serbest", self.arama_kutu.text()),
                    self.yil_filtre.text().strip() or None,
                    None if self.tur_filtre.currentText() == t("tümü") else self.tur_filtre.currentText(),
                    self.sirket_filtre.text().strip().lower(),
-                   self.etiket_filtre.text().strip().lower() or None)
+                   self.etiket_filtre.text().strip().lower() or None,
+                   self._zayif_goster)
         if message["request"] != current:
             return
         if message.get('offset',0)!=self._search_offset:
             return
-        if "error" in message:
-            self.search_progress.hide()
-            self.oneri.setText(f"Arama tamamlanamadı: {message['error']}")
-            return
         self.search_progress.hide()
-        out = message["out"]
+        out = message.get("out", {})
+        error = message.get("error")
+        if self._search_offset or self._zayif_goster:
+            error = error or out.get("semantic_error")
+        if error:
+            self.oneri.setText(f"Arama tamamlanamadı: {error}")
+            if self._zayif_goster and self._sonuc_gizlenen > 0:
+                self._zayif_goster = False
+                self.zayif_btn.show()
+            return
         self._waiting_for_model = bool(out.get('engine_status') and out.get('semantic_error'))
-        self.search_more.setVisible(out.get("has_more",False))
+        self._sonuc_devami = bool(out.get("has_more", False))
+        self._sonuc_gizlenen = int(out.get("gizlenen", 0) or 0)
+        zayif_istek = bool(len(message["request"]) > 5 and message["request"][5])
+        self.search_more.setVisible(self._sonuc_devami)
+        self.zayif_btn.setVisible(self._sonuc_gizlenen > 0 and not self._zayif_goster)
         res = out["results"]
-        self.sonuclar = res
+        if zayif_istek:
+            gorulen = {s.get("file_id") for s in self.sonuclar}
+            eklenen = [r for r in res if r.get("file_id") not in gorulen]
+            self.sonuclar = self.sonuclar + eklenen
+            self._ilerleme = message.get("offset", 0) + len(eklenen)
+        else:
+            self.sonuclar = res
+            self._ilerleme = message.get("offset", 0) + len(res)
         self.sonuc_model.clear()
         self.sonuc_sayi.setText(f"{len(res)} sonuç" if res else "")
         self.sonuc_sayi.setVisible(bool(res))
@@ -1961,8 +2018,12 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.sonuc_liste.selectionModel().clearSelection()
         self.sonuc_izgara.selectionModel().clearSelection()
         if not res:
-            self.search_empty.title.setText(t("Eşleşen belge bulunamadı"))
-            self.search_empty.text.setText(t("Aradığınız içeriği başka bir şekilde tarif edin veya filtreleri genişletin."))
+            if out.get("zayif_sadece"):
+                self.search_empty.title.setText(t("Güçlü eşleşme bulunamadı"))
+                self.search_empty.text.setText(t("En yakın zayıf adaylar için aşağıdaki düğmeyi kullanın."))
+            else:
+                self.search_empty.title.setText(t("Eşleşen belge bulunamadı"))
+                self.search_empty.text.setText(t("Aradığınız içeriği başka bir şekilde tarif edin veya filtreleri genişletin."))
         self._satirlari_yaz()
         self._secim_guncelle_bulk()
         if not res:
@@ -1970,7 +2031,9 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
                                                if out["suggestions"] else ""))
         else:
             self.oneri.setText(t("{count} sonuç", count=len(res)) +
-                               (f" • {', '.join(out['suggestions'][:3])}" if out["suggestions"] else ""))
+                               (f" • {', '.join(out['suggestions'][:3])}" if out["suggestions"] else "") +
+                               (t(" • {n} zayıf eşleşme gizlendi", n=out.get("gizlenen", 0)) if out.get("gizlenen") else "") +
+                               (t(" • zayıf eşleşmeler gösteriliyor") if self._zayif_goster else ""))
         if out.get('semantic_error'):
             self.oneri.setText(self.oneri.text() + t(" • Anlamsal arama kullanılamadı: ") + out['semantic_error'])
         elif out.get('index_message'):
@@ -2882,6 +2945,13 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
 
     def _scan_progress(self, data):
         if self._locked:
+            return
+        if 'ocr_page' in data:
+            timestamp = dt.datetime.fromtimestamp(data['timestamp']).strftime('%H:%M:%S')
+            message = t("OCR: {page}. sayfanın işlemi bitti." if data['ocr_page_finished']
+                        else "OCR: {page}. sayfa okunuyor.")
+            name = os.path.basename(data['path'])
+            self.scan_log.appendPlainText(f"[{timestamp}] {message.format(page=data['ocr_page'])} • {name}")
             return
         data = dict(data)
         ready = data.get('inventory_ready',False)

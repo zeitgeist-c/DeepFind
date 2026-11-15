@@ -20,6 +20,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 dist/
+/release/
 build/
 *.egg-info/
 # A1 pilotu ve maket ciktilari (repo disi yardimcilar)

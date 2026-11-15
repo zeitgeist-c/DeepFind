@@ -1150,6 +1150,228 @@ def test_015_lock_clears_dialog(pencere, monkeypatch):
     assert pencere.popup_scope.text() == 'sentetik yol'
 
 
+def test_satirda_anlamsal_skor_ve_gizlenen_notu(pencere):
+    """Sonuç satırı skoru gösterir, eşikle elenen varsa öneride not düşer."""
+    from PySide6.QtCore import Qt
+    pencere.show()
+    fid, yol, ad = pencere.con.execute(
+        "SELECT file_id, path, name FROM files").fetchone()
+    sonuc = {"file_id": fid, "path": yol, "name": ad, "ext": ".pdf",
+             "label": "Sayfa 1", "page": 1, "seg_id": 1, "snippet": "Ankara",
+             "score": 82.6, "vec_skor": 0.826, "why": ["anlamsal benzerlik"],
+             "years": [], "index_status": "ok", "error_code": None}
+    pencere._sorgu_serbest = "Ankara"
+    pencere._search_offset = 0
+    pencere._arama_bitti({"request": ("Ankara", None, None, "", None, False),
+                          "offset": 0,
+                          "out": {"results": [sonuc], "suggestions": [],
+                                  "gizlenen": 4, "has_more": False,
+                                  "semantic": True}})
+    satir = pencere.sonuc_model.index(0, 0).data(Qt.DisplayRole)
+    assert "benzerlik skoru 0,83" in satir
+    assert "4" in pencere.oneri.text() and "gizlendi" in pencere.oneri.text()
+    assert pencere.zayif_btn.isVisible()
+    assert not pencere.search_more.isVisible()
+
+
+def test_zayif_sadece_bos_durum_ve_sonrakiyle_acilir(pencere, monkeypatch):
+    """Taban altı sorguda güçlü eşleşme yok denir, Sonraki sonuçlar zayıfları açar."""
+    from PySide6.QtCore import Qt
+    from deepfind import rank
+    pencere.show()
+    pencere.arama_kutu.setText("Kuantum bilgisayar")
+    pencere._sorgu_serbest = "Kuantum bilgisayar"
+    pencere._search_offset = 0
+    pencere._arama_bitti({"request": ("Kuantum bilgisayar", None, None, "", None, False),
+                          "offset": 0,
+                          "out": {"results": [], "suggestions": [],
+                                  "gizlenen": 8, "has_more": False,
+                                  "zayif_sadece": True, "semantic": True}})
+    assert pencere.search_empty.title.text() == "Güçlü eşleşme bulunamadı"
+    assert pencere.zayif_btn.isVisible()
+    assert not pencere.search_more.isVisible()
+    # Sonraki sonuclar yalniz sayfa degistirir; zayif akisi ayri dugmededir.
+    pencere._search_next()
+    assert pencere._zayif_goster is False
+    assert pencere._search_thread is None
+    gorulen = {}
+    gercek = rank.search_semantic
+    def kayitli(*a, **k):
+        gorulen["zayif"] = k.get("zayiflari_goster", False)
+        return gercek(*a, **k)
+    monkeypatch.setattr(rank, "search_semantic", kayitli)
+    pencere._zayif_ac()
+    assert pencere._zayif_goster is True
+    assert pencere._search_offset == 0
+    _wait_search(pencere)
+    assert gorulen.get("zayif") is True
+    assert "gösteriliyor" in pencere.oneri.text()
+    assert len(pencere.sonuclar) >= 1
+    # Ekleme tekrarsiz: ayni belge iki yanitta da gelse bir kez listelenir.
+    ilk = dict(pencere.sonuclar[0])
+    sayi = len(pencere.sonuclar)
+    pencere._arama_bitti({"request": ("Kuantum bilgisayar", None, None, "", None, True),
+                          "offset": 0,
+                          "out": {"results": [ilk], "suggestions": [],
+                                  "gizlenen": 0, "has_more": False,
+                                  "semantic": True}})
+    kimlikler = [s["file_id"] for s in pencere.sonuclar]
+    assert len(kimlikler) == len(set(kimlikler)) == sayi
+
+
+def _sentetik_sonuc(i, sayfa=1):
+    return {"file_id": 9000 + i, "path": f"/tmp/b{i}.pdf", "name": f"b{i}.pdf",
+            "ext": ".pdf", "label": f"Sayfa {sayfa}", "page": sayfa, "seg_id": i,
+            "snippet": "Ankara", "score": 80.0, "vec_skor": 0.8,
+            "why": ["anlamsal benzerlik"], "years": [], "index_status": "ok",
+            "error_code": None}
+
+
+def _sentetik_yanit(sorgu, offset, res, devami=True, giz=5):
+    return {"request": sorgu, "offset": offset,
+            "out": {"results": res, "suggestions": [], "gizlenen": giz,
+                    "has_more": devami, "semantic": True}}
+
+
+def test_uc_sayfada_imlec_ilerler(pencere, monkeypatch):
+    """Normal sayfalama yerini korur: 2. sayfadan sonra 3. istek 100'den başlar."""
+    monkeypatch.setattr(pencere, "_thumblari_baslat", lambda: None)
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara")
+    pencere._sorgu_serbest = "Ankara"
+    req = ("Ankara", None, None, "", None, False)
+    pencere._search_offset = 0
+    pencere._arama_bitti(_sentetik_yanit(req, 0, [_sentetik_sonuc(i) for i in range(50)], True, 5))
+    assert pencere._ilerleme == 50 and len(pencere.sonuclar) == 50
+    cagrilar = []
+    pencere._ara_simdi = lambda reset=True: cagrilar.append(
+        (reset, pencere._search_offset, pencere._zayif_goster))
+    pencere._search_next()
+    assert pencere._search_offset == 50
+    del pencere._ara_simdi
+    pencere._arama_bitti(_sentetik_yanit(req, 50, [_sentetik_sonuc(50 + i) for i in range(50)], True, 5))
+    assert pencere._ilerleme == 100
+    pencere._ara_simdi = lambda reset=True: cagrilar.append(
+        (reset, pencere._search_offset, pencere._zayif_goster))
+    pencere._search_next()
+    assert pencere._search_offset == 100
+    del pencere._ara_simdi
+
+
+def test_ikinci_sayfadan_zayif_acis_atlamaz(pencere, monkeypatch):
+    """Zayıf açılışta imleç tüketilen güçlüden devam eder; tekrar/kayıp yok."""
+    monkeypatch.setattr(pencere, "_thumblari_baslat", lambda: None)
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara")
+    pencere._sorgu_serbest = "Ankara"
+    req = ("Ankara", None, None, "", None, False)
+    pencere._search_offset = 0
+    pencere._arama_bitti(_sentetik_yanit(req, 0, [_sentetik_sonuc(i) for i in range(50)], True, 30))
+    pencere._search_offset = 50
+    pencere._arama_bitti(_sentetik_yanit(req, 50, [_sentetik_sonuc(50 + i) for i in range(50)], False, 30))
+    assert pencere._ilerleme == 100
+    assert pencere.zayif_btn.isVisible()
+    cagrilar = []
+    pencere._ara_simdi = lambda reset=True: cagrilar.append(
+        (reset, pencere._search_offset, pencere._zayif_goster))
+    pencere._zayif_ac()
+    assert pencere._search_offset == 100 and pencere._zayif_goster is True
+    del pencere._ara_simdi
+    zayif_req = ("Ankara", None, None, "", None, True)
+    zayiflar = [dict(_sentetik_sonuc(200 + i), file_id=9500 + i) for i in range(30)]
+    pencere._arama_bitti(_sentetik_yanit(zayif_req, 100, zayiflar, False, 0))
+    kimlikler = [s["file_id"] for s in pencere.sonuclar]
+    assert len(kimlikler) == len(set(kimlikler)) == 80
+    assert pencere._ilerleme == 130
+    assert not pencere.zayif_btn.isVisible()
+
+
+def test_filtre_ve_bos_sorgu_sayfalama_durumunu_sifirlar(pencere, monkeypatch):
+    """Filtre değişimi ve boş sorgu imleç, düğme ve bayrakları sıfırlar."""
+    monkeypatch.setattr(pencere, "_thumblari_baslat", lambda: None)
+    monkeypatch.setattr(pencere, "_arama_baslat", lambda: None)
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara")
+    pencere._sorgu_serbest = "Ankara"
+    req = ("Ankara", None, None, "", None, False)
+    pencere._search_offset = 0
+    pencere._arama_bitti(_sentetik_yanit(req, 0, [_sentetik_sonuc(i) for i in range(50)], True, 5))
+    assert pencere._ilerleme == 50
+    pencere.etiket_filtre.setText("x")
+    assert pencere._ilerleme == 0 and pencere._search_offset == 0
+    assert pencere._zayif_goster is False
+    assert not pencere.search_more.isVisible() and not pencere.zayif_btn.isVisible()
+    pencere.etiket_filtre.setText("")
+    pencere.arama_kutu.setText("")
+    pencere._ara_simdi()
+    assert pencere.sonuclar == [] and pencere._ilerleme == 0
+    assert not pencere.search_more.isVisible() and not pencere.zayif_btn.isVisible()
+
+
+def test_ikinci_sayfada_hata_gostergeyi_kapatip_tekrara_izin_verir(pencere, monkeypatch):
+    """Sayfa 2/zayıf-açma hatasında gösterge kapanır, sonuçlar korunur, yeniden deneme mümkün."""
+    monkeypatch.setattr(pencere, "_thumblari_baslat", lambda: None)
+    pencere.show()
+    pencere.arama_kutu.setText("Ankara")
+    pencere._sorgu_serbest = "Ankara"
+    req = ("Ankara", None, None, "", None, False)
+    pencere._search_offset = 0
+    pencere._arama_bitti(_sentetik_yanit(req, 0, [_sentetik_sonuc(i) for i in range(50)], True, 5))
+    assert len(pencere.sonuclar) == 50 and pencere._ilerleme == 50
+    assert pencere.search_more.isVisible()
+    # sayfa 2 isteği hatayla döndü (işçi artık offset gönderiyor)
+    pencere._search_offset = 50
+    pencere.search_progress.show()
+    pencere._arama_bitti({"request": req, "offset": 50, "error": "TimeoutError"})
+    assert pencere.search_progress.isHidden()
+    assert len(pencere.sonuclar) == 50 and pencere._ilerleme == 50
+    assert pencere._search_offset == 50
+    assert pencere.search_more.isVisible()
+    assert "tamamlanamadı" in pencere.oneri.text()
+    # zayıf açma hatası: bayrak geri alınır, düğme yeniden görünür
+    pencere._zayif_goster = True
+    pencere._sonuc_gizlenen = 30
+    zreq = ("Ankara", None, None, "", None, True)
+    pencere.search_progress.show()
+    pencere._arama_bitti({"request": zreq, "offset": 50, "error": "RuntimeError"})
+    assert pencere.search_progress.isHidden()
+    assert pencere._zayif_goster is False
+    assert pencere.zayif_btn.isVisible()
+    assert len(pencere.sonuclar) == 50
+
+    # After expansion succeeds, an error on a later page keeps expanded mode.
+    pencere._zayif_goster = True
+    weak_rows = [_sentetik_sonuc(i) for i in range(50, 100)]
+    pencere._arama_bitti(_sentetik_yanit(zreq, 50, weak_rows, True, 0))
+    pencere._search_offset = 100
+    pencere.search_progress.show()
+    pencere._arama_bitti({"request": zreq, "offset": 100,
+                         "out": {"semantic_error": "Model hazır değil"}})
+    assert pencere.search_progress.isHidden()
+    assert pencere._zayif_goster is True
+    assert len(pencere.sonuclar) == 100
+    assert pencere.search_more.isVisible()
+    assert "Model hazır değil" in pencere.oneri.text()
+    retried = []
+    monkeypatch.setattr(pencere, "_ara_simdi", lambda reset: retried.append(
+        (reset, pencere._search_offset, pencere._zayif_goster)))
+    pencere._search_next()
+    assert retried == [(False, 100, True)]
+
+
+def test_ocr_page_progress_adds_timestamp_without_changing_scan_stage(pencere):
+    import datetime
+    from deepfind import theme
+
+    stamp = datetime.datetime(2026, 11, 15, 1, 39, 50).timestamp()
+    stage = pencere.popup_status.text()
+    pencere._scan_progress(dict(ocr_page=306, ocr_page_finished=False,
+                                timestamp=stamp, path='test.pdf'))
+    message = theme.t("OCR: {page}. sayfa okunuyor.", page=306)
+    assert f"[01:39:50] {message} • test.pdf" in pencere.scan_log.toPlainText()
+    assert pencere.popup_status.text() == stage
+
+
 def test_scan_has_known_total_two_percentages_and_phase_eta(pencere):
     from types import SimpleNamespace
     import datetime, time
