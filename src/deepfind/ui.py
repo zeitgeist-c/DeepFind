@@ -4,7 +4,7 @@ Design rule: single surface + hairline divider. No box inside a box; colors
 always come through `theme.pal()`, never hardcoded."""
 from PySide6.QtCore import Qt, QSize, QRect, QRectF, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QFontMetrics, QPainterPath, QPen, QPixmap
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget,
                                QStyledItemDelegate, QStyle, QSizePolicy)
 from . import theme
 from .theme import t
@@ -79,6 +79,22 @@ def sayac(text=""):
     chip.setProperty("sayac", True)
     chip.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
     return chip
+
+
+def ilerleme_cubugu(yukseklik=24):
+    """Belirgin ilerleme cubugu: global ince stili ezer.
+
+    Yuzde metinli (determinate) ve toplami bilinmeyen (indeterminate)
+    cubuklar icin ortak bilesen: yeterli yukseklik + ortali metin.
+    Ince global cubuk yalniz metinsiz mesgul gostergelerinde kalir
+    (arama, onizleme). Ikincil/faz cubuklarinda yukseklik=20.
+    """
+    bar = QProgressBar()
+    bar.setTextVisible(True)
+    bar.setStyleSheet(
+        "QProgressBar { min-height: %dpx; max-height: %dpx; text-align: center; }"
+        % (yukseklik, yukseklik))
+    return bar
 
 
 def stat_seridi(kalemler):

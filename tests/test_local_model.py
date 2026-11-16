@@ -74,7 +74,7 @@ def test_old_vectors_never_mixed_with_new_model(tmp_path):
 def test_token_chunks_cover_tail_and_repeat_task_prefix():
     session=object.__new__(engine.Oturum); session._kilit=threading.RLock()
     seen=[]
-    def request(path,data):
+    def request(path, data=None, timeout=None):
         if path=='/tokenize': return {'tokens':[9001,9002] if data['add_special'] else list(range(1500))}
         seen.append(data['input'])
         v=np.zeros(768); v[0]=1

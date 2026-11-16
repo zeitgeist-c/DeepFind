@@ -68,25 +68,77 @@ def vektor_yaz(con, ciftler: list[tuple[int, str]], v) -> int:
     return len(ids)
 
 
-def isle_dosya(con, file_id: int, kodla) -> int:
+def isle_dosya(con, file_id: int, kodla, cancel=None) -> int:
     """kodla(metinler) -> (n,256) float32. Donus: vektor yazilan segment."""
     ciftler = _metinler(con, file_id)
     if not ciftler:
         return 0
-    return vektor_yaz(con, ciftler, kodla([t for _, t in ciftler]))
+    v = kodla([t for _, t in ciftler])
+    if cancel is not None:
+        try:
+            if cancel():
+                raise InterruptedError("Gömme iptal edildi")
+        except InterruptedError:
+            raise
+        except Exception:
+            pass
+    return vektor_yaz(con, ciftler, v)
 
 
-def process_embed_job(con, job: dict, kodla=None) -> str:
-    """Tek embed isi: 'done' | 'changed' | 'gone'. Model tembel yuklenir."""
+def process_embed_job(con, job: dict, kodla=None, cancel=None, deneme=False,
+                        ayrinti: dict | None = None) -> str:
+    """Tek embed isi: 'done' | 'changed' | 'gone' | 'deneme_hatasi'.
+
+    `deneme=True` (toplu deneme): kodla hatasi normal isin yeniden deneme
+    hakkini tuketmez; is pending birakilir (attempts aynen korunur) ve
+    'deneme_hatasi' doner. Cagiran denemeyi kapatip ayni isi normal ayarla
+    yeniden isler. Normal ayar da hata verirse mevcut `q.fail` politikasi
+    uygulanir. `ayrinti` verilirse {'parca': yazilan segment, 'hata': tur}
+    doldurulur; hiz olcumu bu gercek yazim sayisiyla yapilir.
+
+    Gec yanit iptal edilmis isi tamamlayamaz: kodla donse bile yazmadan ve
+    kuyruktan dusmeden once iptal denetlenir; iptalde is pending birakilir
+    (cagiran `InterruptedError` uzerinden kuyrugu korur). Yazilmamis isler
+    yeniden islenebilir kalir; cift yazma olmaz cunku `vektor_yaz` tek
+    transaction + upsert'tir.
+    """
     fid = job["file_id"]
+    if cancel is not None:
+        try:
+            if cancel():
+                raise InterruptedError("Gömme iptal edildi")
+        except InterruptedError:
+            raise
+        except Exception:
+            pass
     satir = con.execute(
         "SELECT size, mtime_ns FROM files WHERE file_id=?", (fid,)).fetchone()
     if not satir:
+        if cancel is not None:
+            try:
+                if cancel():
+                    raise InterruptedError("Gömme iptal edildi")
+            except InterruptedError:
+                raise
+            except Exception:
+                pass
         q.complete(con, job["job_id"])
         return "gone"
     if q.signature_of(*satir) != job["signature"]:
         q.enqueue(con, fid, q.signature_of(*satir), kind="embed")
         con.commit()
+        if cancel is not None:
+            try:
+                if cancel():
+                    raise InterruptedError("Gömme iptal edildi")
+            except InterruptedError:
+                # Yeni imza kuyrukta; eski is pending birakilir.
+                con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?",
+                            (job["job_id"],))
+                con.commit()
+                raise
+            except Exception:
+                pass
         q.complete(con, job["job_id"])
         return "changed"
     if kodla is None:
@@ -95,10 +147,37 @@ def process_embed_job(con, job: dict, kodla=None) -> str:
             raise RuntimeError(embed_mod.status()["error"])
         kodla = lambda metinler: ot.encode(metinler, gorev="belge", toplu=TOPLU)  # noqa: E731
     try:
-        isle_dosya(con, fid, kodla)
+        yazilan = isle_dosya(con, fid, kodla, cancel=cancel)
     except InterruptedError:
         raise
     except Exception as error:
-        return q.fail(con, job["job_id"], type(error).__name__)
+        hata_turu = type(error).__name__
+        if ayrinti is not None:
+            ayrinti["parca"] = 0
+            ayrinti["hata"] = hata_turu
+        if deneme:
+            # Deneysel hata: normal isin hakki tuketilmez; son deneme
+            # hakkindaki is bile normal ayarla yeniden islenebilir.
+            con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?",
+                        (job["job_id"],))
+            con.commit()
+            return "deneme_hatasi"
+        return q.fail(con, job["job_id"], hata_turu)
+    if cancel is not None:
+        try:
+            if cancel():
+                raise InterruptedError("Gömme iptal edildi")
+        except InterruptedError:
+            # Vektor yazildiysa bile tamamlanmis sayilmaz; yeniden isleme
+            # upsert ile idempotenttir, cift kayit olusmaz.
+            con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?",
+                        (job["job_id"],))
+            con.commit()
+            raise
+        except Exception:
+            pass
+    if ayrinti is not None:
+        ayrinti["parca"] = int(yazilan)
+        ayrinti["hata"] = None
     q.complete(con, job["job_id"])
     return "done"

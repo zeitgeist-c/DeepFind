@@ -31,7 +31,7 @@ from . import identity, migrate, rank, scheduler as sched, theme, vault, diagnos
 from . import update as update_mod
 from .preview import Onizleme
 from .version import __version__
-from .ui import (ayar_satiri, bolum, bolme, brand, card, label, sayac,
+from .ui import (ayar_satiri, bolum, bolme, brand, card, ilerleme_cubugu, label, sayac,
                  sayfa_basi, stat_seridi, Toast, EmptyState, CardDelegate, GorselKutusu,
                  Cip, GridDelegate)
 from . import archive_ui
@@ -2575,15 +2575,13 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
         self.popup_scope.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.popup_scope.setMinimumWidth(0)
         popup.addWidget(self.popup_scope)
-        self.tarama_bar = QProgressBar()
-        self.tarama_bar.setStyleSheet('QProgressBar { min-height: 24px; max-height: 24px; text-align: center; }')
+        self.tarama_bar = ilerleme_cubugu()
         self.tarama_bar.setTextVisible(True)
         self.tarama_bar.setFormat('Belge tamamlanma: %p%')
         self.tarama_bar.setRange(0, 0)
         self.tarama_bar.hide()
         popup.addWidget(self.tarama_bar)
-        self.scan_phase_bar = QProgressBar()
-        self.scan_phase_bar.setStyleSheet('QProgressBar { min-height: 20px; max-height: 20px; text-align: center; }')
+        self.scan_phase_bar = ilerleme_cubugu(20)
         self.scan_phase_bar.setTextVisible(True)
         self.scan_phase_bar.hide()
         popup.addWidget(self.scan_phase_bar)
@@ -3410,7 +3408,7 @@ field dropped from the query (`yil:2024` deleted) is taken back."""
             self.update_durum.setText(t("Sürüm {__version__} kurulu.", __version__=__version__))
         self.update_indir_btn.setVisible(False)
         self.update_iptal_btn.setVisible(False)
-        self.update_bar = QProgressBar()
+        self.update_bar = ilerleme_cubugu()
         self.update_bar.setVisible(False)
         k.addWidget(ayar_satiri(
             t("Sürüm"), t("Yeni sürüm çıktığında buradan indirilir; kurulum kendiliğinden tamamlanır."),
@@ -4256,7 +4254,7 @@ def main(kasa_yolu=None, sifre=None):
         status = label(t("Çalışma alanınız hazırlanıyor…"), "subheading")
         content.addWidget(status)
         content.addWidget(label(t("Şifresiz kasa kuruluyor. Tamamlandığında DeepFind kendiliğinden açılacak."), "ikincil"))
-        bar = QProgressBar()
+        bar = ilerleme_cubugu()
         bar.setRange(0, 0)
         content.addWidget(bar)
         retry = QPushButton("Yeniden dene")

@@ -874,6 +874,7 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
         # Shared native process isolates driver failures without duplicate model loads.
         if vektor_aktif:
             from . import embed as embedding
+            from . import embed_tune as tune_mod
             kod = None
             try:
                 ot = embedding.isit_oturumu(cancel=stop)
@@ -885,27 +886,165 @@ def run_scan(con, vault_path: str, root: str, stop=None, guarded=False, progress
                 stats.update(embedding_ready=False, reason_code=stats.get('reason_code') or kod,
                              reason_stage='embedding', reason_help=_sebep_yardim(kod))
                 report(_sebep_kisa(kod), root, kod, force=True)
+            karar = tune_mod.TopluKarar()
+            toplu_bildirim = None
+
+            def _toparla(kod_adayi=None):
+                """Yanitsiz/olu motoru kapatip yeniden kur; olmazsa False.
+
+                Kuyruk korunur (isler pending kalir), durum gorunur kilinir,
+                arayuz yanit vermeye devam eder. Deneme karari tarama
+                oturumunda korunur (basarisiz deneme yeniden acilmaz).
+                """
+                nonlocal ot, kod
+                try:
+                    embedding.close()
+                except Exception:
+                    pass
+                try:
+                    ot = embedding.isit_oturumu(cancel=stop)
+                except TimeoutError:
+                    ot = None
+                    kod = 'ENGINE_TIMEOUT'
+                except InterruptedError:
+                    stats['result'] = 'cancelled'
+                    return None
+                except Exception:
+                    ot = None
+                if ot is None:
+                    kod = kod_adayi or kod or embedding.status_code() or 'ENGINE_START_ERROR'
+                    stats.update(embedding_ready=False,
+                                 reason_code=stats.get('reason_code') or kod,
+                                 reason_stage='embedding',
+                                 reason_help=_sebep_yardim(kod))
+                    report(_sebep_kisa(kod), root, kod, force=True)
+                    return False
+                return True
+
             while ot is not None:
                 if stop and stop():
                     stats['result'] = 'cancelled'
                     break
+                if not getattr(ot, "alive", lambda: True)():
+                    # Mevcut toparlanma yolu: kapat + ayni kurulumu yeniden dene.
+                    onceki = _toparla()
+                    if onceki is None:
+                        break
+                    if not onceki:
+                        break
+                bekleyen = con.execute(
+                    "SELECT count(*) FROM jobs WHERE kind='embed' AND status IN ('pending','running')"
+                    " AND file_id IN (SELECT file_id FROM scan_selected)").fetchone()[0]
+                _tune_backend = getattr(ot, 'backend', 'cpu') or 'cpu'
+                _tune_bilgi = tune_mod.gpu_bilgi(ot)
+                _engel = tune_mod.probe_engeli(_tune_backend, _tune_bilgi, bekleyen)
+                if _engel in ("RAM_YETERSIZ", "VRAM_YETERSIZ", "VRAM_BILINMIYOR"):
+                    # Kaynak baskisi ya da bilinmeyen pay: normale don, kilitle.
+                    karar.gozlem(karar.aktif_toplu(), 0, 0.0, kaynak_baskisi=True)
+                    toplu = tune_mod.NORMAL_TOPLU
+                    if _engel in ("VRAM_YETERSIZ", "VRAM_BILINMIYOR") \
+                            and toplu_bildirim != _engel:
+                        # GPU eslemesi/bellek guvenilir degil: o oturumda
+                        # normal ayar; neden tanilama yolunda gorunur.
+                        toplu_bildirim = _engel
+                        stats.update(toplu_deneme="kapali", toplu_neden=_engel,
+                                     toplu_aygit=_tune_bilgi.get("gpu_aygit"))
+                        report("Otomatik paket ayarı", _engel, "normal")
+                elif _engel is not None:
+                    toplu = tune_mod.NORMAL_TOPLU
+                elif not karar.baz_hazir():
+                    # Once karsilastirilabilir baz birikir; gurultuyle yukselme yok.
+                    toplu = tune_mod.NORMAL_TOPLU
+                elif karar.aktif_toplu() != tune_mod.NORMAL_TOPLU:
+                    toplu = karar.aktif_toplu()
+                else:
+                    # Kademeli deneme: baz hazirsa siradaki adayi dene.
+                    toplu = tune_mod.ADAY_TOPLULAR[0]
                 job = q.claim(con, ('embed',), scoped=True)
                 if not job: break
                 fid = job['file_id']
                 report('Vektör dizini hazırlanıyor', str(fid), force=True)
+                prob = toplu > tune_mod.NORMAL_TOPLU
+                zaman_asimi = (tune_mod.PROBE_ZAMAN_ASIMI if prob
+                               else tune_mod.NORMAL_ZAMAN_ASIMI)
+
+                def _kodla(metinler, _t=toplu, _z=zaman_asimi):
+                    return ot.encode(metinler, gorev='belge', toplu=_t,
+                                     cancel=stop, zaman_asimi=_z)
+
+                def _normal_kodla(metinler):
+                    return ot.encode(metinler, gorev='belge',
+                                     toplu=tune_mod.NORMAL_TOPLU, cancel=stop,
+                                     zaman_asimi=tune_mod.NORMAL_ZAMAN_ASIMI)
+
+                baslangic = tune_mod.simdi()
+                ayrinti: dict = {}
                 try:
-                    outcome = gom_mod.process_embed_job(con, job, kodla=lambda texts: ot.encode(texts, gorev='belge', cancel=stop))
+                    outcome = gom_mod.process_embed_job(
+                        con, job, kodla=_kodla, cancel=stop,
+                        deneme=prob, ayrinti=ayrinti)
                 except InterruptedError:
                     con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job['job_id'],))
                     con.commit()
                     stats['result'] = 'cancelled'
                     break
+                except TimeoutError as error:
+                    # kodla disi zaman asimi (beklenmez): mevcut politika.
+                    outcome = q.fail(con, job['job_id'], type(error).__name__)
+                    karar.gozlem(toplu, 0, max(0.0, tune_mod.simdi() - baslangic), hata=True)
+                    kurt = _toparla('ENGINE_TIMEOUT')
+                    if kurt is None or not kurt:
+                        break
+                    continue
                 except Exception as error:
                     outcome = q.fail(con, job['job_id'], type(error).__name__)
+                    karar.gozlem(toplu, 0, max(0.0, tune_mod.simdi() - baslangic), hata=True)
+                    phase_finished(fid)
+                    documents.refresh(fid)
+                    if outcome in ('retry', 'dead'): stats['failed'] += 1
+                    report('Vektör işleniyor', str(fid), outcome)
+                    # Motor olduyse sonraki is oncesi toparlanma dongu basinda denenir.
+                    continue
+                if outcome == 'deneme_hatasi':
+                    # Deneme kapandi (bu tarama oturumunda yeniden denenmez);
+                    # ayni is normal ayarla yeniden islenir, hakki durur.
+                    karar.gozlem(toplu, 0, max(0.0, tune_mod.simdi() - baslangic), hata=True)
+                    baslangic = tune_mod.simdi()
+                    ayrinti = {}
+                    try:
+                        outcome = gom_mod.process_embed_job(
+                            con, job, kodla=_normal_kodla, cancel=stop,
+                            ayrinti=ayrinti)
+                    except InterruptedError:
+                        con.execute("UPDATE jobs SET status='pending',lease_until=0 WHERE job_id=?", (job['job_id'],))
+                        con.commit()
+                        stats['result'] = 'cancelled'
+                        break
+                    except Exception as error:
+                        outcome = q.fail(con, job['job_id'], type(error).__name__)
+                        ayrinti = {"parca": 0, "hata": type(error).__name__}
+                    toplu = tune_mod.NORMAL_TOPLU
+                sure = max(1e-9, tune_mod.simdi() - baslangic)
+                if outcome == 'done':
+                    # Gercek yazim sayisi (indekse basariyla yazilan parca).
+                    parca = ayrinti.get("parca", 0) or 0
+                    karar.gozlem(toplu, parca, sure)
+                    stats['embed_done'] += 1
+                elif outcome in ('retry', 'dead'):
+                    karar.gozlem(toplu, 0, sure, hata=True)
+                    stats['failed'] += 1
+                    if ayrinti.get("hata") == 'TimeoutError':
+                        # Motor sureci acik ama yanitsiz olabilir: guvenli
+                        # toparlanma (kapat + yeniden kur). Basarisizsa
+                        # kuyruk korunur, durum gorunur, arayuz surer.
+                        kurt = _toparla('ENGINE_TIMEOUT')
+                        if kurt is None or not kurt:
+                            phase_finished(fid)
+                            documents.refresh(fid)
+                            report('Vektör işleniyor', str(fid), outcome)
+                            break
                 phase_finished(fid)
                 documents.refresh(fid)
-                if outcome == 'done': stats['embed_done'] += 1
-                if outcome in ('retry', 'dead'): stats['failed'] += 1
                 report('Vektör işleniyor', str(fid), outcome)
         elif require_vectors and hazirlik['kod']:
             report(hazirlik['kisa'], root, hazirlik['kod'], force=True)

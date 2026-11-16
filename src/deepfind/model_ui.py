@@ -2,10 +2,10 @@
 import threading
 from PySide6.QtCore import QThread, QTimer, Signal, QObject
 from PySide6.QtWidgets import (QComboBox, QPushButton, QDialog, QVBoxLayout,
-                               QProgressBar, QCheckBox, QLabel)
+                               QCheckBox, QLabel)
 from . import archive_ui, engine, migrate
 from .theme import t
-from .ui import bolum, label
+from .ui import bolum, label, ilerleme_cubugu
 
 
 def install(window, layout):
@@ -98,6 +98,16 @@ class _IndirmeIsci(QObject):
             self.hata.emit(f'{t("İndirme tamamlanamadı.")} {exc}')
 
 
+def _ilerleme_uygula(bar, durum, d, to):
+    """Indirme ilerlemesi: toplam biliniyorsa yuzde, yoksa belirsiz cubuk."""
+    if to:
+        bar.setRange(0, 100)
+        bar.setValue(int(d * 100 / to))
+    else:
+        bar.setRange(0, 0)
+    durum.setText(t("Model indiriliyor…"))
+
+
 def indir_penceresi(ebeveyn, *, tarama=False, sebep=""):
     """Model indirme penceresi: amac, boyut, lisans, ilerleme, iptal, yeniden deneme."""
     from . import model_indir as _mi
@@ -121,7 +131,7 @@ def indir_penceresi(ebeveyn, *, tarama=False, sebep=""):
     durum = QLabel(t("Model hazır.") if hazir else "")
     durum.setWordWrap(True)
     k.addWidget(durum)
-    bar = QProgressBar()
+    bar = ilerleme_cubugu()
     bar.setRange(0, 100)
     bar.setValue(0)
     k.addWidget(bar)
@@ -140,9 +150,7 @@ def indir_penceresi(ebeveyn, *, tarama=False, sebep=""):
     kanal = QThread(pencere)
     isci.moveToThread(kanal)
     kanal.started.connect(isci.calistir)
-    isci.ilerleme.connect(lambda d, to: (bar.setRange(0, 100),
-                                         bar.setValue(int(d * 100 / to)) if to else bar.setRange(0, 0),
-                                         durum.setText(t("Model indiriliyor…"))))
+    isci.ilerleme.connect(lambda d, to: _ilerleme_uygula(bar, durum, d, to))
     def _tamam(yol):
         nonlocal hazir
         hazir = True

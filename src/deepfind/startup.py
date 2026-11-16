@@ -4,7 +4,9 @@ import threading
 import time
 
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
-from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
+
+from .ui import ilerleme_cubugu
 
 from . import backup, diagnostics, migrate, vault
 from .theme import t
@@ -90,9 +92,7 @@ class OpeningDialog(QDialog):
         self.status.setWordWrap(True)
         self.detail = QLabel(t('Büyük arşiv hazırlanırken lütfen bekleyin.'))
         self.detail.setWordWrap(True)
-        self.bar = QProgressBar()
-        self.bar.setStyleSheet('QProgressBar { min-height: 24px; max-height: 24px; text-align: center; }')
-        self.bar.setTextVisible(True)
+        self.bar = ilerleme_cubugu()
         self.bar.setRange(0, 0)
         layout.addWidget(self.status)
         layout.addWidget(self.detail)

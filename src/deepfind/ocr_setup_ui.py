@@ -5,7 +5,9 @@ setup (warm-up). On error the user keeps repair/exit options."""
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar, QPushButton
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+
+from .ui import ilerleme_cubugu
 
 from . import ocr_setup
 from .theme import t
@@ -38,7 +40,7 @@ class OcrSetupDialog(QDialog):
         self.status = QLabel(t("Türkçe OCR doğrulanıyor. Hazır olunca DeepFind açılacak."))
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        self.bar = QProgressBar()
+        self.bar = ilerleme_cubugu()
         self.bar.setRange(0, 100)
         layout.addWidget(self.bar)
         self.retry = QPushButton("Yeniden dene")

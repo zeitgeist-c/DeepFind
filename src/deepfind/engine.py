@@ -196,6 +196,71 @@ def normalize(v):
     return (v / norm).astype(np.float32)
 
 
+_AYGIT_SATIRI = re.compile(
+    r"^\s*(cuda|vulkan)(\d+):\s*(.+?)\s*\(\s*([\d.]+)\s*MiB\s*,\s*([\d.]+)\s*MiB\s*free\s*\)\s*$",
+    re.IGNORECASE | re.MULTILINE)
+
+VRAM_SORGU_SURESI = 30.0
+VRAM_ONBELLEK_SURESI = 120.0
+VRAM_YENIDEN_DENEME_SURESI = 30.0
+
+
+def _vram_sorgula(exe_yolu, backend, beklenen_aygit, zaman_asimi=VRAM_SORGU_SURESI):
+    """Ayni exe'nin `--list-devices` ciktisindan GPU bellegi.
+
+    Donus: {'vram_bos_mb','vram_bos_oran','aygit','toplam_mb'} ya da None.
+    Tek sart: o backend'den tam 1 aygit ve startup'taki aygit satiriyle
+    ayni (backend, indis, ad) eslesmesi. Birden fazla GPU varsa ilk aygit
+    varsayilmaz (belirsiz -> None). Sayi yoksa, eslesme yoksa, sure
+    asiminda ya da her hatada None: RAM VRAM yerine kullanilmaz.
+    """
+    bilgi, _kalici = _vram_cozumle(exe_yolu, backend, beklenen_aygit, zaman_asimi)
+    return bilgi
+
+
+def _vram_cozumle(exe_yolu, backend, beklenen_aygit, zaman_asimi=VRAM_SORGU_SURESI):
+    """_vram_sorgula + kalicilik: (bilgi|None, kalici_bool).
+
+    kalici=True: cikti cozumlendi ama esleme guvenilir degil (birden fazla
+    aygit, ad/indis uyusmazligi, tutarsiz sayi) — oturumda yeniden denemek
+    sonucu degistirmez. kalici=False: surec hatasi/zaman asimi — gecici
+    olabilir, daha sonra yeniden denenebilir.
+    """
+    try:
+        butce = max(1.0, float(zaman_asimi))
+    except (TypeError, ValueError):
+        butce = VRAM_SORGU_SURESI
+    try:
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+        child_env = os.environ.copy()
+        common = asset_root() / 'common'
+        if common.is_dir():
+            child_env['PATH'] = str(common) + os.pathsep + child_env.get('PATH', '')
+        bitmis = subprocess.run([str(exe_yolu), '--list-devices'], capture_output=True,
+                                timeout=butce, creationflags=flags, env=child_env)
+        if bitmis.returncode:
+            return None, False
+        cikti = (bitmis.stdout + bitmis.stderr).decode('utf-8', 'replace')
+        hedef = (backend or '').lower()
+        adaylar = [(m.group(2), m.group(3).strip(), float(m.group(4)), float(m.group(5)))
+                   for m in _AYGIT_SATIRI.finditer(cikti)
+                   if m.group(1).lower() == hedef]
+        if len(adaylar) != 1:
+            return None, True
+        indis, ad, toplam, bos = adaylar[0]
+        beklenen = _AYGIT_SATIRI.search(beklenen_aygit or '')
+        if (beklenen is None or beklenen.group(1).lower() != hedef
+                or beklenen.group(2) != indis
+                or beklenen.group(3).strip() != ad):
+            return None, True
+        if not (toplam > 0 and 0 <= bos <= toplam):
+            return None, True
+        return {'vram_bos_mb': bos, 'vram_bos_oran': bos / toplam,
+                'aygit': f'{hedef}{indis}: {ad}', 'toplam_mb': toplam}, True
+    except Exception:
+        return None, False
+
+
 def _own_process(process):
     """Kill native worker if the application crashes (Windows job ownership)."""
     if os.name != 'nt': return None
@@ -229,6 +294,12 @@ class Oturum:
         self.proc = None
         self.fallback = ''
         self.cancel = cancel
+        self.exe = ''
+        self.device = ''
+        self._vram = None
+        self._vram_olc_zamani = 0.0
+        self._vram_deneme_zamani = 0.0
+        self._vram_sorguda = False
         self._son = time.monotonic() + max(zaman_asimi, 1)
         errors = []
         for choice in (['cuda', 'vulkan', 'cpu'] if backend == 'auto' else [backend]):
@@ -258,6 +329,7 @@ class Oturum:
         common = asset_root() / 'common'
         if common.is_dir():
             child_env['PATH'] = str(common) + os.pathsep + child_env.get('PATH','')
+        self.exe = str(exe)
         if backend != 'cpu':
             check = subprocess.run([str(exe), '--list-devices'], capture_output=True, timeout=45, creationflags=flags, env=child_env)
             devices = (check.stdout + check.stderr).decode('utf-8', 'replace')
@@ -292,6 +364,100 @@ class Oturum:
     def alive(self):
         return self.proc is not None and self.proc.poll() is None
 
+    def _vram_kilitle(self):
+        """Kisa vadeli kilit; encode suruyorsa beklemeden eldekiyle don."""
+        try:
+            if self._kilit.acquire(blocking=False):
+                return True
+        except Exception:
+            pass
+        return False
+
+    def vram_bilgi(self, zaman_asimi=VRAM_SORGU_SURESI):
+        """Bu oturumun GPU bellegi ya da None. Asla bekletmez.
+
+        Yalniz taze olcum doner (`VRAM_ONBELLEK_SURESI`): suresi dolan
+        eski yuksek deger karara sokulmaz. Olcum yoksa/hazir degilse arka
+        planda tek sorgu baslatilir (ust uste sorgu acilmaz) ve None
+        doner; tarama beklemeden normal boyutta yurur. Gecici sorgu
+        hatasi/uzamasi kalici kilit yaratmaz (sonra yeniden denenir);
+        kalici esleme belirsizliginde None doner. CPU'da aranmaz.
+        """
+        if getattr(self, 'backend', 'cpu') == 'cpu':
+            return None
+        if not self._vram_kilitle():
+            return self._taze_vram()
+        try:
+            if self._taze_vram() is not None:
+                return self._taze_vram()
+            if self._vram_sorguda:
+                return None
+            simdi = time.monotonic()
+            if simdi - self._vram_deneme_zamani < VRAM_YENIDEN_DENEME_SURESI:
+                # Yeni basarisiz deneme; hiz kesmeden bekle.
+                return None
+            self._vram_sorguda = True
+            self._vram_deneme_zamani = simdi
+            try:
+                butce = max(1.0, float(zaman_asimi))
+            except (TypeError, ValueError):
+                butce = VRAM_SORGU_SURESI
+            exe, backend, aygit = self.exe, self.backend, self.device
+        finally:
+            self._kilit.release()
+        import threading as _th
+
+        def _arka_plan():
+            try:
+                bilgi, kalici = _vram_cozumle(exe, backend, aygit, butce)
+            except Exception:
+                bilgi, kalici = None, False
+            with self._kilit:
+                self._vram_sorguda = False
+                if bilgi is not None:
+                    self._vram = bilgi
+                    self._vram_olc_zamani = time.monotonic()
+                elif kalici:
+                    self._vram = False
+                    self._vram_olc_zamani = time.monotonic()
+                # else: gecici hata — olcum zamani degismez; suresi dolan
+                # eski deger karara sokulmaz, sonra yeniden denenir.
+
+        _th.Thread(target=_arka_plan, daemon=True).start()
+        return None
+
+    def _taze_vram(self):
+        """Taze olcum sozlugu ya da None. Kilit disinda da cagrilabilir."""
+        try:
+            olcum = self._vram
+            olc_zamani = self._vram_olc_zamani
+        except AttributeError:
+            return None
+        if not isinstance(olcum, dict):
+            return None
+        try:
+            taze = time.monotonic() - float(olc_zamani) < VRAM_ONBELLEK_SURESI
+        except (TypeError, ValueError):
+            return None
+        return olcum if taze else None
+
+    def vram_durumu(self) -> str:
+        """'hazir' | 'bekliyor' | 'bilinmiyor'. Sorgu baslatmaz, bekletmez."""
+        if getattr(self, 'backend', 'cpu') == 'cpu':
+            return 'hazir'
+        if not self._vram_kilitle():
+            return 'bekliyor'
+        try:
+            if self._taze_vram() is not None:
+                return 'hazir'
+            if getattr(self, '_vram_sorguda', False):
+                return 'bekliyor'
+            if self._vram is False and self._vram_olc_zamani > 0.0:
+                return 'bilinmiyor'
+            return 'bekliyor'
+        finally:
+            self._kilit.release()
+
     def close(self):
         if self.proc is not None:
             if self.proc.poll() is None:
@@ -317,25 +483,100 @@ class Oturum:
                                      headers={'Authorization': 'Bearer ' + self.key, 'Content-Type': 'application/json'})
         with self.http.open(req, timeout=timeout) as response: return json.load(response)
 
-    def encode(self, metinler, gorev='sorgu', toplu=1, cancel=None):
+    def encode(self, metinler, gorev='sorgu', toplu=1, cancel=None, zaman_asimi=None):
+        from . import embed_tune as _tune
         if not metinler: return np.zeros((0, DIM), dtype=np.float32)
+        try:
+            toplu = max(1, min(_tune.MAX_TOPLU, int(toplu)))
+        except (TypeError, ValueError):
+            toplu = _tune.NORMAL_TOPLU
+        if zaman_asimi is None:
+            zaman_asimi = _tune.PROBE_ZAMAN_ASIMI if toplu > 1 else _tune.NORMAL_ZAMAN_ASIMI
+        try:
+            butce = max(1.0, float(zaman_asimi))
+        except (TypeError, ValueError):
+            butce = _tune.NORMAL_ZAMAN_ASIMI
+        # Toplam butce: kilit bekleme + tokenizasyon + tum embedding cagrilari.
+        bitis = time.monotonic() + butce
+
+        def kalan() -> float:
+            return bitis - time.monotonic()
+
+        def cagri_suresi() -> float:
+            artakalan = kalan()
+            if artakalan <= 0:
+                raise TimeoutError('Gömme toplam süre aşımı')
+            return min(butce, artakalan)
+
         prefix = SORGU_ONEKI if gorev == 'sorgu' else BELGE_ONEKI
-        vectors = []
-        for text in metinler:
-            with self._kilit:
+        if not self._kilit.acquire(timeout=max(0.0, kalan())):
+            raise TimeoutError('Gömme kilit zaman aşımı')
+        try:
+            if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
+            header = self.request('/tokenize', {'content': prefix, 'add_special': True},
+                                  timeout=cagri_suresi())['tokens']
+            capacity = _tune.MAX_GIRDI_JETON - len(header)
+            if capacity < 128: raise ValueError('Geçersiz görev öneki')
+            adim = capacity - _tune.KAPLAMA_JETON
+            # Metin -> ortusmeli jeton parcalari (sessiz kirpma yok).
+            sahipler: list[int] = []
+            parcalar: list[list[int]] = []
+            for dizin, text in enumerate(metinler):
                 if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
-                header = self.request('/tokenize', {'content': prefix, 'add_special': True})['tokens']
-                tokens = self.request('/tokenize', {'content': text or ' ', 'add_special': False})['tokens']
-                capacity = 512 - len(header)
-                if capacity < 128: raise ValueError('Geçersiz görev öneki')
-                chunks = []
-                for start in range(0, max(1,len(tokens)), capacity - 64):
+                tokens = self.request('/tokenize', {'content': text or ' ', 'add_special': False},
+                                      timeout=cagri_suresi())['tokens']
+                for start in range(0, max(1, len(tokens)), adim):
                     if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
-                    part = header + tokens[start:start + capacity]
-                    response = self.request('/embedding', {'input': part})
-                    vector = np.asarray(response[0]['embedding'], dtype=np.float32).reshape(-1)
-                    if vector.size != 768: raise ValueError('Beklenmeyen model çıktı boyutu')
-                    chunks.append(normalize(vector[:DIM]))
+                    parcalar.append(header + tokens[start:start + capacity])
+                    sahipler.append(dizin)
                     if start + capacity >= len(tokens): break
-                vectors.append(normalize(np.mean(chunks, axis=0)))
-        return np.asarray(vectors, dtype=np.float32)
+            if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
+            gruplar = _tune.toplu_grupla([len(p) for p in parcalar], toplu)
+            parca_vektor: list = [None] * len(parcalar)
+            for grup in gruplar:
+                if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
+                yigin = [parcalar[i] for i in grup]
+                if len(yigin) > 1:
+                    try:
+                        yanit = self.request('/embedding', {'input': yigin},
+                                             timeout=cagri_suresi())
+                    except TimeoutError:
+                        # Toplu istek zaman asimina ugradi: ayni kilit altinda
+                        # sinirsiz tekli geri donuse girilmez; deneme bu
+                        # tarama oturumunda kapatilir (cagiran kilitler).
+                        raise
+                    except InterruptedError:
+                        raise
+                    except Exception:
+                        yanit = None  # Tekli geri donus ayni grubu isler.
+                    else:
+                        if isinstance(yanit, list) and len(yanit) == len(yigin):
+                            for sira, oge in zip(grup, yanit):
+                                v = np.asarray(oge['embedding'], dtype=np.float32).reshape(-1)
+                                if v.size != 768: raise ValueError('Beklenmeyen model çıktı boyutu')
+                                parca_vektor[sira] = normalize(v[:DIM])
+                            if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
+                            continue
+                        # Bozuk toplu yanit: tekli geri donuse dus.
+                    for sira in grup:
+                        if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
+                        tek = self.request('/embedding', {'input': parcalar[sira]},
+                                           timeout=cagri_suresi())
+                        v = np.asarray(tek[0]['embedding'], dtype=np.float32).reshape(-1)
+                        if v.size != 768: raise ValueError('Beklenmeyen model çıktı boyutu')
+                        parca_vektor[sira] = normalize(v[:DIM])
+                    continue
+                for sira in grup:
+                    if cancel and cancel(): raise InterruptedError('Gömme iptal edildi')
+                    tek = self.request('/embedding', {'input': parcalar[sira]},
+                                       timeout=cagri_suresi())
+                    v = np.asarray(tek[0]['embedding'], dtype=np.float32).reshape(-1)
+                    if v.size != 768: raise ValueError('Beklenmeyen model çıktı boyutu')
+                    parca_vektor[sira] = normalize(v[:DIM])
+            vectors = []
+            for dizin in range(len(metinler)):
+                toplanego = [parca_vektor[i] for i, s in enumerate(sahipler) if s == dizin]
+                vectors.append(normalize(np.mean(toplanego, axis=0)))
+            return np.asarray(vectors, dtype=np.float32)
+        finally:
+            self._kilit.release()
